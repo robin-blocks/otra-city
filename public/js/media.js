@@ -14,6 +14,16 @@ const AUDIO_PLAY_K = 3;   // max simultaneously playing ambient sources
 const SCREEN_RANGE = 20;  // screens farther than this pause
 const SCREEN_PLAY_K = 2;  // max simultaneously playing videos
 
+// A named glTF node with multiple primitives imports as a parent Object3D
+// with mesh children — resolve to the first actual mesh under the name.
+function findMeshByName(root, name) {
+  const named = root.getObjectByName(name);
+  if (!named) return null;
+  let mesh = null;
+  named.traverse((o) => { if (!mesh && o.isMesh) mesh = o; });
+  return mesh;
+}
+
 export function createMediaSystem(camera) {
   const listener = new THREE.AudioListener();
   camera.add(listener);
@@ -48,7 +58,7 @@ export function createMediaSystem(camera) {
 
   function attachScreens(container, gltfScene, list) {
     for (const cfg of list) {
-      const mesh = gltfScene.getObjectByName(cfg.node);
+      const mesh = findMeshByName(gltfScene, cfg.node);
       if (!mesh) {
         console.warn('screen node missing:', cfg.node);
         continue;
@@ -107,15 +117,21 @@ export function createMediaSystem(camera) {
 
   const feeds = [];
   function attachFeed(gltfScene, cfg) {
-    const mesh = gltfScene.getObjectByName(cfg.node);
+    const mesh = findMeshByName(gltfScene, cfg.node);
     if (!mesh) {
       console.warn('feed node missing:', cfg.node);
       return;
     }
+    // Fallback semantics (contractual): until the first successful poll the
+    // panel shows its AUTHORED texture from the glb; after any later failure
+    // it keeps the last good render. A broken feed can never blank a panel.
+    // External endpoints are fetched by the browser, so they must send
+    // Access-Control-Allow-Origin — checked at submission time.
     const state = { mesh, url: cfg.file, count: 0 };
     const poll = async () => {
       try {
-        const r = await fetch(state.url + '?t=' + Date.now());
+        const sep = state.url.includes('?') ? '&' : '?';
+        const r = await fetch(state.url + sep + 't=' + Date.now());
         if (!r.ok) return;
         const data = await r.json();
         const old = mesh.material;
@@ -125,18 +141,43 @@ export function createMediaSystem(camera) {
       } catch { /* keep last good texture */ }
     };
     poll();
-    state.timer = setInterval(poll, Math.max(5, cfg.interval_s ?? 60) * 1000);
+    state.timer = setInterval(poll, Math.max(60, cfg.interval_s ?? 120) * 1000);
     feeds.push(state);
+  }
+
+  // Static pictures — the low-friction way to put real product imagery on a
+  // wall: a named flat quad (pic_1..pic_6, full 0..1 UVs) gets the image as
+  // an unlit texture, exactly like a screen but with no video pipeline.
+  function attachPictures(gltfScene, list) {
+    for (const cfg of list.slice(0, 6)) {
+      const mesh = findMeshByName(gltfScene, cfg.node);
+      if (!mesh) {
+        console.warn('picture node missing:', cfg.node);
+        continue;
+      }
+      const tex = new THREE.TextureLoader().load(cfg.file);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.flipY = false; // glTF UV convention
+      tex.anisotropy = 4;
+      mesh.material = new THREE.MeshBasicMaterial({ map: tex });
+    }
   }
 
   function attach(container, gltfScene, media, base = '') {
     if (!media) return;
-    const abs = (f) => (f && !f.startsWith('/') && !f.startsWith('http') ? base + f : f);
+    const abs = typeof base === 'function'
+      ? base
+      : (f) => (f && !f.startsWith('/') && !f.startsWith('http') && !f.startsWith('blob:') ? base + f : f);
     if (media.audio) attachAudio(container, { ...media.audio, file: abs(media.audio.file) });
     if (media.screens) {
       attachScreens(container, gltfScene, media.screens.map((s) => ({ ...s, file: abs(s.file) })));
     }
-    if (media.feed) attachFeed(gltfScene, { ...media.feed, file: abs(media.feed.file) });
+    if (media.pictures) {
+      attachPictures(gltfScene, media.pictures.map((p) => ({ ...p, file: abs(p.file) })));
+    }
+    if (media.feed) {
+      attachFeed(gltfScene, { ...media.feed, file: abs(media.feed.url || media.feed.file) });
+    }
   }
 
   const byDistance = (items, p) => items

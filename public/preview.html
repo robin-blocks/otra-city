@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plot preview — otra.city</title>
+<meta name="description" content="Preview your otra.city plot in the real client pipeline before submitting: night lighting, bloom, tone mapping, standard cameras.">
+<style>
+  html, body { margin: 0; height: 100%; background: #0a0817; overflow: hidden; }
+  #hud {
+    position: fixed; left: 12px; top: 12px; color: #cfd3e8; max-width: 380px;
+    font: 12px/1.55 ui-monospace, Menlo, monospace;
+    background: rgba(10, 8, 23, .78); border: 1px solid #31234f;
+    padding: 10px 12px; border-radius: 8px;
+  }
+  #hud b { color: #2fe0f8; }
+  #hud .dim { color: #8a86a0; }
+  #cams { position: fixed; left: 12px; bottom: 12px; display: flex; gap: 8px; }
+  #cams button, #hud button {
+    background: #150f26; color: #cfd3e8; border: 1px solid #31234f;
+    font: 600 12px/1 ui-monospace, Menlo, monospace; padding: 8px 12px;
+    border-radius: 999px; cursor: pointer;
+  }
+  #cams button:hover { border-color: #2fe0f8; color: #2fe0f8; }
+  #drop {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: #8a86a0; font: 14px/1.7 ui-monospace, Menlo, monospace; text-align: center;
+    pointer-events: none;
+  }
+  #drop.hidden { display: none; }
+  #drop div { background: rgba(10,8,23,.85); border: 1px dashed #31234f; border-radius: 12px; padding: 26px 34px; }
+  input[type=file] { display: none; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <b>plot preview</b> — the real client pipeline<br>
+  <span id="status" class="dim">no plot loaded</span><br>
+  <span class="dim">drop plot.glb (+ optional plot.json and media files) anywhere ·
+  <button id="pick">choose files</button> ·
+  same night, bloom and tone mapping as the city · mannequin = avatar scale</span>
+</div>
+<div id="cams">
+  <button data-cam="street">street ¾</button>
+  <button data-cam="door">doorway</button>
+  <button data-cam="interior">interior</button>
+  <button data-cam="high">high</button>
+</div>
+<div id="drop"><div>drop your <b>plot.glb</b> here<br>
+  <span style="font-size:12px">or open <code>/preview?glb=/plots/&lt;slug&gt;/plot.glb</code> to inspect a live plot</span></div></div>
+<input id="file" type="file" multiple accept=".glb,.json,.png,.jpg,.jpeg,.webp,.mp4,.m4a,.mp3,.ogg">
+<script type="importmap">
+{
+  "imports": {
+    "three": "/vendor/three/three.module.js",
+    "three/addons/": "/vendor/three/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { createAvatar } from '/js/avatar.js';
+import { createMediaSystem } from '/js/media.js';
+import { createAnimSystem } from '/js/anims.js';
+
+// ---- identical pipeline constants to the city client ----
+const LIGHT_CAP = 30;
+const EMISSIVE_PEAK = 1.2;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0817);
+scene.fog = new THREE.Fog(0x0a0817, 32, 95);
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 220);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+// city context: ground, one street strip, two lamps, sky light — the lot sits
+// at the origin with its front at z = +5, exactly as placed on a south lot
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300),
+  new THREE.MeshStandardMaterial({ color: 0x121017, roughness: 0.95 }));
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.01;
+scene.add(ground);
+scene.add(new THREE.HemisphereLight(0x8899ff, 0x080610, 0.25));
+const mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.92, ...o });
+const box = (w, h, d, m, x, y, z) => {
+  const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+  b.position.set(x, y, z);
+  scene.add(b);
+  return b;
+};
+box(40, 0.12, 8, mat(0x17161c), 0, -0.05, 11.5);                 // road
+box(40, 0.3, 2.5, mat(0x24222c, { roughness: 0.85 }), 0, 0, 6.75); // sidewalk
+for (const lx of [-8, 8]) {
+  box(0.14, 3.3, 0.14, mat(0x241f38), lx, 1.65, 8.2);
+  box(0.34, 0.14, 0.34, new THREE.MeshStandardMaterial({ color: 0x241f38, emissive: 0xffbf80, emissiveIntensity: 2.5 }), lx, 3.37, 8.2);
+  const l = new THREE.PointLight(0xffbf80, 40, 26, 2);
+  l.position.set(lx, 3.4, 8.2);
+  scene.add(l);
+}
+const mannequin = createAvatar();
+mannequin.group.position.set(2.2, 0, 6.2);
+mannequin.group.rotation.y = Math.PI;
+scene.add(mannequin.group);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.12, 0.3, 1.0));
+composer.addPass(new OutputPass());
+
+const media = createMediaSystem(camera);
+const anims = createAnimSystem();
+window.__media = media;
+
+const CAMS = {
+  street: [[9, 2.7, 14.5], [0, 2, 0]],
+  door: [[0, 1.6, 8.6], [0, 1.7, 0]],
+  interior: [[0, 1.6, 2.2], [0, 1.6, -4.5]],
+  high: [[10, 7.5, 12], [0, 1.5, 0]],
+};
+function setCam(name) {
+  const [p, t] = CAMS[name] || CAMS.street;
+  camera.position.set(...p);
+  controls.target.set(...t);
+}
+setCam('street');
+for (const b of document.querySelectorAll('#cams button')) {
+  b.addEventListener('click', () => setCam(b.dataset.cam));
+}
+
+const status = document.getElementById('status');
+const drop = document.getElementById('drop');
+const loader = new GLTFLoader().setDRACOLoader(
+  new DRACOLoader().setDecoderPath('/vendor/three/jsm/libs/draco/gltf/'));
+
+let plotRoot = null;
+function loadPlot(glbUrl, manifest = null, resolve = null) {
+  loader.load(glbUrl, (gltf) => {
+    if (plotRoot) scene.remove(plotRoot);
+    plotRoot = new THREE.Group();
+    plotRoot.add(gltf.scene);
+    scene.add(plotRoot);
+    plotRoot.updateMatrixWorld(true);
+    // the exact ingest/client normalizations
+    const lights = [];
+    gltf.scene.traverse((o) => { if (o.isLight) lights.push(o); });
+    let total = 0;
+    for (const l of lights) { l.intensity *= 0.0055; l.distance = 14; l.decay = 2; total += l.intensity; }
+    if (total > LIGHT_CAP) for (const l of lights) l.intensity *= LIGHT_CAP / total;
+    scene.traverse((o) => {
+      for (const m of [].concat(o.material || [])) {
+        if (m.emissiveIntensity && m.emissive) {
+          const peak = m.emissiveIntensity * Math.max(m.emissive.r, m.emissive.g, m.emissive.b);
+          if (peak > EMISSIVE_PEAK) m.emissiveIntensity *= EMISSIVE_PEAK / peak;
+        }
+      }
+    });
+    if (manifest?.media) media.attach(plotRoot, gltf.scene, manifest.media, resolve || '');
+    if (manifest?.anims) anims.attach(plotRoot, gltf.scene, manifest.anims);
+    let tris = 0;
+    gltf.scene.traverse((o) => { if (o.isMesh) tris += (o.geometry.index?.count || 0) / 3; });
+    status.textContent = `loaded · ${tris} tris · nodes: ${gltf.scene.children.length}` +
+      (manifest ? ' · manifest applied' : ' · drop a plot.json to bind media/anims');
+    drop.classList.add('hidden');
+  }, undefined, (e) => { status.textContent = 'load failed: ' + e; });
+}
+let simT = 0;
+window.__preview = {
+  loadPlot,
+  setCam,
+  anims,
+  media,
+  scene,
+  step(frames = 30, dt = 1 / 60) { // deterministic advance for hidden-tab tests
+    for (let i = 0; i < frames; i++) {
+      simT += dt;
+      anims.update(dt, simT, controls.target);
+    }
+    media.update(controls.target);
+    controls.update();
+    composer.render();
+    return simT;
+  },
+};
+
+// files: .glb + optional plot.json + media files resolved by basename
+const fileMap = new Map();
+let pendingGlb = null;
+let pendingManifest = null;
+function handleFiles(files) {
+  for (const f of files) {
+    if (f.name.endsWith('.glb')) pendingGlb = URL.createObjectURL(f);
+    else if (f.name.endsWith('.json') && f.name.includes('plot')) {
+      f.text().then((t) => { pendingManifest = JSON.parse(t); maybeLoad(); });
+    } else fileMap.set(f.name, URL.createObjectURL(f));
+  }
+  maybeLoad();
+}
+function maybeLoad() {
+  if (!pendingGlb) return;
+  const resolve = (p) => fileMap.get((p || '').split('/').pop()) || p;
+  loadPlot(pendingGlb, pendingManifest, resolve);
+}
+addEventListener('dragover', (e) => e.preventDefault());
+addEventListener('drop', (e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); });
+document.getElementById('pick').addEventListener('click', () => document.getElementById('file').click());
+document.getElementById('file').addEventListener('change', (e) => handleFiles(e.target.files));
+
+const fromUrl = new URLSearchParams(location.search).get('glb');
+if (fromUrl && (fromUrl.startsWith('/') || fromUrl.startsWith(location.origin))) {
+  loadPlot(fromUrl);
+}
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  anims.update(dt, clock.elapsedTime, controls.target);
+  media.update(controls.target);
+  controls.update();
+  composer.render();
+});
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

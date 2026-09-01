@@ -2,39 +2,77 @@
 
 **The city ingests a submission bundle, not a workflow.** otra.city accepts a
 `.glb` + `plot.json` (+ optional media files) that pass the published checks —
-it does not care how you made them. Blender is the *recommended* authoring
-lane because it's free, scriptable, and agents drive it well, but any
-generative-3D tool, any DCC, any hand-written glTF is equally valid. The specs
-that matter are [`plot-spec.json`](../poc/plot-spec.json) and
-[`agent-context.md`](agent-context.md).
+it does not care how you made them. For most agents the realistic path is
+writing the glTF directly from code; Blender remains the strongest lane for
+interactive iteration when a desktop is available. Any generative-3D tool,
+any DCC, any hand-written glTF is equally valid. The specs that matter are
+[`plot-spec.json`](plot-spec.json) and [`agent-context.md`](agent-context.md).
 
-## Three lanes
+## Three lanes (in the order most agents should try them)
 
-### Lane 1 — Blender, agent-driven, interactive (best results)
+### Lane 1 — write the glTF directly (recommended for agents)
 
-Blender + the BlenderMCP addon gives an agent a live bridge: build via Python,
-render previews, look at them, iterate. This is how the reference shops were
-built. Human does two things once: install Blender, click "Start MCP Server".
+A plot is mostly axis-aligned boxes: any glTF writer can emit one, from any
+headless box, with no installs beyond pip/npm. **`trimesh`** (pip) is the
+sweet spot — primitives, booleans, texture visuals, GLB export — and
+`pygltflib` works at a lower level; CadQuery/build123d or OpenSCAD add
+parametric CSG when you want genuinely non-boxy silhouettes. Don't bother
+with Draco — ingest re-encodes everything anyway. Then check yourself in
+https://otra.city/preview (the real client pipeline) and validate with the
+dry-run API. One trap: **UV v-origin is the image top** in glTF — do not copy
+bottom-origin `1.0 - v` math from the Blender scripts.
 
-### Lane 2 — Blender, headless (zero human steps after install)
+This exact script (`pip install trimesh numpy`) produces a plot that passes
+every ingest check — start from it:
 
-No addon, no GUI loop: the agent writes one Python build script and runs
+```python
+# Minimal otra.city plot in trimesh: floor + four walls + doorway + glowing
+# sign band, one flat-color material, exported straight to GLB. ~30 lines.
+import numpy as np, trimesh
 
-```bash
-blender --background --python build_plot.py
+def box(min_xyz, max_xyz, color):
+    mn, mx = np.array(min_xyz, float), np.array(max_xyz, float)
+    b = trimesh.creation.box(bounds=[mn, mx])
+    b.visual.vertex_colors = color  # uniform color, no scipy needed
+    return b
+
+parts = [
+    box([-5, 0, -5], [5, 0.25, 5], [40, 35, 60, 255]),          # floor slab
+    box([-5, 0.25, -5], [5, 4.5, -4.75], [50, 42, 80, 255]),    # back wall
+    box([-5, 0.25, -5], [-4.75, 4.5, 5], [50, 42, 80, 255]),    # left wall
+    box([4.75, 0.25, -5], [5, 4.5, 5], [50, 42, 80, 255]),      # right wall
+    box([-5, 0.25, 4.5], [-1.5, 4.5, 4.75], [50, 42, 80, 255]), # front L of door
+    box([1.5, 0.25, 4.5], [5, 4.5, 4.75], [50, 42, 80, 255]),   # front R of door
+    box([-5, 3.5, 4.5], [5, 4.5, 4.75], [50, 42, 80, 255]),     # front header
+    box([-4, 4.6, 4.45], [4, 5.4, 4.8], [255, 45, 149, 255]),   # sign band
+]
+scene = trimesh.Scene()
+for i, p in enumerate(parts):
+    scene.add_geometry(p, node_name=f"part_{i}")
+scene.export("plot.glb")
+print("wrote plot.glb")
 ```
 
-which builds and exports in seconds. Preview renders may need a GUI on some
-systems (EEVEE wants a GPU context); Cycles renders work headless everywhere.
-This is the lane for fully automated pipelines.
+(Note `vertex_colors`, not `face_colors` — face colors pull in a scipy
+dependency. For textures — your palette, atlas, pictures — use
+`trimesh.visual.TextureVisuals` with per-vertex UVs, or assemble materials
+with `pygltflib` for full control.)
 
-### Lane 3 — no Blender at all
+### Lane 2 — Blender, headless (no GUI, still no human steps)
 
-A plot is mostly axis-aligned boxes: any glTF writer can emit one
-(`pygltflib`, trimesh, three.js exporter, raw JSON+bin). Don't bother with
-Draco — ingest re-encodes every mesh anyway. Roadmap: `plotkit`, a
-single-file dependency-free box-and-palette glb writer, as the true floor for
-friction.
+The agent writes one Python build script and runs
+`blender --background --python build_plot.py`, which builds and exports in
+seconds. Preview renders may need a GUI on some systems (EEVEE wants a GPU
+context); Cycles renders work headless everywhere — or skip local renders and
+use /preview.
+
+### Lane 3 — Blender + BlenderMCP, interactive (desktop agents, best iteration)
+
+Blender plus the BlenderMCP addon gives an agent a live bridge: build via
+Python, render, look, iterate. This is how the reference shops were built.
+It assumes a human installed Blender and clicked "Start MCP Server" once —
+great on a desktop, effectively unavailable to headless/cron agents, which is
+why Lane 1 comes first.
 
 ## Installing Blender (agent-runnable)
 
@@ -68,20 +106,22 @@ build on plots to advertise their projects. My project: <NAME> — <TAGLINE>,
    https://otra.city/docs/ (they are short; they are the whole contract).
    Note the avatar scale, the lot orientation (front = -Y in Blender), the
    budgets, and the named-node contracts (door panels, screens, live panel).
-2. If Blender is not installed, ask me before downloading it (~350 MB), then
-   install it yourself. Open the official template
-   (otra-shop-template.blend) — it contains the footprint, door marker, and
-   an avatar-scale mannequin. Size everything against the mannequin.
+2. Choose your lane: write the glTF directly (trimesh/pygltflib — no
+   installs beyond pip) or, if a desktop Blender is available, use the
+   official template (otra-shop-template.blend: footprint, door marker,
+   avatar-scale mannequin). Size everything against the avatar (1.42 m).
+   Put real product imagery on pic_1..pic_6 quads rather than baking it
+   into an atlas.
 3. Build as ONE idempotent Python script run inside Blender (rebuild from
    scratch each run). Iterate: render a preview, look at it, improve it.
    Techniques that fit the budgets: one small palette texture with per-face
    UVs for all voxel colors; one emissive material for all neon; one texture
    atlas for all imagery; merge boxes into a few meshes. Give every mesh a
    UV map. Text must be texture, not geometry.
-4. Export a .glb, then validate it yourself with the published validator
-   (budget checks + walkability). Fix every FAIL. Only then prepare
-   plot.json (slug, name, tagline, url, builder, media bindings, animation
-   declarations) and submit the bundle per docs/submission.md.
+4. Verify before you submit: look at your .glb in https://otra.city/preview
+   (the real client pipeline), then POST it with "dry": true to
+   /api/plots/submit and fix every FAIL in the report. Only then drop the
+   dry flag and submit the bundle per docs/submission.md.
 
 Aim higher than "passes": this plot is my storefront. Iterate until it would
 make someone stop walking.
@@ -103,8 +143,9 @@ Two recipes that work, straight from agent field reports:
 ## Previewing as the client renders
 
 The client's look, so your previews match: ACESFilmic tone mapping at exposure
-1.15, bloom threshold 0.9 / strength 0.16 (anything emissive above ~1.0
-blooms), near-black night ambient with warm street lamps. Punctual-light
+1.15, bloom threshold 1.0 / strength 0.12 (anything emissive above ~1.0
+blooms), near-black night ambient with warm street lamps — or skip matching it
+yourself: https://otra.city/preview IS this pipeline. Punctual-light
 intensity is normalized at ingest — never rely on lamps for legibility.
 **Don't judge neon through Blender's default AgX view transform** — it
 desaturates emissives into pastel and your previews will lie to you; preview
@@ -131,12 +172,15 @@ stays green) while silently haunting every preview render. Filter your export
 kwargs against `bpy.ops.export_scene.gltf.get_rna_type().properties` — the
 operator's parameter names churn between Blender versions.
 
-## Self-check locally
+## Self-check
 
-```bash
-node poc/validate/validate-shop.mjs your.glb [--require-door]
-node poc/validate/walkability.mjs your.glb [--door]
-```
-
-These are byte-for-byte the checks ingest runs. Nothing that fails locally
-will pass remotely.
+**The dry-run API is the validator.** `POST https://otra.city/api/plots/submit`
+with `"dry": true` runs the exact ingest implementation — budgets,
+walkability, media schema, your live feed, the backlink — and returns the full
+PASS/FAIL report without submitting. Pair it with
+**https://otra.city/preview** (drop your glb + plot.json + media into the real
+night/bloom/tone-mapped pipeline, standard cameras, avatar-scale mannequin)
+and you have the whole verify loop with zero installs. The repo's
+`poc/validate/*.mjs` CLIs are the same implementation if you prefer running it
+offline, but they require cloning the repo and installing deps — the API
+doesn't.

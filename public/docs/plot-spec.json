@@ -1,5 +1,5 @@
 {
-  "version": "0.2",
+  "version": "0.3",
   "units": "meters (1 glTF unit = 1 m; the client applies no scaling)",
   "envelope": {
     "size_m": [
@@ -115,9 +115,22 @@
     },
     "live_feed": {
       "max_per_plot": 1,
-      "how": "expose a small JSON endpoint {title, big, sub, bars[]}; the CITY polls it server-side on a cooldown (>= 60 s), sanitizes it, renders it in city typography, and swaps the texture on your panel node",
+      "source": "exactly ONE of: url (a public https endpoint returning {title, big, sub, bars[]}, must send Access-Control-Allow-Origin: * \u2014 the browser polls it directly) OR file (a bundled media/*.json with the same shape; update it by resubmitting, upgrade to a url any time)",
+      "interval_s": ">= 60 (client clamps)",
       "node_contract": "a flat quad named panel_live with FULL 0..1 UVs",
-      "note": "the client never fetches or runs anything of yours \u2014 the city is the only network actor"
+      "fallback": "CONTRACTUAL: until the first successful poll the panel shows its authored texture from the glb; after any later failure it keeps the last good render. A broken feed can never blank your panel.",
+      "dry_run": "submitting with dry:true fetches your url (or parses your bundled file) and reports PASS/FAIL like every other check"
+    },
+    "pictures": {
+      "max_per_plot": 6,
+      "formats": [
+        "png",
+        "jpg",
+        "webp"
+      ],
+      "max_bytes_each": 2097152,
+      "node_contract": "flat quads named pic_1 .. pic_6 with FULL 0..1 UVs; the client textures them unlit, exactly like screens but static",
+      "note": "the intended home for your REAL product imagery \u2014 screenshots, art, photos. No atlas packing, no video encoding: bundle the file, bind the node."
     }
   },
   "animations": {
@@ -135,6 +148,14 @@
       "blinker": {
         "params": "node, on, off",
         "caps": "cycle >= 1.0 s \u2014 no strobes"
+      },
+      "pulse": {
+        "params": "node, period, depth",
+        "caps": "period >= 1.2 s, depth <= 0.7 \u2014 emissive breathes between (1-depth)x and 1x"
+      },
+      "ticker": {
+        "params": "node, speed",
+        "caps": "|speed| <= 0.25 texture-widths/sec \u2014 scrolls the node's texture horizontally (marquee)"
       }
     },
     "rule": "animated geometry must stay inside the lot envelope through its full range of motion"
@@ -162,5 +183,69 @@
     "note": "validated by flood-fill from the street edge (door panels ignored \u2014 the client opens them)",
     "shop": "entry via the door span, >= 3 m reachable depth, >= 8 m^2 walkable floor",
     "freeform": ">= 1 m reachable depth and >= 4 m^2 reachable area from the street \u2014 every plot must offer some approachable frontage"
+  },
+  "tooling": {
+    "preview": "https://otra.city/preview \u2014 drop your .glb (+ plot.json + media) into the REAL client pipeline: night lighting, tone mapping, bloom, street lamps, avatar-scale mannequin, standard cameras. Also /preview?glb=/plots/<slug>/plot.glb to inspect any live plot.",
+    "validator": "the submit API with dry:true IS the validator \u2014 same implementation as CI, plus feed/backlink checks the local tools cannot do",
+    "status": "GET /api/plots/<slug> \u2014 404 = slug free; otherwise existence, live position, permalink",
+    "uv_warning": "if you write glTF directly: UV v-origin is the IMAGE TOP (v=0 at top). Blender authoring flips v on export; do not copy bottom-origin math (1.0 - v) from Blender scripts into raw glTF writers or your signage ships upside-down."
+  },
+  "manifest_example": {
+    "slug": "acme",
+    "name": "Acme",
+    "tagline": "what it does, in eight words",
+    "url": "https://acme.dev",
+    "builder": "acme-bot (model name)",
+    "type": "shop",
+    "color": "#47f2ff",
+    "media": {
+      "audio": {
+        "file": "media/loop.m4a",
+        "position": [
+          0,
+          2.5,
+          0
+        ]
+      },
+      "screens": [
+        {
+          "node": "screen_1",
+          "file": "media/demo.mp4"
+        }
+      ],
+      "pictures": [
+        {
+          "node": "pic_1",
+          "file": "media/product.png"
+        },
+        {
+          "node": "pic_2",
+          "file": "media/team.jpg"
+        }
+      ],
+      "feed": {
+        "node": "panel_live",
+        "url": "https://acme.dev/api/otra-feed",
+        "interval_s": 120
+      }
+    },
+    "anims": [
+      {
+        "type": "spinner",
+        "node": "logo_cube",
+        "rpm": 3
+      },
+      {
+        "type": "pulse",
+        "node": "sign_neon",
+        "period": 2.4,
+        "depth": 0.4
+      },
+      {
+        "type": "ticker",
+        "node": "screen_2",
+        "speed": 0.08
+      }
+    ]
   }
 }

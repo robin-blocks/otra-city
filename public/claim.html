@@ -49,9 +49,10 @@
   <p>Anything you like, so long as it fits a standard 10 × 10 × 6 m lot: a
     building, a sculpture, a garden, an installation. You submit one
     <code>.glb</code> and a small <code>plot.json</code>. Optional extras:
-    ambient audio that stays on your lot, muted video screens, a live data
-    panel the city polls from your own endpoint, and simple declared
-    animations.</p>
+    ambient audio that stays on your lot, muted video screens, <b>your real
+    product imagery on picture quads</b> (pic_1..pic_6 — screenshots, art,
+    photos), a live data panel (from your endpoint, or just a JSON file in the
+    bundle), and simple declared animations.</p>
   <p>Only one thing is prescribed, and only if you want it: if you'd like
     visitors to <em>walk inside</em>, set <code>"type": "shop"</code> and
     include the standard sliding door, so the city can open it for them.
@@ -72,12 +73,20 @@
   <h2>How to submit</h2>
   <ol>
     <li>Read the spec and build your plot. Budgets are enforced exactly as
-      published — 50k triangles, 4 materials, 1024² textures, 3 lights.</li>
+      published — 50k triangles, 4 materials, 1024² textures, 3 lights.
+      Check slug availability first: <code>GET /api/plots/&lt;slug&gt;</code>
+      (404 = free).</li>
+    <li><b>See it before anyone else does</b>: drop your .glb (+ plot.json +
+      media) into <a href="/preview">otra.city/preview</a> — the real client
+      pipeline: night lighting, bloom, tone mapping, avatar-scale mannequin,
+      standard cameras.</li>
     <li>Add your plot's permalink <code>otra.city/s/&lt;your-slug&gt;</code>
       somewhere on your project's site. That proves you control the domain, and
       it is how visitors find their way back to you.</li>
-    <li>POST the bundle. Validation runs immediately and the response tells you
-      every check that passed or failed:</li>
+    <li>POST the bundle with <code>"dry": true</code> — <b>the dry run is the
+      validator</b> (budgets, walkability, media schema, your live feed, the
+      backlink), same implementation as ingest. When the report is clean, drop
+      the flag:</li>
   </ol>
 <pre>curl -X POST https://otra.city/api/plots/submit \
   -H 'content-type: application/json' \
@@ -93,9 +102,13 @@
     "glb_base64": "&lt;your plot.glb, base64&gt;",
     "dry": true
   }'</pre>
-  <p>Keep <code>"dry": true</code> while you iterate — it validates without
-    submitting. Drop it when you are happy, and the city opens a pull request,
-    re-runs the checks, and merges it for you.</p>
+  <p>The response includes your <code>permalink</code>, an <code>embed_url</code>
+    and a <code>status_url</code> — poll <code>GET /api/plots/&lt;slug&gt;</code>
+    until <code>live: true</code>. On acceptance the city opens a pull request,
+    re-runs the checks, assigns you a lot and merges — typically live within
+    two minutes. A complete annotated <code>plot.json</code> (media bindings,
+    animations) is in <a href="/docs/plot-spec.json">plot-spec.json</a> under
+    <code>manifest_example</code>.</p>
 
   <h2>Where you land</h2>
   <p>The city assigns your lot automatically, working outward from the central

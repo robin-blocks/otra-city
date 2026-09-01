@@ -96,14 +96,27 @@ open frontage is fine — the sidewalk just flows in.
 - **Screens** (≤2): silent H.264 video (≤720p, ≤16 MB total) looped onto a
   flat quad you name `screen_1`/`screen_2` — **with full 0–1 UVs** (a quad
   UV-mapped to an atlas cell shows one texel of video).
-- **Live feed** (1): expose a tiny JSON endpoint (`{title, big, sub, bars[]}`);
-  the *city* polls it server-side on a ≥60 s cooldown and renders it in city
-  typography onto your `panel_live` quad. Your lot shows real, current numbers
-  without the client ever touching your servers.
+- **Pictures** (≤6): static images (png/jpg/webp, ≤2 MB each) on flat quads
+  named `pic_1`..`pic_6` with full 0–1 UVs. **This is the intended home for
+  your real product imagery** — screenshots, renders, photography. Don't pack
+  it into your art atlas; bundle the file, bind the node, done. The voxel
+  aesthetic is the *architecture*; what hangs on your walls should be your
+  actual work, like posters in a real shop.
+- **Live feed** (1): real, current numbers on a `panel_live` quad, rendered
+  in city typography. Two sources: a public https endpoint returning
+  `{title, big, sub, bars[]}` (it must send `Access-Control-Allow-Origin: *`
+  — visitors' browsers poll it, ≥60 s), or — zero infrastructure — a **bundled
+  `media/*.json`** with the same shape that you update by resubmitting.
+  **Fallback is contractual**: until the first successful poll the panel shows
+  its authored texture, and after any later failure it keeps the last good
+  render — a broken feed can never blank your panel. Submitting with
+  `dry: true` fetches your feed and reports PASS/FAIL before you commit.
 - **Animations** (≤8): declarative capabilities bound to named nodes —
   `spinner` (≤12 rpm), `bobber` (≤0.5 m, ≥1.5 s), `blinker` (≥1 s cycle, no
-  strobes). No scripts, ever; motion must stay inside the envelope. The shop
-  door is this same system as a platform preset.
+  strobes), `pulse` (emissive breathes: ≥1.2 s period, ≤0.7 depth), `ticker`
+  (texture scrolls horizontally, ≤0.25 widths/s — marquees). No scripts, ever;
+  motion must stay inside the envelope. The shop door is this same system as a
+  platform preset.
 
 ## Budgets (rejected automatically if exceeded)
 
@@ -153,10 +166,25 @@ atlas** holds every image (1 more), leaving one for glass. Emissive strength
 
 ## Self-check before submitting
 
-1. Open the template `.blend` shipped alongside these docs — footprint, door
-   opening, and mannequin at correct scale, with budgets as custom properties
-   on the footprint object.
-2. Export Draco .glb, then run
-   `node poc/validate/validate-shop.mjs your.glb [--require-door]` — the exact
-   checks ingest runs. Fix every FAIL locally; nothing borderline survives
-   review.
+1. **See it in the real pipeline**: drop your `.glb` (plus `plot.json` and
+   media) into **https://otra.city/preview** — the actual client rendering
+   (night, tone mapping, bloom, street lamps) with an avatar-scale mannequin
+   and standard cameras. `/preview?glb=/plots/<slug>/plot.glb` shows any live
+   plot, including your future neighbours.
+2. **The dry-run API is the validator**: `POST /api/plots/submit` with
+   `"dry": true` runs the exact ingest checks — budgets, walkability, media
+   schema, your live feed, the backlink — and returns the full PASS/FAIL
+   report without submitting anything. When the dry run is clean, drop the
+   flag.
+3. `GET /api/plots/<your-slug>` — 404 means the slug is yours to take; after
+   acceptance the same URL reports your live position and permalink.
+
+One trap for raw-glTF writers: **UV v-origin is the image top** (v=0 = top).
+Blender flips v at export, so its scripts use bottom-origin math — copying
+`1.0 - v` into a direct glTF writer ships your signage upside-down or
+mirrored. Check in /preview.
+
+Finally: your plot's glb, like every plot's, is public at
+`/plots/<slug>/plot.glb`. **Fetch your neighbours and deliberately differ** —
+the reference shop is a strong attractor, and the street is better when you
+fight it.

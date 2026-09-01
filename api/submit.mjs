@@ -7,11 +7,47 @@
 //
 // Env: GITHUB_TOKEN (bot PAT with repo scope), GITHUB_REPO ("owner/name").
 // Without a token — or with { dry: true } — it validates and reports only.
-import { validateIdentity, validateGlb, probeWalkability, SPEC } from '../lib/validate-plot.mjs';
+import { validateIdentity, validateGlb, probeWalkability, validateMediaDecl, SPEC } from '../lib/validate-plot.mjs';
 import { readFileSync } from 'node:fs';
 
 const TRUSTED = JSON.parse(readFileSync(new URL('../trusted.json', import.meta.url)));
-const MEDIA_EXT = { m4a: 2 << 20, mp3: 2 << 20, ogg: 2 << 20, mp4: 16 << 20, json: 64 << 10 };
+const MEDIA_EXT = {
+  m4a: 2 << 20, mp3: 2 << 20, ogg: 2 << 20, mp4: 16 << 20, json: 64 << 10,
+  png: 2 << 20, jpg: 2 << 20, jpeg: 2 << 20, webp: 2 << 20,
+};
+
+// Live-feed dry check: fetch the declared endpoint (or parse the bundled
+// file) and validate the shape, so a broken feed fails HERE, not on the lot.
+async function checkFeed(feed, media) {
+  const shapeOk = (d) => d && typeof d === 'object' &&
+    ['title', 'big', 'sub', 'bars'].some((k) => k in d);
+  try {
+    if (feed.url) {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 8000);
+      const r = await fetch(feed.url, { signal: ctl.signal, headers: { 'user-agent': 'otra-city-bot/1.0' } });
+      clearTimeout(t);
+      if (!r.ok) return { ok: false, detail: `GET ${feed.url} -> ${r.status}` };
+      const cors = r.headers.get('access-control-allow-origin');
+      const data = await r.json();
+      if (!shapeOk(data)) return { ok: false, detail: 'response is not {title, big, sub, bars[]}' };
+      return {
+        ok: cors === '*',
+        detail: cors === '*'
+          ? `endpoint OK, shape OK, CORS OK (panel falls back to its authored texture if it ever breaks)`
+          : `shape OK but missing "Access-Control-Allow-Origin: *" — the browser polls this URL directly, so without CORS the panel will only ever show its authored texture`,
+      };
+    }
+    const name = (feed.file || '').split('/').pop();
+    const b64 = media[name];
+    if (!b64) return { ok: false, detail: `bundled feed ${feed.file} not found in media` };
+    const data = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+    if (!shapeOk(data)) return { ok: false, detail: 'bundled feed is not {title, big, sub, bars[]}' };
+    return { ok: true, detail: `bundled feed OK — update it by resubmitting; upgrade to a live url any time` };
+  } catch (e) {
+    return { ok: false, detail: `feed check failed: ${e.name || e}` };
+  }
+}
 
 async function readBody(req) {
   if (req.body) return typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
@@ -112,16 +148,21 @@ export default async function handler(req, res) {
       mediaOk &&= ok;
       mediaChecks.push({ name: `media ${name}`, ok, detail: `${(size / 1024).toFixed(0)} KiB ${ext}` });
     }
+    const decl = validateMediaDecl(plot, Object.keys(media));
+    mediaChecks.push(...decl.checks);
+    mediaOk &&= decl.ok;
     result.media = { checks: mediaChecks, ok: mediaOk };
 
+    if (plot.media?.feed) result.feed = await checkFeed(plot.media.feed, media);
     if (result.identity.ok) result.backlink = await checkBacklink(plot.url, plot.slug);
 
     const accepted = result.identity.ok && result.budgets.ok && result.walkability.ok &&
-      mediaOk && !!result.backlink?.ok;
+      mediaOk && (result.feed ? result.feed.ok : true) && !!result.backlink?.ok;
     const lines = [];
     for (const section of ['identity', 'budgets', 'walkability', 'media']) {
       for (const c of result[section].checks) lines.push(`${c.ok ? 'PASS' : 'FAIL'}  ${c.name.padEnd(14)} ${c.detail}`);
     }
+    if (result.feed) lines.push(`${result.feed.ok ? 'PASS' : 'FAIL'}  live feed      ${result.feed.detail}`);
     if (result.backlink) lines.push(`${result.backlink.ok ? 'PASS' : 'FAIL'}  backlink       ${result.backlink.detail}`);
     const report = lines.join('\n') + `\nVERDICT: ${accepted ? 'ACCEPTED' : 'REJECTED'}`;
 
@@ -130,7 +171,17 @@ export default async function handler(req, res) {
     if (accepted && !dry) pr_url = await createPR({ plot, glb, media }, report);
 
     res.statusCode = accepted ? 200 : 422;
-    res.end(JSON.stringify({ accepted, dry, pr_url, report, result }, null, 2));
+    res.end(JSON.stringify({
+      accepted,
+      dry,
+      pr_url,
+      permalink: `https://otra.city/s/${plot.slug}`,
+      status_url: `https://otra.city/api/plots/${plot.slug}`,
+      embed_url: `https://otra.city/embed?plot=${plot.slug}`,
+      preview: 'https://otra.city/preview — drop your glb to see it in the real pipeline',
+      report,
+      result,
+    }, null, 2));
   } catch (e) {
     res.statusCode = 400;
     res.end(JSON.stringify({ error: String(e.message || e) }));
