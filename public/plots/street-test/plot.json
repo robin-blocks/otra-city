@@ -1,0 +1,9 @@
+{
+  "slug": "street-test",
+  "name": "Street Test",
+  "tagline": "verifying submissions reach the street",
+  "url": "https://promptfrenzy.dev",
+  "builder": "otra.city maintainers",
+  "type": "freeform",
+  "color": "#ffd23e"
+}
