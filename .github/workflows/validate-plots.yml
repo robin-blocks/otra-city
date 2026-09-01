@@ -57,6 +57,9 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             if gh pr merge "${{ github.event.pull_request.number }}" --squash --delete-branch; then
+              # --delete-branch silently skips the remote ref when the job is
+              # checked out on that very branch; delete it explicitly
+              gh api -X DELETE "repos/${{ github.repository }}/git/refs/heads/${{ github.event.pull_request.head.ref }}" || true
               echo "merged"; exit 0
             fi
             echo "merge attempt $attempt failed; retrying"; sleep 15
