@@ -90,8 +90,25 @@ async function gh(path, method, body, token) {
     },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!r.ok) throw new Error(`${method} ${path} -> ${r.status}: ${(await r.text()).slice(0, 300)}`);
+  if (!r.ok) {
+    const err = new Error(`${method} ${path} -> ${r.status}: ${(await r.text()).slice(0, 300)}`);
+    err.status = r.status;
+    throw err;
+  }
   return r.json();
+}
+
+// Contents writes right after a ref is created can 409 while GitHub settles
+// the new branch; 5xx are plain transients. Both are worth a couple of retries.
+async function ghRetry(path, method, body, token, tries = 3) {
+  for (let i = 1; ; i++) {
+    try {
+      return await gh(path, method, body, token);
+    } catch (e) {
+      if (i >= tries || !(e.status === 409 || e.status >= 500)) throw e;
+      await new Promise((r) => setTimeout(r, 1500 * i));
+    }
+  }
 }
 
 // GET that treats 404 as null (missing file/dir) instead of throwing.
@@ -187,12 +204,12 @@ async function createPR({ plot, glb, media }, report) {
     for (const [path, content] of Object.entries(files)) {
       const body = { message: `plot: ${plot.slug} ${path.split('/').pop()}`, content, branch };
       if (existing.has(path)) body.sha = existing.get(path);
-      await gh(`/repos/${repo}/contents/${path}`, 'PUT', body, token);
+      await ghRetry(`/repos/${repo}/contents/${path}`, 'PUT', body, token);
     }
     // wholesale replacement: anything on the old plot not in this bundle goes
     for (const [path, sha] of existing) {
       if (!(path in files)) {
-        await gh(`/repos/${repo}/contents/${path}`, 'DELETE', { message: `plot: ${plot.slug} remove stale ${path.split('/').pop()}`, sha, branch }, token);
+        await ghRetry(`/repos/${repo}/contents/${path}`, 'DELETE', { message: `plot: ${plot.slug} remove stale ${path.split('/').pop()}`, sha, branch }, token);
       }
     }
     const pr = await gh(`/repos/${repo}/pulls`, 'POST', {
@@ -285,6 +302,7 @@ export default async function handler(req, res) {
       result,
     }, null, 2));
   } catch (e) {
+    console.error('submit failed:', e.message || e);
     res.statusCode = 400;
     res.end(JSON.stringify({ error: String(e.message || e) }));
   }

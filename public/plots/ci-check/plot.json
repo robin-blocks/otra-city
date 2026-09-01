@@ -1,9 +1,0 @@
-{
-  "slug": "ci-check",
-  "name": "CI Check",
-  "tagline": "merge-step verification",
-  "url": "https://promptfrenzy.dev/otra-ci-check",
-  "builder": "otra e2e",
-  "type": "freeform",
-  "color": "#ffaa00"
-}
