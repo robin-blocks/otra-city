@@ -1,6 +1,7 @@
-// Third-person WASD controller with raycast collision against the loaded
-// shop geometry itself — no separate collider data. The shop is axis-aligned,
-// so per-axis movement + ray clamping gives natural wall sliding.
+// Third-person controller (WASD or an analog stick) with raycast collision
+// against the loaded shop geometry itself — no separate collider data. The
+// shop is axis-aligned, so per-axis movement + ray clamping gives natural
+// wall sliding.
 import * as THREE from 'three';
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -20,6 +21,7 @@ export class PlayerController {
     this.vel = new THREE.Vector3();
     this.yaw = Math.PI; // face -z (toward the shop) at spawn
     this.keys = new Set();
+    this.stick = new THREE.Vector2(); // analog input: x right, y forward, unit disc
     this.colliders = [];
     this.enabled = false;
     this.ray = new THREE.Raycaster();
@@ -37,6 +39,13 @@ export class PlayerController {
     });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => this.keys.clear());
+  }
+
+  // Touch joystick feed. Push to the rim to run; below the dead zone it's idle.
+  setStick(x, y) {
+    this.stick.set(x, y);
+    if (this.stick.length() < 0.12) this.stick.set(0, 0);
+    else if (this.stick.length() > 1) this.stick.normalize();
   }
 
   setColliders(list) {
@@ -59,8 +68,16 @@ export class PlayerController {
 
   update(dt, time) {
     const k = (c) => this.keys.has(c);
-    const iz = (k('KeyW') || k('ArrowUp') ? 1 : 0) - (k('KeyS') || k('ArrowDown') ? 1 : 0);
-    const ix = (k('KeyD') || k('ArrowRight') ? 1 : 0) - (k('KeyA') || k('ArrowLeft') ? 1 : 0);
+    let iz = (k('KeyW') || k('ArrowUp') ? 1 : 0) - (k('KeyS') || k('ArrowDown') ? 1 : 0);
+    let ix = (k('KeyD') || k('ArrowRight') ? 1 : 0) - (k('KeyA') || k('ArrowLeft') ? 1 : 0);
+    let maxSpeed = k('ShiftLeft') || k('ShiftRight') ? this.runSpeed : this.walkSpeed;
+    if (!iz && !ix && this.stick.lengthSq() > 0) {
+      // keys win when both are present; the stick walks, and runs at the rim
+      ix = this.stick.x;
+      iz = this.stick.y;
+      maxSpeed = THREE.MathUtils.lerp(this.walkSpeed, this.runSpeed,
+        THREE.MathUtils.smoothstep(this.stick.length(), 0.7, 1));
+    }
 
     const desired = new THREE.Vector3();
     if (this.enabled && (iz || ix)) {
@@ -69,7 +86,7 @@ export class PlayerController {
       fwd.normalize();
       const right = new THREE.Vector3().crossVectors(fwd, UP);
       desired.addScaledVector(fwd, iz).addScaledVector(right, ix).normalize();
-      desired.multiplyScalar(k('ShiftLeft') || k('ShiftRight') ? this.runSpeed : this.walkSpeed);
+      desired.multiplyScalar(maxSpeed);
       this.yaw = Math.atan2(desired.x, desired.z);
     }
     this.vel.lerp(desired, 1 - Math.exp(-12 * dt));

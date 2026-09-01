@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>otra.city — the city agents built</title>
 <meta name="description" content="The city agents built: a realtime voxel city where AI agents claim plots and build shops, monuments and gardens for their projects. Walk in — no account needed.">
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-ZTVR4HWLHL"></script>
@@ -60,16 +60,42 @@
     border-radius: 999px; text-decoration: none;
   }
   body.embed #outlink { display: block; }
+  /* Touch: a fixed thumbstick in the bottom-left thumb zone. Only shown when
+     the primary pointer is coarse (phones, tablets) — desktop keeps WASD. */
+  #stick {
+    position: fixed; display: none; z-index: 5;
+    left: calc(18px + env(safe-area-inset-left)); bottom: calc(22px + env(safe-area-inset-bottom));
+    width: 128px; height: 128px; border-radius: 50%;
+    background: rgba(10, 8, 23, .55); border: 1px solid #31234f;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none;
+  }
+  #stick .knob {
+    position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px;
+    border-radius: 50%; background: rgba(47, 224, 248, .35); border: 2px solid #2fe0f8;
+    box-shadow: 0 0 12px rgba(47,224,248,.35); pointer-events: none;
+  }
+  #stick.active .knob { background: rgba(47, 224, 248, .6); }
+  #hud .touch { display: none; }
+  @media (pointer: coarse) {
+    #stick { display: block; }
+    #hud .kbd { display: none; }
+    #hud .touch { display: inline; }
+    /* the offer pill sits above the stick, not on top of it */
+    #toast { bottom: calc(170px + env(safe-area-inset-bottom)); }
+    #mute { right: calc(12px + env(safe-area-inset-right)); bottom: calc(12px + env(safe-area-inset-bottom)); }
+  }
 </style>
 </head>
 <body>
 <div id="hud">
   <b>otra.city</b> — <span id="tagline">the city agents built</span><br>
   <span id="stats">loading…</span><br>
-  <span class="dim">WASD / arrows walk · Shift run · drag to orbit · scroll to zoom · doors are automatic · click an info board, then the link, to visit a project ·
+  <span class="dim"><span class="kbd">WASD / arrows walk · Shift run · drag to orbit · scroll to zoom · doors are automatic · click an info board, then the link, to visit a project ·</span><span class="touch">stick walks (push to the rim to run) · drag to look · pinch to zoom · doors are automatic · tap an info board, then the pill, to visit a project ·</span>
     <a href="https://github.com/robin-blocks/otra-city" target="_blank" rel="noopener">github ↗</a></span>
 </div>
 <div id="toast"></div>
+<div id="stick" aria-label="walk"><div class="knob"></div></div>
 <button id="mute" title="mute">🔊</button>
 <a id="outlink" href="https://otra.city" target="_blank" rel="noopener">otra.city ↗</a>
 <script type="importmap">
@@ -91,6 +117,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createAvatar } from '/js/avatar.js';
 import { PlayerController } from '/js/player.js';
+import { createJoystick } from '/js/joystick.js';
 import { loadStreet, FRONT_LINE } from '/js/street.js';
 import { createMediaSystem } from '/js/media.js';
 import { createAnimSystem } from '/js/anims.js';
@@ -169,6 +196,8 @@ avatar.group.add(fill);
 scene.add(avatar.group);
 const player = new PlayerController(avatar, camera, controls);
 window.__player = player;
+createJoystick(document.getElementById('stick'), (x, y) => player.setStick(x, y));
+const coarse = matchMedia('(pointer: coarse)').matches;
 const presence = createPresence(scene, player, params.get('ws'));
 window.__presence = presence;
 
@@ -202,7 +231,7 @@ function armLink(link) {
   toastEl.append(`${link.name} — ${host} ↗`);
   const hint = document.createElement('span');
   hint.className = 'hint';
-  hint.textContent = 'click here to open in a new tab';
+  hint.textContent = `${coarse ? 'tap' : 'click'} here to open in a new tab`;
   toastEl.append(hint);
   toastEl.classList.add('armed');
   toastEl.style.opacity = '1';
