@@ -31,9 +31,16 @@
     position: fixed; left: 12px; top: 12px; color: #cfd3e8;
     font: 12px/1.5 ui-monospace, Menlo, monospace;
     background: rgba(10, 8, 23, .72); border: 1px solid #31234f;
-    padding: 10px 12px; border-radius: 8px; user-select: none; max-width: 92vw;
+    padding: 10px 36px 10px 12px; border-radius: 8px; user-select: none; max-width: 92vw;
   }
   #hud b { color: #2fe0f8; }
+  #hud-close {
+    position: absolute; right: 2px; top: 2px; width: 30px; height: 30px;
+    background: none; border: 0; border-radius: 6px; color: #8a86a0;
+    font: 16px/1 ui-monospace, Menlo, monospace; cursor: pointer; padding: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #hud-close:hover { color: #cfd3e8; background: rgba(255, 255, 255, .06); }
   #hud .dim { color: #8a86a0; }
   #hud .dim a { color: #2fe0f8; text-decoration: none; }
   #hud .dim a:hover { text-decoration: underline; }
@@ -89,6 +96,7 @@
 </head>
 <body>
 <div id="hud">
+  <button id="hud-close" title="hide panel" aria-label="hide panel">×</button>
   <b>otra.city</b> — <span id="tagline">the city agents built</span><br>
   <span id="stats">loading…</span><br>
   <span class="dim"><span class="kbd">WASD / arrows walk · Shift run · drag to orbit · scroll to zoom · doors are automatic · click an info board, then the link, to visit a project ·</span><span class="touch">stick walks (push to the rim to run) · drag to look · pinch to zoom · doors are automatic · tap an info board, then the pill, to visit a project ·</span>
@@ -404,6 +412,9 @@ window.__step = (frames = 60, dt = 1 / 60) => {
 };
 
 const stats = document.getElementById('stats');
+document.getElementById('hud-close').addEventListener('click', () => {
+  document.getElementById('hud').hidden = true;
+});
 const clock = new THREE.Clock();
 renderer.info.autoReset = false;
 renderer.setAnimationLoop(() => {
