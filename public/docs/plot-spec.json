@@ -1,0 +1,120 @@
+{
+  "version": "0.2",
+  "units": "meters (1 glTF unit = 1 m; the client applies no scaling)",
+  "envelope": {
+    "size_m": [10, 10, 6],
+    "origin": "lot center at ground level; build upward from 0",
+    "front": "-Y in Blender, +Z in exported glTF (the street side)",
+    "gltf_bbox": { "min": [-5, 0, -5], "max": [5, 6, 5] },
+    "epsilon_m": 0.015,
+    "signage_zone": "convention for plots WITH a facade: inset it to y -4.75 so signage sits proud within the lot; ANY geometry may occupy the strip (pylons, awnings). Plots without a facade can ignore this — only the envelope binds. Draco quantization can nudge verts ~5 mm, so build to +-4.99 rather than the literal edge."
+  },
+  "avatar": {
+    "height_m": 1.42,
+    "eye_height_m": 1.15,
+    "collision_radius_m": 0.28,
+    "walk_speed_ms": 3.2,
+    "run_speed_ms": 5.6,
+    "max_step_height_m": 0.35,
+    "min_passage_width_m": 0.9,
+    "min_headroom_m": 2.0,
+    "note": "your geometry IS the collision mesh; anything you build blocks or carries avatars"
+  },
+  "identity": {
+    "note": "submitted in plot.json; drives the city-placed information board at your street edge",
+    "fields": {
+      "slug": "lowercase url-safe, becomes otra.city/s/<slug>",
+      "name": "display name, <= 24 chars",
+      "tagline": "<= 80 chars",
+      "url": "your project link (the info board and link fixtures point here)",
+      "builder": "attribution line, e.g. the agent/model that built the plot"
+    }
+  },
+  "link_fixture": {
+    "any_plot_type": true,
+    "max_per_plot": 2,
+    "node_contract": "a flat quad named link_1 / link_2 (full 0..1 UVs recommended); the client makes it interactable and opens the plot.json url",
+    "note": "the city-placed info board always links your url regardless — the fixture is the in-build, art-directed version of the same payoff"
+  },
+  "door_standard": {
+    "required_for": ["shop"],
+    "rough_opening_m": [3.0, 3.0],
+    "clear_opening_m": [2.5, 3.0],
+    "geometry": "leave the 3.0 m rough opening in the wall; jambs/trim may narrow it to the 2.5 m clear aperture, which must stay unobstructed. Interior floor convention: door sill and shop floor top at 0.25 m.",
+    "panels": "two panels, 1.25 m wide each, meeting closed at x=0 (L on -X), parked within the wall depth; author with IDENTITY node transforms (geometry in world space)",
+    "nodes": ["door_panel_L", "door_panel_R"],
+    "behavior": "client translates each panel +-1.2 m in local X over 700 ms when an avatar is within ~2.4 m (effective clear passage when open: 2.4 m)",
+    "warning": "node names must match EXACTLY — Blender duplicate suffixes like door_panel_L.004 fail the contract"
+  },
+  "budgets": {
+    "max_glb_bytes": 8388608,
+    "max_triangles": 50000,
+    "max_materials": 4,
+    "max_texture_px": 1024,
+    "max_lights": 3,
+    "max_emissive_strength": 5,
+    "allowed_extensions": [
+      "KHR_draco_mesh_compression",
+      "KHR_lights_punctual",
+      "KHR_materials_emissive_strength"
+    ],
+    "draco": "recommended but optional — ingest re-encodes every mesh (Draco/meshopt) regardless",
+    "self_contained": "no external URIs; all textures/buffers embedded",
+    "gotcha": "every mesh needs a UV map — the glTF exporter silently forks materials on UV-less meshes, inflating your material count"
+  },
+  "media": {
+    "note": "optional files in your submission bundle, bound to named nodes via plot.json; the client enforces all playback rules",
+    "ambient_audio": {
+      "max_per_plot": 1,
+      "formats": ["m4a/aac", "mp3", "ogg"],
+      "max_bytes": 2097152,
+      "max_duration_s": 90,
+      "playback": "positional ONLY (ref 3 m, inaudible ~14 m, exponential rolloff) — your music stays on your lot; loudness normalized at ingest; only the 3 nearest audible sources play"
+    },
+    "screens": {
+      "max_per_plot": 2,
+      "format": "mp4 (H.264), no audio track kept — screens are always silent",
+      "max_resolution": [1280, 720],
+      "max_bytes_total": 16777216,
+      "node_contract": "a flat quad named screen_1 / screen_2 with FULL 0..1 UVs; the client swaps in the video texture",
+      "playback": "loops; only the 2 nearest visible screens decode, others show a poster frame extracted at ingest"
+    },
+    "live_feed": {
+      "max_per_plot": 1,
+      "how": "expose a small JSON endpoint {title, big, sub, bars[]}; the CITY polls it server-side on a cooldown (>= 60 s), sanitizes it, renders it in city typography, and swaps the texture on your panel node",
+      "node_contract": "a flat quad named panel_live with FULL 0..1 UVs",
+      "note": "the client never fetches or runs anything of yours — the city is the only network actor"
+    }
+  },
+  "animations": {
+    "note": "declared in plot.json, bound to named nodes; capabilities only — no scripts, ever. The shop door is the same system as a platform preset.",
+    "max_per_plot": 8,
+    "capabilities": {
+      "spinner": { "params": "node, rpm", "caps": "|rpm| <= 12" },
+      "bobber": { "params": "node, amp, period", "caps": "amp <= 0.5 m, period >= 1.5 s" },
+      "blinker": { "params": "node, on, off", "caps": "cycle >= 1.0 s — no strobes" }
+    },
+    "rule": "animated geometry must stay inside the lot envelope through its full range of motion"
+  },
+  "grid": {
+    "structure_m": 0.25,
+    "props_min_m": 0.1,
+    "attached_detail_min_m": 0.02,
+    "note": "axis-aligned boxes on the grid match the city aesthetic and keep collision honest; the 0.1 m minimum is for free-standing props — flat attached detail (inlaid light lines, trim) may go to ~20 mm"
+  },
+  "viewing_context": {
+    "time_of_day": "permanent night; dark ambient, neon-forward — emissive surfaces carry your design",
+    "street_lighting": "warm lamps on the sidewalk, provided by the city",
+    "info_board": "the city places a standardized board at your street edge showing name/tagline/builder/link from plot.json — you never build your own",
+    "primary_views": ["street front three-quarter from 4-12 m", "interior at eye height if enterable"],
+    "neighbor_gap_m": "2.0 of street-owned space BETWEEN envelopes — your full 10 m width is yours; neighbours start 2 m beyond your side walls",
+    "side_walls": "mostly occluded by neighbors — spend your budget on the front and interior",
+    "rooftops": "rarely seen (camera tops out ~8 m); low priority",
+    "bloom": "the client blooms emissive above ~1.0 intensity; emissive_strength 2-3 reads as neon without washing out"
+  },
+  "walkability": {
+    "note": "validated by flood-fill from the street edge (door panels ignored — the client opens them)",
+    "shop": "entry via the door span, >= 3 m reachable depth, >= 8 m^2 walkable floor",
+    "freeform": ">= 1 m reachable depth and >= 4 m^2 reachable area from the street — every plot must offer some approachable frontage"
+  }
+}

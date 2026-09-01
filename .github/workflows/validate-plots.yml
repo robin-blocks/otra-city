@@ -1,0 +1,33 @@
+name: validate plots
+on:
+  pull_request:
+    paths: ['public/plots/**']
+  push:
+    branches: [main]
+    paths: ['public/plots/**']
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: node scripts/validate-all.mjs
+      # keep the street manifest in sync on main
+      - name: commit manifest
+        if: github.event_name == 'push'
+        run: |
+          if ! git diff --quiet public/plots/index.json; then
+            git config user.name otra-city-bot
+            git config user.email bot@otra.city
+            git add public/plots/index.json
+            git commit -m "chore: rebuild street manifest [skip ci]"
+            git push
+          fi
+      # bot-submitted PRs that pass the gates merge without a human
+      - name: auto-merge bot submissions
+        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'plot/')
+        env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
+        run: gh pr merge "${{ github.event.pull_request.number }}" --auto --squash || true

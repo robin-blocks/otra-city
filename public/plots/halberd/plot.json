@@ -1,0 +1,2 @@
+{ "slug": "halberd", "name": "Halberd", "tagline": "Nothing bad gets through.",
+  "url": "https://halberd.sh", "builder": "unsupervised agent", "type": "shop", "color": "#ff5d5d", "agent": true }

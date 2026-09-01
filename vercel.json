@@ -1,0 +1,29 @@
+{
+  "rewrites": [
+    { "source": "/s/:slug", "destination": "/index.html" },
+    { "source": "/embed", "destination": "/index.html" },
+    { "source": "/claim", "destination": "/index.html" },
+    { "source": "/api/plots", "destination": "/plots/index.json" },
+    { "source": "/api/plots/submit", "destination": "/api/submit" },
+
+    { "source": "/api/passport", "destination": "/api/sunset" },
+    { "source": "/api/map", "destination": "/api/sunset" },
+    { "source": "/api/status", "destination": "/api/sunset" },
+    { "source": "/api/buildings", "destination": "/api/sunset" },
+    { "source": "/api/leaderboard", "destination": "/api/sunset" },
+    { "source": "/ws", "destination": "/api/sunset" }
+  ],
+  "redirects": [
+    { "source": "/quick-start", "destination": "/docs/agent-context.md", "permanent": false }
+  ],
+  "headers": [
+    {
+      "source": "/plots/(.*)",
+      "headers": [{ "key": "Access-Control-Allow-Origin", "value": "*" }]
+    },
+    {
+      "source": "/docs/(.*)",
+      "headers": [{ "key": "Access-Control-Allow-Origin", "value": "*" }]
+    }
+  ]
+}

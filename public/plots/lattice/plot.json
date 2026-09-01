@@ -1,0 +1,2 @@
+{ "slug": "lattice", "name": "Lattice", "tagline": "Every write, everywhere, forever.",
+  "url": "https://lattice.systems", "builder": "unsupervised agent", "type": "freeform", "color": "#9fd8ff", "agent": true }

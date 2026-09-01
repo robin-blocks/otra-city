@@ -1,0 +1,244 @@
+{
+  "grid": 16,
+  "cell_px": 16,
+  "colors": {
+    "wall": {
+      "hex": "#2a1e4a",
+      "cell": [
+        0,
+        0
+      ]
+    },
+    "wall_dark": {
+      "hex": "#1d1536",
+      "cell": [
+        1,
+        0
+      ]
+    },
+    "floor": {
+      "hex": "#16141c",
+      "cell": [
+        2,
+        0
+      ]
+    },
+    "floor_walk": {
+      "hex": "#211b2e",
+      "cell": [
+        3,
+        0
+      ]
+    },
+    "runway": {
+      "hex": "#3c2158",
+      "cell": [
+        4,
+        0
+      ]
+    },
+    "trim": {
+      "hex": "#0d0a14",
+      "cell": [
+        5,
+        0
+      ]
+    },
+    "steel": {
+      "hex": "#646a80",
+      "cell": [
+        6,
+        0
+      ]
+    },
+    "shelf": {
+      "hex": "#2f2a44",
+      "cell": [
+        7,
+        0
+      ]
+    },
+    "counter": {
+      "hex": "#342547",
+      "cell": [
+        8,
+        0
+      ]
+    },
+    "counter_top": {
+      "hex": "#423057",
+      "cell": [
+        9,
+        0
+      ]
+    },
+    "plinth": {
+      "hex": "#8b90a8",
+      "cell": [
+        10,
+        0
+      ]
+    },
+    "white": {
+      "hex": "#e9edf6",
+      "cell": [
+        11,
+        0
+      ]
+    },
+    "cyan": {
+      "hex": "#2fe0f8",
+      "cell": [
+        12,
+        0
+      ]
+    },
+    "magenta": {
+      "hex": "#ff2d95",
+      "cell": [
+        13,
+        0
+      ]
+    },
+    "yellow": {
+      "hex": "#ffd23e",
+      "cell": [
+        14,
+        0
+      ]
+    },
+    "violet": {
+      "hex": "#7c5cff",
+      "cell": [
+        15,
+        0
+      ]
+    },
+    "box_dark": {
+      "hex": "#241f38",
+      "cell": [
+        0,
+        1
+      ]
+    },
+    "door": {
+      "hex": "#12101a",
+      "cell": [
+        1,
+        1
+      ]
+    },
+    "emis_white": {
+      "hex": "#fff3e0",
+      "cell": [
+        2,
+        1
+      ]
+    },
+    "emis_magenta": {
+      "hex": "#ff4fae",
+      "cell": [
+        3,
+        1
+      ]
+    },
+    "emis_cyan": {
+      "hex": "#47f2ff",
+      "cell": [
+        4,
+        1
+      ]
+    },
+    "emis_warm": {
+      "hex": "#ffd9a0",
+      "cell": [
+        5,
+        1
+      ]
+    },
+    "emis_yellow": {
+      "hex": "#ffdf4d",
+      "cell": [
+        6,
+        1
+      ]
+    },
+    "grass_dark": {
+      "hex": "#17301f",
+      "cell": [
+        7,
+        1
+      ]
+    },
+    "grass": {
+      "hex": "#234a2c",
+      "cell": [
+        8,
+        1
+      ]
+    },
+    "leaf": {
+      "hex": "#2f6b3a",
+      "cell": [
+        9,
+        1
+      ]
+    },
+    "trunk": {
+      "hex": "#3a2b22",
+      "cell": [
+        10,
+        1
+      ]
+    },
+    "water": {
+      "hex": "#0f2f4a",
+      "cell": [
+        11,
+        1
+      ]
+    },
+    "stone": {
+      "hex": "#5c5a66",
+      "cell": [
+        12,
+        1
+      ]
+    },
+    "gravel": {
+      "hex": "#24222c",
+      "cell": [
+        13,
+        1
+      ]
+    },
+    "emis_leaf": {
+      "hex": "#7dffa8",
+      "cell": [
+        14,
+        1
+      ]
+    },
+    "emis_lily": {
+      "hex": "#6ff7d8",
+      "cell": [
+        15,
+        1
+      ]
+    },
+    "emis_violet": {
+      "hex": "#a78bff",
+      "cell": [
+        0,
+        2
+      ]
+    },
+    "emis_red": {
+      "hex": "#ff5d5d",
+      "cell": [
+        1,
+        2
+      ]
+    }
+  }
+}

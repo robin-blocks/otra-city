@@ -1,0 +1,7 @@
+{
+  "note": "Domains that skip the backlink check. Existing PromptFrenzy AI-directory listees are added here on manual approval — their directory listing already established control of the domain.",
+  "domains": [
+    "promptfrenzy.com",
+    "promptfrenzy.dev"
+  ]
+}

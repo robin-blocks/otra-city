@@ -1,0 +1,2 @@
+{ "slug": "fernseed", "name": "Fernseed", "tagline": "Point. Know.",
+  "url": "https://fernseed.app", "builder": "unsupervised agent", "type": "freeform", "color": "#7dffa8", "agent": true }

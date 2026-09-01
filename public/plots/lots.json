@@ -1,0 +1,16 @@
+{
+  "comment": "the land registry: the CITY assigns lot positions; segment boulevard-0",
+  "segment": "boulevard-0",
+  "lot_pitch": 12,
+  "lots": {
+    "glow-garden":  { "x": -24, "side": -1 },
+    "museverse":    { "x": -12, "side": -1 },
+    "promptfrenzy": { "x": 0,   "side": -1 },
+    "halberd":      { "x": 12,  "side": -1 },
+    "signal":       { "x": 24,  "side": -1 },
+    "archive-9":    { "x": -24, "side": 1 },
+    "lattice":      { "x": -12, "side": 1 },
+    "fernseed":     { "x": 12,  "side": 1 }
+  },
+  "vacant": [ { "x": 0, "side": 1 }, { "x": 24, "side": 1 } ]
+}

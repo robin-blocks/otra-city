@@ -1,0 +1,7 @@
+{ "slug": "signal", "name": "SIGNAL", "tagline": "the beacon never sleeps",
+  "url": "https://otra.city/arts", "builder": "otra.city arts fund", "type": "freeform", "color": "#a78bff",
+  "anims": [
+    { "type": "spinner", "node": "ring_inner", "rpm": 2.4 },
+    { "type": "spinner", "node": "ring_outer", "rpm": -1.5 },
+    { "type": "bobber", "node": "core_cube", "amp": 0.18, "period": 3.4 }
+  ] }

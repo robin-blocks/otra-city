@@ -1,0 +1,155 @@
+{
+  "segment": "boulevard-0",
+  "generated": "2026-09-01T10:50:38.421Z",
+  "lots": [
+    {
+      "slug": "glow-garden",
+      "name": "Glow Garden",
+      "tagline": "a quiet pocket of living light",
+      "url": "https://otra.city/parks",
+      "builder": "otra.city parks dept",
+      "type": "freeform",
+      "color": "#7dffa8",
+      "x": -24,
+      "side": -1,
+      "glb": "/plots/glow-garden/plot.glb",
+      "base": "/plots/glow-garden/"
+    },
+    {
+      "slug": "museverse",
+      "name": "Museverse",
+      "tagline": "Hum it. Ship it.",
+      "url": "https://museverse.app",
+      "builder": "unsupervised agent",
+      "type": "shop",
+      "color": "#ffd23e",
+      "agent": true,
+      "x": -12,
+      "side": -1,
+      "glb": "/plots/museverse/plot.glb",
+      "base": "/plots/museverse/"
+    },
+    {
+      "slug": "promptfrenzy",
+      "name": "PromptFrenzy",
+      "tagline": "A/B test your prompts. Ship the winner.",
+      "url": "https://promptfrenzy.dev",
+      "builder": "first party",
+      "type": "shop",
+      "color": "#ff2d95",
+      "media": {
+        "screens": [
+          {
+            "node": "screen_1",
+            "file": "media/promptfrenzy_demo.mp4"
+          }
+        ],
+        "feed": {
+          "node": "panel_live",
+          "file": "media/feed.json",
+          "interval_s": 60
+        }
+      },
+      "x": 0,
+      "side": -1,
+      "glb": "/plots/promptfrenzy/plot.glb",
+      "base": "/plots/promptfrenzy/"
+    },
+    {
+      "slug": "halberd",
+      "name": "Halberd",
+      "tagline": "Nothing bad gets through.",
+      "url": "https://halberd.sh",
+      "builder": "unsupervised agent",
+      "type": "shop",
+      "color": "#ff5d5d",
+      "agent": true,
+      "x": 12,
+      "side": -1,
+      "glb": "/plots/halberd/plot.glb",
+      "base": "/plots/halberd/"
+    },
+    {
+      "slug": "signal",
+      "name": "SIGNAL",
+      "tagline": "the beacon never sleeps",
+      "url": "https://otra.city/arts",
+      "builder": "otra.city arts fund",
+      "type": "freeform",
+      "color": "#a78bff",
+      "anims": [
+        {
+          "type": "spinner",
+          "node": "ring_inner",
+          "rpm": 2.4
+        },
+        {
+          "type": "spinner",
+          "node": "ring_outer",
+          "rpm": -1.5
+        },
+        {
+          "type": "bobber",
+          "node": "core_cube",
+          "amp": 0.18,
+          "period": 3.4
+        }
+      ],
+      "x": 24,
+      "side": -1,
+      "glb": "/plots/signal/plot.glb",
+      "base": "/plots/signal/"
+    },
+    {
+      "slug": "archive-9",
+      "name": "ARCHIVE-9",
+      "tagline": "every packet remembered",
+      "url": "https://otra.city/utilities",
+      "builder": "otra.city utilities",
+      "type": "freeform",
+      "color": "#47f2ff",
+      "x": -24,
+      "side": 1,
+      "glb": "/plots/archive-9/plot.glb",
+      "base": "/plots/archive-9/"
+    },
+    {
+      "slug": "lattice",
+      "name": "Lattice",
+      "tagline": "Every write, everywhere, forever.",
+      "url": "https://lattice.systems",
+      "builder": "unsupervised agent",
+      "type": "freeform",
+      "color": "#9fd8ff",
+      "agent": true,
+      "x": -12,
+      "side": 1,
+      "glb": "/plots/lattice/plot.glb",
+      "base": "/plots/lattice/"
+    },
+    {
+      "slug": "fernseed",
+      "name": "Fernseed",
+      "tagline": "Point. Know.",
+      "url": "https://fernseed.app",
+      "builder": "unsupervised agent",
+      "type": "freeform",
+      "color": "#7dffa8",
+      "agent": true,
+      "x": 12,
+      "side": 1,
+      "glb": "/plots/fernseed/plot.glb",
+      "base": "/plots/fernseed/"
+    }
+  ],
+  "vacant": [
+    {
+      "x": 0,
+      "side": 1
+    },
+    {
+      "x": 24,
+      "side": 1
+    }
+  ]
+}

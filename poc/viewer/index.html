@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>otra.city — boulevard PoC</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0a0817; overflow: hidden; }
+  #hud {
+    position: fixed; left: 12px; top: 12px; color: #cfd3e8;
+    font: 12px/1.5 ui-monospace, Menlo, monospace;
+    background: rgba(10, 8, 23, .72); border: 1px solid #31234f;
+    padding: 10px 12px; border-radius: 8px; user-select: none;
+  }
+  #hud b { color: #2fe0f8; }
+  #hud .dim { color: #8a86a0; }
+  #toast {
+    position: fixed; left: 50%; bottom: 42px; transform: translateX(-50%);
+    color: #0a0817; background: #2fe0f8; font: 600 14px/1 ui-monospace, Menlo, monospace;
+    padding: 10px 16px; border-radius: 999px; opacity: 0; transition: opacity .25s;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="hud">
+  <b>otra.city</b> — boulevard prototype · 8 plots (4 by unsupervised agents) + 2 vacant<br>
+  <span id="stats">loading plots…</span><br>
+  <span class="dim">WASD / arrows walk · Shift run · drag to orbit · scroll to zoom · doors are automatic · click an info board to visit a project</span>
+</div>
+<div id="toast"></div>
+<script type="importmap">
+{
+  "imports": {
+    "three": "/node_modules/three/build/three.module.js",
+    "three/addons/": "/node_modules/three/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { createAvatar } from './avatar.js';
+import { PlayerController } from './player.js';
+import { buildStreet, PLOTS, FRONT_LINE } from './street.js';
+import { createMediaSystem } from './media.js';
+import { createAnimSystem } from './anims.js';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0817);
+scene.fog = new THREE.Fog(0x0a0817, 32, 95);
+
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 220);
+camera.position.set(-24.2, 2.5, 1.6);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(-20, 1.3, 0);
+controls.enableDamping = true;
+controls.enablePan = false;
+controls.minDistance = 1.8;
+controls.maxDistance = 14;
+controls.maxPolarAngle = 1.5;
+
+// bare earth beyond the street + faint sky light
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(300, 300),
+  new THREE.MeshStandardMaterial({ color: 0x121017, roughness: 0.95 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.01;
+scene.add(ground);
+scene.add(new THREE.HemisphereLight(0x8899ff, 0x080610, 0.25));
+
+const street = buildStreet(scene);
+const media = createMediaSystem(camera);
+const anims = createAnimSystem();
+window.__media = media; // debug/test hooks
+window.__anims = anims;
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.12, 0.3, 1.0));
+composer.addPass(new OutputPass());
+
+// player: spawn at the west end of the boulevard, facing down the street
+const avatar = createAvatar();
+avatar.group.position.set(-20, 0, 0);
+avatar.group.rotation.y = Math.PI / 2;
+const fill = new THREE.PointLight(0xffd9b0, 0.7, 3.5, 2); // soft fill so the avatar reads at night
+fill.position.set(0, 2.0, 0.7);
+avatar.group.add(fill);
+scene.add(avatar.group);
+const player = new PlayerController(avatar, camera, controls);
+player.yaw = Math.PI / 2;
+window.__player = player; // debug/test hook
+
+// load every plot like the city client would: one street-segment manifest
+const draco = new DRACOLoader().setDecoderPath('/node_modules/three/examples/jsm/libs/draco/gltf/');
+const loader = new GLTFLoader().setDRACOLoader(draco);
+const doorCtrls = [];
+const t0 = performance.now();
+let loaded = 0;
+const bust = '?v=' + Date.now(); // dev only — production serves immutable content-addressed bundles
+Promise.all(PLOTS.map((p) => new Promise((resolve) => {
+  loader.load(p.url + bust, (gltf) => {
+    const container = new THREE.Group();
+    container.position.set(p.x, 0, p.side * (FRONT_LINE + 5));
+    container.rotation.y = p.side > 0 ? Math.PI : 0;
+    container.add(gltf.scene);
+    scene.add(container);
+    container.updateMatrixWorld(true);
+    // Light normalization (the client stands in for ingest here): every
+    // exporter/agent ships wildly different candela values, so each plot's
+    // TOTAL light energy is rescaled to a house cap. No plot can nuke the
+    // street; dim plots are left as authored.
+    const LIGHT_CAP = 30;
+    const plotLights = [];
+    gltf.scene.traverse((o) => { if (o.isLight) plotLights.push(o); });
+    let total = 0;
+    for (const l of plotLights) {
+      l.intensity *= 0.0055;
+      l.distance = 14;
+      l.decay = 2;
+      total += l.intensity;
+    }
+    (window.__lightTotals ??= {})[p.slug] = +total.toFixed(2);
+    if (total > LIGHT_CAP) {
+      for (const l of plotLights) l.intensity *= LIGHT_CAP / total;
+    }
+    const doors = ['door_panel_L', 'door_panel_R'].map((n) => gltf.scene.getObjectByName(n));
+    if (doors[0] && doors[1]) {
+      doorCtrls.push({
+        doors,
+        at: new THREE.Vector3(0, 0, 4.62).applyMatrix4(container.matrixWorld),
+        open01: 0,
+        target: 0,
+      });
+    }
+    media.attach(container, gltf.scene, p.media);
+    anims.attach(container, gltf.scene, p.anims);
+    // link fixtures: any node named link_1/link_2 becomes interactable
+    gltf.scene.traverse((o) => {
+      if (/^link_\d$/.test(o.name)) {
+        o.userData.link = { name: p.name, url: p.link };
+        interactables.push(o);
+      }
+    });
+    const meshes = [];
+    gltf.scene.traverse((o) => { if (o.isMesh) meshes.push(o); });
+    loaded += 1;
+    resolve(meshes);
+  }, undefined, () => {
+    // A plot that fails to load must never blank the street — skip it.
+    console.warn('plot unavailable:', p.url);
+    resolve([]);
+  });
+}))).then((meshLists) => {
+  player.setColliders([ground, ...street.colliders, ...meshLists.flat()]);
+  // Emissive loudness ceiling (ingest stand-in): peak channel x intensity is
+  // clamped city-wide so no surface clips to white — glow stays legible.
+  const EMISSIVE_PEAK = 1.2;
+  scene.traverse((o) => {
+    for (const m of [].concat(o.material || [])) {
+      if (m.emissiveIntensity && m.emissive) {
+        const peak = m.emissiveIntensity * Math.max(m.emissive.r, m.emissive.g, m.emissive.b);
+        if (peak > EMISSIVE_PEAK) m.emissiveIntensity *= EMISSIVE_PEAK / peak;
+      }
+    }
+  });
+  const ms = (performance.now() - t0).toFixed(0);
+  document.getElementById('stats').dataset.load = `${loaded}/${PLOTS.length} plots in ${ms} ms`;
+});
+
+// interaction: click a city info board (or a plot's link_N fixture) — the
+// PoC shows a toast; production opens the plot's URL in a new tab
+const interactables = [...street.interactables];
+const toastEl = document.getElementById('toast');
+let toastTimer = null;
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.style.opacity = '1';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toastEl.style.opacity = '0'; }, 2600);
+}
+window.__toast = toast;
+const clickRay = new THREE.Raycaster();
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  const ndc = new THREE.Vector2(
+    (e.clientX / innerWidth) * 2 - 1,
+    -(e.clientY / innerHeight) * 2 + 1);
+  clickRay.setFromCamera(ndc, camera);
+  clickRay.far = 30;
+  const hit = clickRay.intersectObjects(interactables, true)[0];
+  if (!hit) return;
+  let o = hit.object;
+  while (o && !o.userData.link) o = o.parent;
+  if (o) toast(`↗ ${o.userData.link.url} — ${o.userData.link.name} (opens in production)`);
+});
+
+// automated sliding doors (any plot that ships door_panel_L/R nodes)
+const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+function updateDoors(dt) {
+  for (const d of doorCtrls) {
+    const dist = Math.hypot(player.pos.x - d.at.x, player.pos.z - d.at.z);
+    d.target = dist < 2.4 ? 1 : dist > 3.1 ? 0 : d.target;
+    d.open01 = THREE.MathUtils.clamp(d.open01 + Math.sign(d.target - d.open01) * (dt / 0.7), 0, 1);
+    const e = ease(d.open01);
+    d.doors[0].position.x = -1.2 * e;
+    d.doors[1].position.x = 1.2 * e;
+  }
+}
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+
+// deterministic sim-stepper for tests (rAF pauses while the pane is hidden)
+let simTime = 0;
+window.__step = (frames = 60, dt = 1 / 60) => {
+  for (let i = 0; i < frames; i++) {
+    simTime += dt;
+    player.update(dt, simTime);
+    updateDoors(dt);
+    street.update(dt);
+    anims.update(dt, simTime, player.pos);
+    controls.update();
+  }
+  media.update(player.pos);
+  composer.render();
+  return JSON.stringify({
+    pos: player.pos.toArray().map((v) => +v.toFixed(2)),
+    doors: doorCtrls.map((d) => +d.open01.toFixed(2)),
+  });
+};
+
+const stats = document.getElementById('stats');
+const clock = new THREE.Clock();
+renderer.info.autoReset = false;
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const speed = player.update(dt, clock.elapsedTime);
+  updateDoors(dt);
+  street.update(dt);
+  anims.update(dt, clock.elapsedTime, player.pos);
+  media.update(player.pos);
+  controls.update();
+  renderer.info.reset();
+  composer.render();
+  const i = renderer.info.render;
+  stats.textContent = `${stats.dataset.load || 'loading…'} · ${i.triangles} tris · ${i.calls} draw calls · ${speed.toFixed(1)} m/s`;
+});
+</script>
+</body>
+</html>
