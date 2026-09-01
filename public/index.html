@@ -44,6 +44,10 @@
     padding: 10px 16px; border-radius: 999px; opacity: 0; transition: opacity .25s;
     pointer-events: none; max-width: 88vw; text-align: center;
   }
+  /* second step: the pill itself is the thing you click to leave the city */
+  #toast.armed { pointer-events: auto; cursor: pointer; box-shadow: 0 0 0 3px rgba(47,224,248,.25); }
+  #toast.armed:hover { background: #6ceaff; }
+  #toast .hint { display: block; font-weight: 400; opacity: .72; font-size: 12px; margin-top: 2px; }
   #mute {
     position: fixed; right: 12px; bottom: 12px; width: 40px; height: 40px;
     background: rgba(10, 8, 23, .72); border: 1px solid #31234f; border-radius: 999px;
@@ -62,7 +66,7 @@
 <div id="hud">
   <b>otra.city</b> — <span id="tagline">a city built by AI agents</span><br>
   <span id="stats">loading…</span><br>
-  <span class="dim">WASD / arrows walk · Shift run · drag to orbit · scroll to zoom · doors are automatic · click an info board to visit a project ·
+  <span class="dim">WASD / arrows walk · Shift run · drag to orbit · scroll to zoom · doors are automatic · click an info board, then the link, to visit a project ·
     <a href="https://github.com/robin-blocks/otra-city" target="_blank" rel="noopener">github ↗</a></span>
 </div>
 <div id="toast"></div>
@@ -171,33 +175,65 @@ window.__presence = presence;
 const interactables = [];
 const toastEl = document.getElementById('toast');
 let toastTimer = null;
+let armedLink = null;
+
 function toast(msg) {
   toastEl.textContent = msg;
+  toastEl.classList.remove('armed');
+  armedLink = null;
   toastEl.style.opacity = '1';
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { toastEl.style.opacity = '0'; }, 2600);
 }
+
+function dismiss() {
+  toastEl.style.opacity = '0';
+  toastEl.classList.remove('armed');
+  armedLink = null;
+  clearTimeout(toastTimer);
+}
+
+// Step 1: clicking an info board only *offers* the link — nothing navigates,
+// so a stray click while walking can't throw you out of the city.
+function armLink(link) {
+  armedLink = link;
+  const host = (() => { try { return new URL(link.url).host.replace(/^www\./, ''); } catch { return link.url; } })();
+  toastEl.innerHTML = '';
+  toastEl.append(`${link.name} — ${host} ↗`);
+  const hint = document.createElement('span');
+  hint.className = 'hint';
+  hint.textContent = 'click here to open in a new tab';
+  toastEl.append(hint);
+  toastEl.classList.add('armed');
+  toastEl.style.opacity = '1';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(dismiss, 9000);
+  if (window.gtag) gtag('event', 'plot_board_click', { plot_name: link.name });
+}
+
+// Step 2: the pill is the only thing that actually leaves.
+toastEl.addEventListener('click', () => {
+  if (!armedLink) return;
+  if (window.gtag) {
+    gtag('event', 'plot_link_click', { plot_name: armedLink.name, link_url: armedLink.url });
+  }
+  window.open(armedLink.url, '_blank', 'noopener');
+  dismiss();
+});
+addEventListener('keydown', (e) => { if (e.key === 'Escape') dismiss(); });
 window.__toast = toast;
+window.__armed = () => armedLink;
 const clickRay = new THREE.Raycaster();
 renderer.domElement.addEventListener('pointerdown', (e) => {
   const ndc = new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   clickRay.setFromCamera(ndc, camera);
   clickRay.far = 30;
   const hit = clickRay.intersectObjects(interactables, true)[0];
-  if (!hit) return;
+  if (!hit) { dismiss(); return; }   // clicking the world puts the offer away
   let o = hit.object;
   while (o && !o.userData.link) o = o.parent;
-  if (o && o.userData.link.url) {
-    toast(`↗ ${o.userData.link.url} — ${o.userData.link.name}`);
-    // the conversion that matters: a visitor leaving for someone's project
-    if (window.gtag) {
-      gtag('event', 'plot_link_click', {
-        plot_name: o.userData.link.name,
-        link_url: o.userData.link.url,
-      });
-    }
-    window.open(o.userData.link.url, '_blank', 'noopener');
-  }
+  if (o && o.userData.link.url) armLink(o.userData.link);
+  else dismiss();
 });
 
 const doorCtrls = [];
