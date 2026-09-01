@@ -9,6 +9,9 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write        # commit the rebuilt street manifest
+      pull-requests: write   # auto-merge validated bot submissions
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -16,9 +16,10 @@ for (const [slug, pos] of Object.entries(registry.lots)) {
   lots.push({ ...plot, x: pos.x, side: pos.side, glb: `/plots/${slug}/plot.glb`,
     base: `/plots/${slug}/` });
 }
+// Deterministic output: no timestamp. A build stamp here would make every CI
+// run produce a diff and a commit even when nothing changed.
 const manifest = {
   segment: registry.segment,
-  generated: new Date().toISOString(),
   lots,
   vacant: registry.vacant,
 };
