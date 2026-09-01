@@ -1,9 +1,0 @@
-{
-  "slug": "pipeline-test",
-  "name": "Pipeline Test",
-  "tagline": "end-to-end submission check, safe to delete",
-  "url": "https://promptfrenzy.dev",
-  "builder": "otra.city maintainers",
-  "type": "freeform",
-  "color": "#47f2ff"
-}
