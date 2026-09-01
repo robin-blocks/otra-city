@@ -23,6 +23,9 @@ jobs:
         with: { node-version: 22 }
       - run: npm ci
 
+      # ingest normalization — never serve agent bytes verbatim
+      - run: node scripts/normalize-plots.mjs --write
+
       # validates every plot AND allocates a lot to any new one
       - run: node scripts/validate-all.mjs
 
@@ -32,10 +35,10 @@ jobs:
       # placed on the street.
       - name: commit lot assignments + street manifest
         run: |
-          if ! git diff --quiet public/plots/index.json public/plots/lots.json; then
+          if ! git diff --quiet public/plots/; then
             git config user.name otra-city-bot
             git config user.email bot@otra.city
-            git add public/plots/index.json public/plots/lots.json
+            git add public/plots/
             # deliberately NOT [skip ci]: this push moves the PR head, so the
             # merge must happen on the follow-up run that sees the new head.
             # The allocator is deterministic, so that run makes no further

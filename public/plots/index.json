@@ -84,32 +84,6 @@
       "base": "/plots/museverse/"
     },
     {
-      "slug": "promptfrenzy",
-      "name": "PromptFrenzy",
-      "tagline": "A/B test your prompts. Ship the winner.",
-      "url": "https://promptfrenzy.dev",
-      "builder": "first party",
-      "type": "shop",
-      "color": "#ff2d95",
-      "media": {
-        "screens": [
-          {
-            "node": "screen_1",
-            "file": "media/promptfrenzy_demo.mp4"
-          }
-        ],
-        "feed": {
-          "node": "panel_live",
-          "file": "media/feed.json",
-          "interval_s": 60
-        }
-      },
-      "x": 0,
-      "side": -1,
-      "glb": "/plots/promptfrenzy/plot.glb",
-      "base": "/plots/promptfrenzy/"
-    },
-    {
       "slug": "signal",
       "name": "SIGNAL",
       "tagline": "the beacon never sleeps",
@@ -144,10 +118,10 @@
   "vacant": [
     {
       "x": 0,
-      "side": 1
+      "side": -1
     },
     {
-      "x": 24,
+      "x": 0,
       "side": 1
     }
   ]

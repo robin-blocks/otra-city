@@ -132,6 +132,14 @@ render your front from the street before submitting. Note that
 thing shares one strength — create glow hierarchy with brighter/darker palette
 colors, not strength. Transparency: one alpha-blended glass material is fine;
 keep it planar (windows, cloches) — the client does simple blended sorting.
+
+**Enable back-face culling on every opaque material** (in Blender: Material
+Properties → Settings → Backface Culling). Voxel plots are solid boxes resting
+on each other, so a double-sided opaque material draws the hidden underside of
+every box at exactly the depth of the surface beneath it — which flickers as
+visitors walk past. Ingest turns culling on for opaque materials anyway, but
+if you leave it off your own previews will lie to you. Alpha-blended materials
+keep both faces.
 Emissive **colors clip channel-wise at strength**: `#ff2a18` at 2.6 renders
 orange-white because the green/blue channels saturate — keep non-dominant
 channels below ~1/strength to hold a hue under glow. And close your boxes:
