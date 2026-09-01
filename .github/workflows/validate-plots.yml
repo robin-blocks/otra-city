@@ -19,14 +19,14 @@ jobs:
       - run: npm ci
       - run: node scripts/validate-all.mjs
       # keep the street manifest in sync on main
-      - name: commit manifest
+      - name: commit manifest + lot assignments
         if: github.event_name == 'push'
         run: |
-          if ! git diff --quiet public/plots/index.json; then
+          if ! git diff --quiet public/plots/index.json public/plots/lots.json; then
             git config user.name otra-city-bot
             git config user.email bot@otra.city
-            git add public/plots/index.json
-            git commit -m "chore: rebuild street manifest [skip ci]"
+            git add public/plots/index.json public/plots/lots.json
+            git commit -m "chore: assign lots + rebuild street manifest [skip ci]"
             git push
           fi
       # bot-submitted PRs that pass the gates merge without a human
