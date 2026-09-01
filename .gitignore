@@ -3,3 +3,4 @@ poc/out/
 poc/blender/*.blend
 .vercel
 .DS_Store
+.env*

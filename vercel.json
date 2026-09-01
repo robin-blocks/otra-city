@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/submit.mjs": {
+      "includeFiles": "node_modules/draco3dgltf/**"
+    }
+  },
   "rewrites": [
     { "source": "/s/:slug", "destination": "/index.html" },
     { "source": "/embed", "destination": "/index.html" },
