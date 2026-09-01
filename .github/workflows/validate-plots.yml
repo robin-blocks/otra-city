@@ -39,29 +39,35 @@ jobs:
             git config user.name otra-city-bot
             git config user.email bot@otra.city
             git add public/plots/
-            # deliberately NOT [skip ci]: this push moves the PR head, so the
-            # merge must happen on the follow-up run that sees the new head.
-            # The allocator is deterministic, so that run makes no further
-            # commit and the process converges in exactly two runs.
-            git commit -m "chore: assign lot + rebuild street manifest"
+            # A push made with GITHUB_TOKEN never gets a follow-up run (GitHub
+            # creates one and fails it with zero jobs), so the merge below
+            # happens in THIS run; [skip ci] just suppresses that phantom run.
+            git commit -m "chore: assign lot + rebuild street manifest [skip ci]"
             git push
           else
             echo "no manifest changes"
           fi
 
-      # Only merge once the branch is fully up to date — i.e. on the run where
-      # the manifest step made no commit.
+      # GitHub merges the CURRENT head, so the manifest commit pushed above is
+      # included. The first attempt can race that push ("Base branch was
+      # modified"), hence the retries. No --delete-branch: its local-git
+      # cleanup fails in this checkout and masks a successful merge, so the
+      # outcome is read back from the PR state instead.
       - name: auto-merge bot submissions
-        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'plot/')
+        if: >-
+          github.event_name == 'pull_request' &&
+          startsWith(github.head_ref, 'plot/') &&
+          github.event.pull_request.head.repo.full_name == github.repository
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
         run: |
-          for attempt in 1 2 3; do
-            if gh pr merge "${{ github.event.pull_request.number }}" --squash --delete-branch; then
-              # --delete-branch silently skips the remote ref when the job is
-              # checked out on that very branch; delete it explicitly
-              gh api -X DELETE "repos/${{ github.repository }}/git/refs/heads/${{ github.event.pull_request.head.ref }}" || true
-              echo "merged"; exit 0
+          pr=${{ github.event.pull_request.number }}
+          head=${{ github.event.pull_request.head.ref }}
+          for attempt in 1 2 3 4; do
+            gh pr merge "$pr" --squash || true
+            if [ "$(gh pr view "$pr" --json state --jq .state)" = "MERGED" ]; then
+              gh api -X DELETE "repos/${{ github.repository }}/git/refs/heads/$head" || true
+              echo "merged; branch $head deleted"; exit 0
             fi
-            echo "merge attempt $attempt failed; retrying"; sleep 15
+            echo "merge attempt $attempt did not land; retrying"; sleep 15
           done
-          echo "not merged yet — a later run will pick it up"
+          echo "not merged — leaving the PR open for inspection"; exit 1
