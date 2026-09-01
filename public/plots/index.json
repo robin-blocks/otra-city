@@ -15,6 +15,19 @@
       "base": "/plots/archive-9/"
     },
     {
+      "slug": "ci-check",
+      "name": "CI Check",
+      "tagline": "merge-step verification",
+      "url": "https://promptfrenzy.dev/otra-ci-check",
+      "builder": "otra e2e",
+      "type": "freeform",
+      "color": "#ffaa00",
+      "x": 0,
+      "side": 1,
+      "glb": "/plots/ci-check/plot.glb",
+      "base": "/plots/ci-check/"
+    },
+    {
       "slug": "fernseed",
       "name": "Fernseed",
       "tagline": "Point. Know.",
@@ -160,12 +173,12 @@
   ],
   "vacant": [
     {
-      "x": 0,
+      "x": 24,
       "side": 1
     },
     {
-      "x": 24,
-      "side": 1
+      "x": -36,
+      "side": -1
     }
   ]
 }
