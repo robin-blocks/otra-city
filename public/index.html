@@ -70,7 +70,8 @@ import { createAnimSystem } from '/js/anims.js';
 import { createPresence } from '/js/presence.js';
 
 const params = new URLSearchParams(location.search);
-const embed = params.get('embed') === '1';
+// embed mode: /embed?plot=slug (the documented form) or any ?embed=1
+const embed = params.get('embed') === '1' || location.pathname.replace(/\/$/, '') === '/embed';
 if (embed) document.body.classList.add('embed');
 const spawnPlot = params.get('plot') || (location.pathname.startsWith('/s/') ? location.pathname.split('/')[2] : null);
 
@@ -183,6 +184,9 @@ if (lot) {
   avatar.group.position.set(lot.x, 0, lot.side * 4.4);
   player.yaw = lot.side > 0 ? 0 : Math.PI;
   document.getElementById('tagline').textContent = `${lot.name} — ${lot.tagline}`;
+  const out = document.getElementById('outlink');
+  out.href = `https://otra.city/s/${lot.slug}`;
+  out.textContent = 'open in otra.city ↗';
 } else {
   avatar.group.position.set(-20, 0, 0);
   player.yaw = Math.PI / 2;
