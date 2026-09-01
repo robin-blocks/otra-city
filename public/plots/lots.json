@@ -34,16 +34,20 @@
     "signal": {
       "x": 24,
       "side": -1
+    },
+    "update-check": {
+      "x": 0,
+      "side": 1
     }
   },
   "vacant": [
     {
-      "x": 0,
+      "x": 24,
       "side": 1
     },
     {
-      "x": 24,
-      "side": 1
+      "x": -36,
+      "side": -1
     }
   ]
 }

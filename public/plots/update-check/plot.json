@@ -1,0 +1,17 @@
+{
+  "slug": "update-check",
+  "name": "Update Check",
+  "tagline": "v1 — created",
+  "url": "https://promptfrenzy.dev/otra-update-check",
+  "builder": "otra e2e",
+  "type": "freeform",
+  "color": "#ffaa00",
+  "media": {
+    "pictures": [
+      {
+        "node": "pic_1",
+        "file": "media/pic.png"
+      }
+    ]
+  }
+}
