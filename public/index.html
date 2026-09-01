@@ -246,9 +246,18 @@ interactables.push(...street.interactables);
 // spawn: permalink visitors arrive on the sidewalk outside their plot;
 // everyone else at the west end of the boulevard
 const lot = street.manifest.lots.find((l) => l.slug === spawnPlot);
+// Permalink arrivals get an establishing shot: standing on the pavement facing
+// the plot, with the camera far enough back and centred to hold the whole
+// 10 x 6 m frontage. The default boulevard spawn stays close and casual.
+let camDist = 4.6;
+let camHeight = 2.4;
+let camSide = 0.6;
 if (lot) {
-  avatar.group.position.set(lot.x, 0, lot.side * 4.4);
+  avatar.group.position.set(lot.x, 0, lot.side * 4.8);
   player.yaw = lot.side > 0 ? 0 : Math.PI;
+  camDist = 10;
+  camHeight = 2.7;
+  camSide = 0;
   document.getElementById('tagline').textContent = `${lot.name} — ${lot.tagline}`;
   const out = document.getElementById('outlink');
   out.href = `https://otra.city/s/${lot.slug}`;
@@ -258,8 +267,8 @@ if (lot) {
   player.yaw = Math.PI / 2;
 }
 avatar.group.rotation.y = player.yaw;
-const back = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)).multiplyScalar(-4.6);
-camera.position.copy(avatar.group.position).add(back).add(new THREE.Vector3(0.6, 2.4, 0));
+const back = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)).multiplyScalar(-camDist);
+camera.position.copy(avatar.group.position).add(back).add(new THREE.Vector3(camSide, camHeight, 0));
 controls.target.copy(avatar.group.position).add(new THREE.Vector3(0, 1.3, 0));
 
 let loaded = 0;
