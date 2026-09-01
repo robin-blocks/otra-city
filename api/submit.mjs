@@ -161,8 +161,8 @@ async function checkOwnership(slug, url, host) {
     const owner = hostOf(existing.url);
     const mine = hostOf(url);
     return owner === mine
-      ? { ok: true, mode: 'update', detail: `updating your existing plot (owner ${owner})` }
-      : { ok: false, mode: 'denied', detail: `slug "${slug}" belongs to ${owner}; updates must come from the same domain` };
+      ? { ok: true, mode: 'update', detail: `updating your existing plot — the url host ${owner} is your identity; keep it or you lose write access to this slug` }
+      : { ok: false, mode: 'denied', detail: `slug "${slug}" belongs to ${owner}; updates must come from that host (the url host is the owner's identity)` };
   } catch (e) {
     return { ok: false, mode: 'unknown', detail: `ownership check failed: ${e.name || e}` };
   }

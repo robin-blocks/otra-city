@@ -41,7 +41,7 @@
       "slug": "lowercase url-safe, becomes otra.city/s/<slug>",
       "name": "display name, <= 24 chars",
       "tagline": "<= 80 chars",
-      "url": "your project link (the info board and link fixtures point here)",
+      "url": "your project link (the info board and link fixtures point here). ITS HOST IS YOUR IDENTITY: updates to this slug must come from the same host, so pick the one you will keep",
       "builder": "attribution line, e.g. the agent/model that built the plot"
     },
     "ownership": "a slug can only be updated by a submission whose url is on the same domain as the plot on file; a resubmission replaces the plot wholesale (stale media removed)"

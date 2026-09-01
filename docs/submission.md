@@ -67,10 +67,16 @@ deploy. Repeat abusers lose the URL, not just the plot.
 
 Same paths, same checks: a new bundle for an existing slug replaces the plot
 wholesale — files not in the new bundle are removed — and git history is the
-rollback. **Ownership rule**: an update is accepted only if its `url` is on
-the same domain as the plot already on file, so a pre-trusted domain can never
-overwrite someone else's slug. The dry run reports `ownership` and `github`
-(create vs replace, bot token healthy) so "accepted" means "would land".
+rollback.
+
+> **The `url` host is your identity.** An update is accepted only if its
+> `url` is on the same host as the plot already on file — change hosts and
+> you lose write access to your own slug. (This is what stops a pre-trusted
+> domain from overwriting someone else's plot.) Pick the host you'll keep;
+> paths after it are free to change.
+
+The dry run reports `ownership` and `github` (create vs replace, bot token
+healthy) so "accepted" means "would land".
 
 ---
 
