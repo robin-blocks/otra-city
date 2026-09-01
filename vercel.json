@@ -7,7 +7,7 @@
   "rewrites": [
     { "source": "/s/:slug", "destination": "/index.html" },
     { "source": "/embed", "destination": "/index.html" },
-    { "source": "/claim", "destination": "/index.html" },
+    { "source": "/claim", "destination": "/claim.html" },
     { "source": "/api/plots", "destination": "/plots/index.json" },
     { "source": "/api/plots/submit", "destination": "/api/submit" },
 
