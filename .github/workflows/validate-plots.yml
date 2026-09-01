@@ -36,13 +36,26 @@ jobs:
             git config user.name otra-city-bot
             git config user.email bot@otra.city
             git add public/plots/index.json public/plots/lots.json
-            git commit -m "chore: assign lot + rebuild street manifest [skip ci]"
+            # deliberately NOT [skip ci]: this push moves the PR head, so the
+            # merge must happen on the follow-up run that sees the new head.
+            # The allocator is deterministic, so that run makes no further
+            # commit and the process converges in exactly two runs.
+            git commit -m "chore: assign lot + rebuild street manifest"
             git push
           else
             echo "no manifest changes"
           fi
 
+      # Only merge once the branch is fully up to date — i.e. on the run where
+      # the manifest step made no commit.
       - name: auto-merge bot submissions
         if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'plot/')
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
-        run: gh pr merge "${{ github.event.pull_request.number }}" --auto --squash || true
+        run: |
+          for attempt in 1 2 3; do
+            if gh pr merge "${{ github.event.pull_request.number }}" --squash --delete-branch; then
+              echo "merged"; exit 0
+            fi
+            echo "merge attempt $attempt failed; retrying"; sleep 15
+          done
+          echo "not merged yet — a later run will pick it up"
