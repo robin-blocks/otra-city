@@ -139,29 +139,16 @@
       "side": -1,
       "glb": "/plots/signal/plot.glb",
       "base": "/plots/signal/"
-    },
-    {
-      "slug": "street-test",
-      "name": "Street Test",
-      "tagline": "verifying submissions reach the street",
-      "url": "https://promptfrenzy.dev",
-      "builder": "otra.city maintainers",
-      "type": "freeform",
-      "color": "#ffd23e",
-      "x": 0,
-      "side": 1,
-      "glb": "/plots/street-test/plot.glb",
-      "base": "/plots/street-test/"
     }
   ],
   "vacant": [
     {
-      "x": 24,
+      "x": 0,
       "side": 1
     },
     {
-      "x": -36,
-      "side": -1
+      "x": 24,
+      "side": 1
     }
   ]
 }

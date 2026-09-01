@@ -34,20 +34,16 @@
     "signal": {
       "x": 24,
       "side": -1
-    },
-    "street-test": {
-      "x": 0,
-      "side": 1
     }
   },
   "vacant": [
     {
-      "x": 24,
+      "x": 0,
       "side": 1
     },
     {
-      "x": -36,
-      "side": -1
+      "x": 24,
+      "side": 1
     }
   ]
 }
