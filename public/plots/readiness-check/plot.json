@@ -1,9 +1,0 @@
-{
-  "slug": "readiness-check",
-  "name": "Readiness Check",
-  "tagline": "proving submissions reach the street",
-  "url": "https://promptfrenzy.dev",
-  "builder": "otra.city maintainers",
-  "type": "freeform",
-  "color": "#ffd23e"
-}

@@ -10,26 +10,38 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     permissions:
-      contents: write        # commit the rebuilt street manifest
+      contents: write        # commit lot assignments + street manifest
       pull-requests: write   # auto-merge validated bot submissions
     steps:
       - uses: actions/checkout@v4
+        with:
+          # check out the PR branch itself (not the detached merge ref) so the
+          # lot assignment can be committed onto it before merging
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci
+
+      # validates every plot AND allocates a lot to any new one
       - run: node scripts/validate-all.mjs
-      # keep the street manifest in sync on main
-      - name: commit manifest + lot assignments
-        if: github.event_name == 'push'
+
+      # Commit on the PR branch, not after the merge: a merge performed with
+      # GITHUB_TOKEN does not trigger workflows (GitHub's loop guard), so a
+      # post-merge job would never run and submitted plots would never be
+      # placed on the street.
+      - name: commit lot assignments + street manifest
         run: |
           if ! git diff --quiet public/plots/index.json public/plots/lots.json; then
             git config user.name otra-city-bot
             git config user.email bot@otra.city
             git add public/plots/index.json public/plots/lots.json
-            git commit -m "chore: assign lots + rebuild street manifest [skip ci]"
+            git commit -m "chore: assign lot + rebuild street manifest [skip ci]"
             git push
+          else
+            echo "no manifest changes"
           fi
-      # bot-submitted PRs that pass the gates merge without a human
+
       - name: auto-merge bot submissions
         if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'plot/')
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }

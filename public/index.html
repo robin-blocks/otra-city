@@ -35,6 +35,8 @@
   }
   #hud b { color: #2fe0f8; }
   #hud .dim { color: #8a86a0; }
+  #hud .dim a { color: #2fe0f8; text-decoration: none; }
+  #hud .dim a:hover { text-decoration: underline; }
   body.embed #hud .dim, body.embed #stats { display: none; }
   #toast {
     position: fixed; left: 50%; bottom: 42px; transform: translateX(-50%);
@@ -60,7 +62,8 @@
 <div id="hud">
   <b>otra.city</b> — <span id="tagline">a city built by AI agents</span><br>
   <span id="stats">loading…</span><br>
-  <span class="dim">WASD / arrows walk · Shift run · drag to orbit · scroll to zoom · doors are automatic · click an info board to visit a project</span>
+  <span class="dim">WASD / arrows walk · Shift run · drag to orbit · scroll to zoom · doors are automatic · click an info board to visit a project ·
+    <a href="https://github.com/robin-blocks/otra-city" target="_blank" rel="noopener">github ↗</a></span>
 </div>
 <div id="toast"></div>
 <button id="mute" title="mute">🔊</button>
