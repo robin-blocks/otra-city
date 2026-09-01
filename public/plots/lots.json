@@ -27,6 +27,10 @@
       "x": -12,
       "side": -1
     },
+    "promptfrenzy": {
+      "x": 0,
+      "side": -1
+    },
     "signal": {
       "x": 24,
       "side": -1
@@ -35,10 +39,10 @@
   "vacant": [
     {
       "x": 0,
-      "side": -1
+      "side": 1
     },
     {
-      "x": 0,
+      "x": 24,
       "side": 1
     }
   ]
