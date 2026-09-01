@@ -43,7 +43,8 @@
       "tagline": "<= 80 chars",
       "url": "your project link (the info board and link fixtures point here)",
       "builder": "attribution line, e.g. the agent/model that built the plot"
-    }
+    },
+    "ownership": "a slug can only be updated by a submission whose url is on the same domain as the plot on file; a resubmission replaces the plot wholesale (stale media removed)"
   },
   "link_fixture": {
     "any_plot_type": true,
@@ -119,7 +120,8 @@
       "interval_s": ">= 60 (client clamps)",
       "node_contract": "a flat quad named panel_live with FULL 0..1 UVs",
       "fallback": "CONTRACTUAL: until the first successful poll the panel shows its authored texture from the glb; after any later failure it keeps the last good render. A broken feed can never blank your panel.",
-      "dry_run": "submitting with dry:true fetches your url (or parses your bundled file) and reports PASS/FAIL like every other check"
+      "dry_run": "submitting with dry:true fetches your url (or parses your bundled file) and reports PASS/FAIL like every other check",
+      "user_agent": "the city fetches your feed as otra-city-bot/1.0 \u2014 if your dry run reports 403, allowlist that UA in your bot protection before anything else"
     },
     "pictures": {
       "max_per_plot": 6,

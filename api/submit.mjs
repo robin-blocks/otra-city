@@ -94,6 +94,68 @@ async function gh(path, method, body, token) {
   return r.json();
 }
 
+// GET that treats 404 as null (missing file/dir) instead of throwing.
+async function ghMaybe(path, token) {
+  const r = await fetch(`https://api.github.com${path}`, {
+    headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'otra-city-bot/1.0' },
+  });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`GET ${path} -> ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  return r.json();
+}
+
+// Every file currently under a plot folder on a ref, with the blob shas the
+// contents API needs for updates and deletes.
+async function listPlotFiles(repo, dir, ref, token) {
+  const items = await ghMaybe(`/repos/${repo}/contents/${dir}?ref=${encodeURIComponent(ref)}`, token);
+  if (!Array.isArray(items)) return [];
+  const out = [];
+  for (const it of items) {
+    if (it.type === 'file') out.push({ path: it.path, sha: it.sha });
+    else if (it.type === 'dir') out.push(...await listPlotFiles(repo, it.path, ref, token));
+  }
+  return out;
+}
+
+const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
+
+// Ownership: a slug can only be UPDATED from the domain that owns it. Without
+// this, any trusted domain (which skips the backlink) could overwrite anyone.
+async function checkOwnership(slug, url, host) {
+  // local harnesses have no https origin of their own — read the live registry
+  const origin = /^(localhost|127\.0\.0\.1)/.test(host) ? 'https://otra.city' : `https://${host}`;
+  try {
+    const r = await fetch(`${origin}/plots/${slug}/plot.json`, { headers: { 'user-agent': 'otra-city-bot/1.0' } });
+    if (r.status === 404) return { ok: true, mode: 'create', detail: 'new slug' };
+    if (!r.ok) return { ok: false, mode: 'unknown', detail: `could not read the existing plot (${r.status}) — try again` };
+    const existing = await r.json();
+    const owner = hostOf(existing.url);
+    const mine = hostOf(url);
+    return owner === mine
+      ? { ok: true, mode: 'update', detail: `updating your existing plot (owner ${owner})` }
+      : { ok: false, mode: 'denied', detail: `slug "${slug}" belongs to ${owner}; updates must come from the same domain` };
+  } catch (e) {
+    return { ok: false, mode: 'unknown', detail: `ownership check failed: ${e.name || e}` };
+  }
+}
+
+// Dry-run visibility into what a real submit would do on GitHub, so
+// "accepted" means "would land": token works, and create vs replace.
+async function checkGithub(slug) {
+  const token = process.env.GITHUB_TOKEN;
+  const repo = process.env.GITHUB_REPO;
+  if (!token || !repo) return { ok: true, mode: 'dry-only', detail: 'no bot token on this deployment — validation only' };
+  try {
+    if (!(await ghMaybe(`/repos/${repo}`, token))) return { ok: false, detail: 'bot token cannot see the repo' };
+    const existing = await listPlotFiles(repo, `public/plots/${slug}`, 'main', token);
+    return existing.length
+      ? { ok: true, mode: 'update', detail: `will REPLACE the existing plot wholesale (${existing.length} files on main; stale media removed)` }
+      : { ok: true, mode: 'create', detail: 'will create the plot' };
+  } catch (e) {
+    return { ok: false, detail: `github check failed: ${e.message}` };
+  }
+}
+
 async function createPR({ plot, glb, media }, report) {
   const token = process.env.GITHUB_TOKEN;
   const repo = process.env.GITHUB_REPO;
@@ -101,21 +163,41 @@ async function createPR({ plot, glb, media }, report) {
   const branch = `plot/${plot.slug}-${Date.now().toString(36)}`;
   const ref = await gh(`/repos/${repo}/git/ref/heads/${base}`, 'GET', null, token);
   await gh(`/repos/${repo}/git/refs`, 'POST', { ref: `refs/heads/${branch}`, sha: ref.object.sha }, token);
-  const put = (path, contentB64, message) =>
-    gh(`/repos/${repo}/contents/${path}`, 'PUT', { message, content: contentB64, branch }, token);
-  await put(`public/plots/${plot.slug}/plot.json`,
-    Buffer.from(JSON.stringify(plot, null, 2)).toString('base64'), `plot: ${plot.slug} manifest`);
-  await put(`public/plots/${plot.slug}/plot.glb`, glb.toString('base64'), `plot: ${plot.slug} model`);
-  for (const [name, b64] of Object.entries(media || {})) {
-    await put(`public/plots/${plot.slug}/media/${name}`, b64, `plot: ${plot.slug} media ${name}`);
+  try {
+    const dir = `public/plots/${plot.slug}`;
+    // existing blob shas: required by the contents API for updates/deletes
+    const existing = new Map((await listPlotFiles(repo, dir, branch, token)).map((f) => [f.path, f.sha]));
+    const files = {
+      [`${dir}/plot.json`]: Buffer.from(JSON.stringify(plot, null, 2)).toString('base64'),
+      [`${dir}/plot.glb`]: glb.toString('base64'),
+    };
+    for (const [name, b64] of Object.entries(media || {})) files[`${dir}/media/${name}`] = b64;
+    for (const [path, content] of Object.entries(files)) {
+      const body = { message: `plot: ${plot.slug} ${path.split('/').pop()}`, content, branch };
+      if (existing.has(path)) body.sha = existing.get(path);
+      await gh(`/repos/${repo}/contents/${path}`, 'PUT', body, token);
+    }
+    // wholesale replacement: anything on the old plot not in this bundle goes
+    for (const [path, sha] of existing) {
+      if (!(path in files)) {
+        await gh(`/repos/${repo}/contents/${path}`, 'DELETE', { message: `plot: ${plot.slug} remove stale ${path.split('/').pop()}`, sha, branch }, token);
+      }
+    }
+    const pr = await gh(`/repos/${repo}/pulls`, 'POST', {
+      title: `plot: ${existing.size ? 'update ' : ''}${plot.name} (${plot.slug})`,
+      head: branch,
+      base,
+      body: `Automated plot submission via /api/plots/submit\n\n\`\`\`\n${report}\n\`\`\`\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)`,
+    }, token);
+    return pr.html_url;
+  } catch (e) {
+    // never leave a zero-diff branch behind
+    await fetch(`https://api.github.com/repos/${repo}/git/refs/heads/${branch}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${token}`, 'user-agent': 'otra-city-bot/1.0' },
+    }).catch(() => {});
+    throw e;
   }
-  const pr = await gh(`/repos/${repo}/pulls`, 'POST', {
-    title: `plot: ${plot.name} (${plot.slug})`,
-    head: branch,
-    base,
-    body: `Automated plot submission via /api/plots/submit\n\n\`\`\`\n${report}\n\`\`\``,
-  }, token);
-  return pr.html_url;
 }
 
 export default async function handler(req, res) {
@@ -154,16 +236,24 @@ export default async function handler(req, res) {
     result.media = { checks: mediaChecks, ok: mediaOk };
 
     if (plot.media?.feed) result.feed = await checkFeed(plot.media.feed, media);
-    if (result.identity.ok) result.backlink = await checkBacklink(plot.url, plot.slug);
+    const host = req.headers['x-forwarded-host'] || req.headers.host || 'otra.city';
+    if (result.identity.ok) {
+      result.backlink = await checkBacklink(plot.url, plot.slug);
+      result.ownership = await checkOwnership(plot.slug, plot.url, host);
+      result.github = await checkGithub(plot.slug);
+    }
 
     const accepted = result.identity.ok && result.budgets.ok && result.walkability.ok &&
-      mediaOk && (result.feed ? result.feed.ok : true) && !!result.backlink?.ok;
+      mediaOk && (result.feed ? result.feed.ok : true) && !!result.backlink?.ok &&
+      !!result.ownership?.ok && !!result.github?.ok;
     const lines = [];
     for (const section of ['identity', 'budgets', 'walkability', 'media']) {
       for (const c of result[section].checks) lines.push(`${c.ok ? 'PASS' : 'FAIL'}  ${c.name.padEnd(14)} ${c.detail}`);
     }
     if (result.feed) lines.push(`${result.feed.ok ? 'PASS' : 'FAIL'}  live feed      ${result.feed.detail}`);
     if (result.backlink) lines.push(`${result.backlink.ok ? 'PASS' : 'FAIL'}  backlink       ${result.backlink.detail}`);
+    if (result.ownership) lines.push(`${result.ownership.ok ? 'PASS' : 'FAIL'}  ownership      ${result.ownership.detail}`);
+    if (result.github) lines.push(`${result.github.ok ? 'PASS' : 'FAIL'}  github         ${result.github.detail}`);
     const report = lines.join('\n') + `\nVERDICT: ${accepted ? 'ACCEPTED' : 'REJECTED'}`;
 
     let pr_url = null;

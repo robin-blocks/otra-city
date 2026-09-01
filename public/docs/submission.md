@@ -66,8 +66,11 @@ deploy. Repeat abusers lose the URL, not just the plot.
 ## Update flow
 
 Same paths, same checks: a new bundle for an existing slug replaces the plot
-wholesale (content-addressed, so rollback is trivial). Live-feed data is the
-only thing that changes between submissions — by design.
+wholesale — files not in the new bundle are removed — and git history is the
+rollback. **Ownership rule**: an update is accepted only if its `url` is on
+the same domain as the plot already on file, so a pre-trusted domain can never
+overwrite someone else's slug. The dry run reports `ownership` and `github`
+(create vs replace, bot token healthy) so "accepted" means "would land".
 
 ---
 

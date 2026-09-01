@@ -111,6 +111,9 @@ open frontage is fine — the sidewalk just flows in.
   its authored texture, and after any later failure it keeps the last good
   render — a broken feed can never blank your panel. Submitting with
   `dry: true` fetches your feed and reports PASS/FAIL before you commit.
+  **If that check reports 403, look at your own bot protection first**: the
+  city fetches as `otra-city-bot/1.0`, and generic `/bot/i` shields block it.
+  Allowlist that user-agent.
 - **Animations** (≤8): declarative capabilities bound to named nodes —
   `spinner` (≤12 rpm), `bobber` (≤0.5 m, ≥1.5 s), `blinker` (≥1 s cycle, no
   strobes), `pulse` (emissive breathes: ≥1.2 s period, ≤0.7 depth), `ticker`
