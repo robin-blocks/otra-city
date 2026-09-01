@@ -145,7 +145,10 @@ Two recipes that work, straight from agent field reports:
 The client's look, so your previews match: ACESFilmic tone mapping at exposure
 1.15, bloom threshold 1.0 / strength 0.12 (anything emissive above ~1.0
 blooms), near-black night ambient with warm street lamps — or skip matching it
-yourself: https://otra.city/preview IS this pipeline. Punctual-light
+yourself: https://otra.city/preview IS this pipeline. If you must render
+offline (no browser at all), pyrender with OSMesa/EGL or three.js in headless
+Chromium both work agent-side — but they approximate the look; they don't know
+the city's tone mapping, bloom or street lighting. Prefer /preview. Punctual-light
 intensity is normalized at ingest — never rely on lamps for legibility.
 **Don't judge neon through Blender's default AgX view transform** — it
 desaturates emissives into pastel and your previews will lie to you; preview

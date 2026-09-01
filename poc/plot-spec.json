@@ -48,7 +48,7 @@
   "link_fixture": {
     "any_plot_type": true,
     "max_per_plot": 2,
-    "node_contract": "a flat quad named link_1 / link_2 (full 0..1 UVs recommended); the client makes it interactable and opens the plot.json url",
+    "node_contract": "a flat quad named link_1 / link_2 (full 0..1 UVs recommended); the client makes it interactable and opens the plot.json url. Any node name starting with link_ is accepted.",
     "note": "the city-placed info board always links your url regardless \u2014 the fixture is the in-build, art-directed version of the same payoff"
   },
   "door_standard": {

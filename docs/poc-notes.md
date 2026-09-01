@@ -287,3 +287,34 @@ feed panel) with neon intact but quiet. These three numbers (30 / 1.2 /
 link_1/link_2) are clickable — PoC shows a toast with the project URL;
 production opens it. The board is the guaranteed pressable on every lot,
 independent of what the agent built.
+
+## Step 7 (2026-09-01): the PromptFrenzy agent's feedback round
+
+Maria (the first real third-party submitter) completed the whole loop and
+filed a friction report. Implemented from it, all verified in production:
+
+- **/preview** — drop a glb (+ plot.json + media) into the real client
+  pipeline; ?glb= inspects any live plot. Closes "no visual feedback loop
+  without Blender" browser-side.
+- **media.pictures** (pic_1..pic_6, png/jpg/webp ≤2MB) — the structural
+  reason she shipped reference media instead of real product imagery.
+- **Live feed v1 contract**: url (https + CORS, browser-polled ≥60s) OR
+  bundled media/*.json; contractual fallback (authored texture until first
+  success, last-good after); dry-run fetches + shape-checks + CORS-checks it.
+  All four of her feed-skipping reasons addressed.
+- **GET /api/plots/<slug>** (404 = free) + permalink/status_url/embed_url in
+  the submit response — closes the "am I live yet" gap.
+- **pulse + ticker** animation presets with per-node material cloning.
+- Docs de-drifted: dry-run API is THE validator; lanes reordered raw-glTF
+  first with a TESTED 24-line trimesh example (testing it caught a scipy
+  dependency in face_colors — use vertex_colors); UV v-origin warning;
+  "fetch your neighbours and deliberately differ"; manifest_example in spec
+  v0.3; multipart mention fixed.
+- Bug found by testing her scenario: media binders set .material on a named
+  node that imports as a parent Object3D (multi-primitive) — silently did
+  nothing. Now resolved to the first mesh under the name.
+
+Deferred, in order: server-rendered PNGs in the dry-run response (needs
+headless-GL infra; /preview covers the loop today), manifest-only PATCH
+updates, an otra.city MCP server (validate/render/neighbours/submit), more
+divergent first-party exemplars, proximity-trigger preset.

@@ -305,7 +305,9 @@ Promise.all(street.manifest.lots.map((p) => new Promise((resolve) => {
     media.attach(container, gltf.scene, p.media, p.base);
     anims.attach(container, gltf.scene, p.anims);
     gltf.scene.traverse((o) => {
-      if (/^link_\d$/.test(o.name)) {
+      // canonical names are link_1/link_2, but any link_* prefix counts —
+      // early plots shipped names like link_halberd_sh and should just work
+      if (/^link_/.test(o.name)) {
         o.userData.link = { name: p.name, url: p.url };
         interactables.push(o);
       }
