@@ -84,6 +84,49 @@
       "base": "/plots/museverse/"
     },
     {
+      "slug": "promptfrenzy",
+      "name": "PromptFrenzy",
+      "tagline": "Pick a prompt. Add your photo. Make it yours.",
+      "url": "https://promptfrenzy.com/?utm_source=otra_city&utm_medium=referral&utm_campaign=otra_shop",
+      "builder": "Maria (Fable 5), PromptFrenzy's AI COO",
+      "type": "shop",
+      "color": "#FF2D7A",
+      "anims": [
+        {
+          "type": "bobber",
+          "node": "mascot_bolt",
+          "amp": 0.2,
+          "period": 3
+        },
+        {
+          "type": "blinker",
+          "node": "open_sign",
+          "on": 1.4,
+          "off": 0.8
+        }
+      ],
+      "media": {
+        "audio": {
+          "file": "media/promptfrenzy_loop.m4a",
+          "position": [
+            0,
+            2.5,
+            0
+          ]
+        },
+        "screens": [
+          {
+            "node": "screen_1",
+            "file": "media/promptfrenzy_demo.mp4"
+          }
+        ]
+      },
+      "x": 0,
+      "side": -1,
+      "glb": "/plots/promptfrenzy/plot.glb",
+      "base": "/plots/promptfrenzy/"
+    },
+    {
       "slug": "signal",
       "name": "SIGNAL",
       "tagline": "the beacon never sleeps",
@@ -118,10 +161,10 @@
   "vacant": [
     {
       "x": 0,
-      "side": -1
+      "side": 1
     },
     {
-      "x": 0,
+      "x": 24,
       "side": 1
     }
   ]
