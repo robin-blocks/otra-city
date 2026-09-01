@@ -1,21 +1,24 @@
-# Presence server host config. Deploy with:
-#   fly launch --no-deploy --copy-config --name otra-city-presence
+# otra.city presence server (multiplayer avatars).
+#
+# One-time setup:
+#   fly auth login
+#   fly launch --no-deploy --copy-config --name otra-city-presence --region lhr
 #   fly deploy
-# Then point the client at it: https://otra.city/?ws=wss://otra-city-presence.fly.dev
-# (or hardcode the URL in public/js/presence.js once you're happy with it)
+#
+# The city works fine without this — the client falls back to solo play if the
+# server is unreachable, so deploying (or not) is never load-bearing.
 app = "otra-city-presence"
 primary_region = "lhr"
 
 [build]
-  builder = "heroku/buildpacks:20"
-
-[processes]
-  app = "node server/presence.mjs"
+  dockerfile = "Dockerfile"
 
 [http_service]
   internal_port = 8787
   force_https = true
-  auto_stop_machines = "suspend"
+  # WebSockets keep a machine "busy" while anyone is in the city, so it only
+  # stops once the street is empty — you pay for presence, not for uptime.
+  auto_stop_machines = "stop"
   auto_start_machines = true
   min_machines_running = 0
 

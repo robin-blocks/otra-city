@@ -1,0 +1,13 @@
+{
+  "name": "otra-city-presence",
+  "private": true,
+  "type": "module",
+  "description": "Session-based multiplayer presence for otra.city",
+  "main": "presence.mjs",
+  "scripts": {
+    "start": "node presence.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.21.3"
+  }
+}

@@ -19,8 +19,10 @@ export function createPresence(scene, player, urlOverride) {
   let lastSend = 0;
   let sendBuf = '';
 
-  const url = urlOverride ||
-    (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':8787';
+  const local = ['localhost', '127.0.0.1'].includes(location.hostname);
+  const url = urlOverride ||                         // ?ws= override, for testing
+    (local ? `ws://${location.hostname}:8787`        // local dev server
+           : 'wss://otra-city-presence.fly.dev');    // production
 
   function addPeer(id, p) {
     if (peers.has(id)) return peers.get(id);
