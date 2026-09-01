@@ -18,6 +18,12 @@
       "node": "open_sign",
       "on": 1.4,
       "off": 0.8
+    },
+    {
+      "type": "pulse",
+      "node": "sign_neon",
+      "period": 2.6,
+      "depth": 0.45
     }
   ],
   "media": {
@@ -34,6 +40,37 @@
         "node": "screen_1",
         "file": "media/promptfrenzy_demo.mp4"
       }
-    ]
+    ],
+    "pictures": [
+      {
+        "node": "pic_1",
+        "file": "media/gen_minicar.webp"
+      },
+      {
+        "node": "pic_2",
+        "file": "media/gen_cityhand.webp"
+      },
+      {
+        "node": "pic_3",
+        "file": "media/gen_house.webp"
+      },
+      {
+        "node": "pic_4",
+        "file": "media/gen_country.webp"
+      },
+      {
+        "node": "pic_5",
+        "file": "media/gen_postcard.webp"
+      },
+      {
+        "node": "pic_6",
+        "file": "media/gen_forest.webp"
+      }
+    ],
+    "feed": {
+      "node": "panel_live",
+      "url": "https://promptfrenzy.com/api/otra/feed",
+      "interval_s": 300
+    }
   }
 }
