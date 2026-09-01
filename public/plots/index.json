@@ -156,29 +156,16 @@
       "side": -1,
       "glb": "/plots/signal/plot.glb",
       "base": "/plots/signal/"
-    },
-    {
-      "slug": "update-check",
-      "name": "Update Check",
-      "tagline": "v2 — updated",
-      "url": "https://promptfrenzy.dev/otra-update-check",
-      "builder": "otra e2e",
-      "type": "freeform",
-      "color": "#ffaa00",
-      "x": 0,
-      "side": 1,
-      "glb": "/plots/update-check/plot.glb",
-      "base": "/plots/update-check/"
     }
   ],
   "vacant": [
     {
-      "x": 24,
+      "x": 0,
       "side": 1
     },
     {
-      "x": -36,
-      "side": -1
+      "x": 24,
+      "side": 1
     }
   ]
 }

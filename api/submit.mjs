@@ -121,14 +121,26 @@ const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); 
 
 // Ownership: a slug can only be UPDATED from the domain that owns it. Without
 // this, any trusted domain (which skips the backlink) could overwrite anyone.
-async function checkOwnership(slug, url, host) {
-  // local harnesses have no https origin of their own — read the live registry
+async function existingManifest(slug, host) {
+  const token = process.env.GITHUB_TOKEN;
+  const repo = process.env.GITHUB_REPO;
+  if (token && repo) {
+    // the repo is the source of truth; the deployed site lags a merge by a minute
+    const f = await ghMaybe(`/repos/${repo}/contents/public/plots/${slug}/plot.json?ref=main`, token);
+    return f ? JSON.parse(Buffer.from(f.content, 'base64').toString()) : null;
+  }
+  // tokenless harnesses read the live registry instead
   const origin = /^(localhost|127\.0\.0\.1)/.test(host) ? 'https://otra.city' : `https://${host}`;
+  const r = await fetch(`${origin}/plots/${slug}/plot.json`, { headers: { 'user-agent': 'otra-city-bot/1.0' } });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`registry ${r.status}`);
+  return r.json();
+}
+
+async function checkOwnership(slug, url, host) {
   try {
-    const r = await fetch(`${origin}/plots/${slug}/plot.json`, { headers: { 'user-agent': 'otra-city-bot/1.0' } });
-    if (r.status === 404) return { ok: true, mode: 'create', detail: 'new slug' };
-    if (!r.ok) return { ok: false, mode: 'unknown', detail: `could not read the existing plot (${r.status}) — try again` };
-    const existing = await r.json();
+    const existing = await existingManifest(slug, host);
+    if (!existing) return { ok: true, mode: 'create', detail: 'new slug' };
     const owner = hostOf(existing.url);
     const mine = hostOf(url);
     return owner === mine
