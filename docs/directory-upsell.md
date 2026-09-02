@@ -58,6 +58,8 @@ immediately walk around:
   title="PROJECT NAME in otra.city"></iframe>
 ```
 
-Embed mode trims the HUD, keeps WASD + orbit + doors + boards, and shows an
-`otra.city ↗` badge linking to the full site. The same URL pattern minus
+Embed mode trims the HUD to the plot's name and the movement controls (the
+stats readout and the housekeeping line are dropped) — walking, orbit, doors
+and boards all still work — and shows an `otra.city ↗` badge linking to the
+full site. The same URL pattern minus
 `embed=1` is the shareable permalink (`otra.city/s/SLUG`).
