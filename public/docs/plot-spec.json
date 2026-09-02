@@ -1,5 +1,5 @@
 {
-  "version": "0.3",
+  "version": "0.4",
   "units": "meters (1 glTF unit = 1 m; the client applies no scaling)",
   "envelope": {
     "size_m": [
@@ -22,7 +22,7 @@
       ]
     },
     "epsilon_m": 0.015,
-    "signage_zone": "convention for plots WITH a facade: inset it to y -4.75 so signage sits proud within the lot; ANY geometry may occupy the strip (pylons, awnings). Plots without a facade can ignore this \u2014 only the envelope binds. Draco quantization can nudge verts ~5 mm, so build to +-4.99 rather than the literal edge."
+    "signage_zone": "convention for plots WITH a facade: inset it to y -4.75 so signage sits proud within the lot; ANY geometry may occupy the strip (pylons, awnings). Plots without a facade can ignore this — only the envelope binds. Draco quantization can nudge verts ~5 mm, so build to +-4.99 rather than the literal edge."
   },
   "avatar": {
     "height_m": 1.42,
@@ -50,7 +50,7 @@
     "any_plot_type": true,
     "max_per_plot": 2,
     "node_contract": "a flat quad named link_1 / link_2 (full 0..1 UVs recommended); the client makes it interactable and opens the plot.json url. Any node name starting with link_ is accepted.",
-    "note": "the city-placed info board always links your url regardless \u2014 the fixture is the in-build, art-directed version of the same payoff"
+    "note": "the city-placed info board always links your url regardless — the fixture is the in-build, art-directed version of the same payoff"
   },
   "door_standard": {
     "required_for": [
@@ -71,7 +71,7 @@
       "door_panel_R"
     ],
     "behavior": "client translates each panel +-1.2 m in local X over 700 ms when an avatar is within ~2.4 m (effective clear passage when open: 2.4 m)",
-    "warning": "node names must match EXACTLY \u2014 Blender duplicate suffixes like door_panel_L.004 fail the contract"
+    "warning": "node names must match EXACTLY — Blender duplicate suffixes like door_panel_L.004 fail the contract"
   },
   "budgets": {
     "max_glb_bytes": 8388608,
@@ -85,10 +85,15 @@
       "KHR_lights_punctual",
       "KHR_materials_emissive_strength"
     ],
-    "draco": "recommended but optional \u2014 ingest re-encodes every mesh (Draco/meshopt) regardless",
+    "draco": "recommended but optional — ingest re-encodes every mesh (Draco/meshopt) regardless",
     "self_contained": "no external URIs; all textures/buffers embedded",
-    "gotcha": "every mesh needs a UV map \u2014 the glTF exporter silently forks materials on UV-less meshes, inflating your material count",
-    "backface_culling": "enable it on every opaque material \u2014 double-sided opaque geometry z-fights where boxes rest on each other; ingest enforces this, alpha-blended materials keep both faces"
+    "gotcha": "every mesh needs a UV map — the glTF exporter silently forks materials on UV-less meshes, inflating your material count",
+    "backface_culling": "enable it on every opaque material — double-sided opaque geometry z-fights where boxes rest on each other; ingest enforces this, alpha-blended materials keep both faces"
+  },
+  "surfaces": {
+    "coplanar": "two faces on the SAME plane pointing the SAME way have no depth winner: the GPU picks per fragment and the surface shimmers as visitors walk past. Voxel builds hit this constantly — a light strip or trim box laid on a wall usually shares that wall's exact plane. Offset attached detail by >= 2 mm instead of leaving it flush. Opposite-facing coincident faces are fine (back-face culling hides one). Ingest separates any it finds by 2.5 mm along the smaller face's normal, and the dry run reports them so you can fix your source and see what you built.",
+    "media_uvs": "pic_1..6 / screen_1..2 / panel_live quads must carry FULL 0..1 UVs. The client REPLACES the node's material with your picture, video or rendered feed, mapped through the node's own UVs — so a quad UV-mapped to an atlas cell shows one magnified corner of it. This one is a rejection, not an ingest fix: only you know what the quad was meant to frame. Exception: a node carrying a `ticker` animation may window u (a marquee scrolling a wide strip) but must still span v.",
+    "authored_fallback": "a media node's authored texture is what shows before the first picture loads or feed poll lands, and full UVs mean that texture is the whole image — so point the node at a material whose full image is a sensible 'not lit up yet' plate rather than an atlas"
   },
   "media": {
     "note": "optional files in your submission bundle, bound to named nodes via plot.json; the client enforces all playback rules",
@@ -101,11 +106,11 @@
       ],
       "max_bytes": 2097152,
       "max_duration_s": 90,
-      "playback": "positional ONLY (ref 3 m, inaudible ~14 m, exponential rolloff) \u2014 your music stays on your lot; loudness normalized at ingest; only the 3 nearest audible sources play"
+      "playback": "positional ONLY (ref 3 m, inaudible ~14 m, exponential rolloff) — your music stays on your lot; loudness normalized at ingest; only the 3 nearest audible sources play"
     },
     "screens": {
       "max_per_plot": 2,
-      "format": "mp4 (H.264), no audio track kept \u2014 screens are always silent",
+      "format": "mp4 (H.264), no audio track kept — screens are always silent",
       "max_resolution": [
         1280,
         720
@@ -116,12 +121,12 @@
     },
     "live_feed": {
       "max_per_plot": 1,
-      "source": "exactly ONE of: url (a public https endpoint returning {title, big, sub, bars[]}, must send Access-Control-Allow-Origin: * \u2014 the browser polls it directly) OR file (a bundled media/*.json with the same shape; update it by resubmitting, upgrade to a url any time)",
+      "source": "exactly ONE of: url (a public https endpoint returning {title, big, sub, bars[]}, must send Access-Control-Allow-Origin: * — the browser polls it directly) OR file (a bundled media/*.json with the same shape; update it by resubmitting, upgrade to a url any time)",
       "interval_s": ">= 60 (client clamps)",
       "node_contract": "a flat quad named panel_live with FULL 0..1 UVs",
       "fallback": "CONTRACTUAL: until the first successful poll the panel shows its authored texture from the glb; after any later failure it keeps the last good render. A broken feed can never blank your panel.",
       "dry_run": "submitting with dry:true fetches your url (or parses your bundled file) and reports PASS/FAIL like every other check",
-      "user_agent": "the city fetches your feed as otra-city-bot/1.0 \u2014 if your dry run reports 403, allowlist that UA in your bot protection before anything else"
+      "user_agent": "the city fetches your feed as otra-city-bot/1.0 — if your dry run reports 403, allowlist that UA in your bot protection before anything else"
     },
     "pictures": {
       "max_per_plot": 6,
@@ -132,11 +137,11 @@
       ],
       "max_bytes_each": 2097152,
       "node_contract": "flat quads named pic_1 .. pic_6 with FULL 0..1 UVs; the client textures them unlit, exactly like screens but static",
-      "note": "the intended home for your REAL product imagery \u2014 screenshots, art, photos. No atlas packing, no video encoding: bundle the file, bind the node."
+      "note": "the intended home for your REAL product imagery — screenshots, art, photos. No atlas packing, no video encoding: bundle the file, bind the node."
     }
   },
   "animations": {
-    "note": "declared in plot.json, bound to named nodes; capabilities only \u2014 no scripts, ever. The shop door is the same system as a platform preset.",
+    "note": "declared in plot.json, bound to named nodes; capabilities only — no scripts, ever. The shop door is the same system as a platform preset.",
     "max_per_plot": 8,
     "capabilities": {
       "spinner": {
@@ -149,15 +154,15 @@
       },
       "blinker": {
         "params": "node, on, off",
-        "caps": "cycle >= 1.0 s \u2014 no strobes"
+        "caps": "cycle >= 1.0 s — no strobes"
       },
       "pulse": {
         "params": "node, period, depth",
-        "caps": "period >= 1.2 s, depth <= 0.7 \u2014 emissive breathes between (1-depth)x and 1x"
+        "caps": "period >= 1.2 s, depth <= 0.7 — emissive breathes between (1-depth)x and 1x"
       },
       "ticker": {
         "params": "node, speed",
-        "caps": "|speed| <= 0.25 texture-widths/sec \u2014 scrolls the node's texture horizontally (marquee)"
+        "caps": "|speed| <= 0.25 texture-widths/sec — scrolls the node's texture horizontally (marquee)"
       }
     },
     "rule": "animated geometry must stay inside the lot envelope through its full range of motion"
@@ -166,30 +171,30 @@
     "structure_m": 0.25,
     "props_min_m": 0.1,
     "attached_detail_min_m": 0.02,
-    "note": "axis-aligned boxes on the grid match the city aesthetic and keep collision honest; the 0.1 m minimum is for free-standing props \u2014 flat attached detail (inlaid light lines, trim) may go to ~20 mm"
+    "note": "axis-aligned boxes on the grid match the city aesthetic and keep collision honest; the 0.1 m minimum is for free-standing props — flat attached detail (inlaid light lines, trim) may go to ~20 mm"
   },
   "viewing_context": {
-    "time_of_day": "permanent night; dark ambient, neon-forward \u2014 emissive surfaces carry your design",
+    "time_of_day": "permanent night; dark ambient, neon-forward — emissive surfaces carry your design",
     "street_lighting": "warm lamps on the sidewalk, provided by the city",
-    "info_board": "the city places a standardized board at your street edge showing name/tagline/builder/link from plot.json \u2014 you never build your own",
+    "info_board": "the city places a standardized board at your street edge showing name/tagline/builder/link from plot.json — you never build your own",
     "primary_views": [
       "street front three-quarter from 4-12 m",
       "interior at eye height if enterable"
     ],
-    "neighbor_gap_m": "2.0 of street-owned space BETWEEN envelopes \u2014 your full 10 m width is yours; neighbours start 2 m beyond your side walls",
-    "side_walls": "mostly occluded by neighbors \u2014 spend your budget on the front and interior",
+    "neighbor_gap_m": "2.0 of street-owned space BETWEEN envelopes — your full 10 m width is yours; neighbours start 2 m beyond your side walls",
+    "side_walls": "mostly occluded by neighbors — spend your budget on the front and interior",
     "rooftops": "rarely seen (camera tops out ~8 m); low priority",
     "bloom": "the client blooms emissive above ~1.0 intensity; emissive_strength 2-3 reads as neon without washing out"
   },
   "walkability": {
-    "note": "validated by flood-fill from the street edge (door panels ignored \u2014 the client opens them)",
+    "note": "validated by flood-fill from the street edge (door panels ignored — the client opens them)",
     "shop": "entry via the door span, >= 3 m reachable depth, >= 8 m^2 walkable floor",
-    "freeform": ">= 1 m reachable depth and >= 4 m^2 reachable area from the street \u2014 every plot must offer some approachable frontage"
+    "freeform": ">= 1 m reachable depth and >= 4 m^2 reachable area from the street — every plot must offer some approachable frontage"
   },
   "tooling": {
-    "preview": "https://otra.city/preview \u2014 drop your .glb (+ plot.json + media) into the REAL client pipeline: night lighting, tone mapping, bloom, street lamps, avatar-scale mannequin, standard cameras. Also /preview?glb=/plots/<slug>/plot.glb to inspect any live plot.",
-    "validator": "the submit API with dry:true IS the validator \u2014 same implementation as CI, plus feed/backlink checks the local tools cannot do",
-    "status": "GET /api/plots/<slug> \u2014 404 = slug free; otherwise existence, live position, permalink",
+    "preview": "https://otra.city/preview — drop your .glb (+ plot.json + media) into the REAL client pipeline: night lighting, tone mapping, bloom, street lamps, avatar-scale mannequin, standard cameras. Also /preview?glb=/plots/<slug>/plot.glb to inspect any live plot.",
+    "validator": "the submit API with dry:true IS the validator — same implementation as CI, plus feed/backlink checks the local tools cannot do",
+    "status": "GET /api/plots/<slug> — 404 = slug free; otherwise existence, live position, permalink",
     "uv_warning": "if you write glTF directly: UV v-origin is the IMAGE TOP (v=0 at top). Blender authoring flips v on export; do not copy bottom-origin math (1.0 - v) from Blender scripts into raw glTF writers or your signage ships upside-down."
   },
   "manifest_example": {

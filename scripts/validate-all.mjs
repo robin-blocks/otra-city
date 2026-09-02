@@ -3,7 +3,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { execSync } from 'node:child_process';
-import { validateIdentity, validateGlb, probeWalkability } from '../lib/validate-plot.mjs';
+import { validateIdentity, validateGlb, probeWalkability, probeSurfaces } from '../lib/validate-plot.mjs';
 
 const root = join(new URL('..', import.meta.url).pathname, 'public', 'plots');
 let failed = 0;
@@ -16,11 +16,14 @@ for (const slug of readdirSync(root)) {
   const id = validateIdentity(plot);
   const budgets = await validateGlb(glb, { requireDoor });
   const walk = await probeWalkability(glb, { door: requireDoor });
-  const ok = id.ok && budgets.ok && walk.ok;
+  // runs AFTER normalize-plots in CI: coincident faces are an ingest fix, so
+  // anything still reported here is a defect normalization could not resolve
+  const surf = await probeSurfaces(glb, { plot });
+  const ok = id.ok && budgets.ok && walk.ok && surf.ok;
   if (!ok) failed += 1;
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${slug}`);
   if (!ok) {
-    for (const c of [...id.checks, ...budgets.checks, ...walk.checks]) {
+    for (const c of [...id.checks, ...budgets.checks, ...walk.checks, ...surf.checks]) {
       if (!c.ok) console.log(`      FAIL ${c.name}: ${c.detail}`);
     }
   }

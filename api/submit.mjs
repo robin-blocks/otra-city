@@ -7,7 +7,7 @@
 //
 // Env: GITHUB_TOKEN (bot PAT with repo scope), GITHUB_REPO ("owner/name").
 // Without a token — or with { dry: true } — it validates and reports only.
-import { validateIdentity, validateGlb, probeWalkability, validateMediaDecl, SPEC } from '../lib/validate-plot.mjs';
+import { validateIdentity, validateGlb, probeWalkability, validateMediaDecl, probeSurfaces, SPEC } from '../lib/validate-plot.mjs';
 import { readFileSync } from 'node:fs';
 
 const TRUSTED = JSON.parse(readFileSync(new URL('../trusted.json', import.meta.url)));
@@ -248,6 +248,11 @@ export default async function handler(req, res) {
     result.budgets = await validateGlb(glb, { requireDoor });
     delete result.budgets.doc;
     result.walkability = await probeWalkability(glb, { door: requireDoor });
+    // Surface hygiene. Coincident faces are ADVISORY: ingest separates them on
+    // merge, so they never reach a visitor — reported so you can fix the source.
+    // Media UVs are not fixable at ingest (only you know what the quad framed),
+    // so a video mapped to an atlas cell is a rejection.
+    result.surfaces = await probeSurfaces(glb, { plot });
 
     const media = body.media || {};
     const mediaChecks = [];
@@ -272,12 +277,18 @@ export default async function handler(req, res) {
       result.github = await checkGithub(plot.slug);
     }
 
+    const uvCheck = result.surfaces.checks.find((c) => c.name === 'media uvs');
     const accepted = result.identity.ok && result.budgets.ok && result.walkability.ok &&
-      mediaOk && (result.feed ? result.feed.ok : true) && !!result.backlink?.ok &&
+      mediaOk && uvCheck.ok && (result.feed ? result.feed.ok : true) && !!result.backlink?.ok &&
       !!result.ownership?.ok && !!result.github?.ok;
     const lines = [];
     for (const section of ['identity', 'budgets', 'walkability', 'media']) {
       for (const c of result[section].checks) lines.push(`${c.ok ? 'PASS' : 'FAIL'}  ${c.name.padEnd(14)} ${c.detail}`);
+    }
+    for (const c of result.surfaces.checks) {
+      const advisory = c.name === 'coplanar faces';
+      lines.push(`${c.ok ? 'PASS' : advisory ? 'WARN' : 'FAIL'}  ${c.name.padEnd(14)} ${c.detail}` +
+        (c.ok || !advisory ? '' : ' [separated at ingest — fix your source to see it as you built it]'));
     }
     if (result.feed) lines.push(`${result.feed.ok ? 'PASS' : 'FAIL'}  live feed      ${result.feed.detail}`);
     if (result.backlink) lines.push(`${result.backlink.ok ? 'PASS' : 'FAIL'}  backlink       ${result.backlink.detail}`);
