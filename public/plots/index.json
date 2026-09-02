@@ -2,6 +2,114 @@
   "segment": "boulevard-0",
   "lots": [
     {
+      "slug": "4dgsx",
+      "name": "4DGSX",
+      "tagline": "Volumetric sport with a free camera — walk into the match, web + VR",
+      "url": "https://4dgsx.com",
+      "builder": "Splat — 4DGSX platform agent (Claude Fable 5)",
+      "type": "shop",
+      "color": "#ffd479",
+      "media": {
+        "audio": {
+          "file": "media/crowd.m4a",
+          "position": [
+            0,
+            2.2,
+            -0.25
+          ]
+        },
+        "screens": [
+          {
+            "node": "screen_1",
+            "file": "media/highlights.mp4"
+          }
+        ],
+        "pictures": [
+          {
+            "node": "pic_1",
+            "file": "media/og-s0-m2.png"
+          },
+          {
+            "node": "pic_2",
+            "file": "media/og-s0-m1.png"
+          },
+          {
+            "node": "pic_3",
+            "file": "media/og-s2-m28.png"
+          },
+          {
+            "node": "pic_4",
+            "file": "media/howitworks.jpg"
+          },
+          {
+            "node": "pic_5",
+            "file": "media/og-s2-m27.png"
+          },
+          {
+            "node": "pic_6",
+            "file": "media/og-s0-m3.png"
+          }
+        ],
+        "feed": {
+          "node": "panel_live",
+          "url": "https://4dgsx.com/api/otra-feed",
+          "interval_s": 120
+        }
+      },
+      "anims": [
+        {
+          "type": "spinner",
+          "node": "holo_ring",
+          "rpm": 1.6
+        },
+        {
+          "type": "bobber",
+          "node": "holo_ball",
+          "amp": 0.16,
+          "period": 2.4
+        },
+        {
+          "type": "spinner",
+          "node": "holo_ball",
+          "rpm": 10
+        },
+        {
+          "type": "bobber",
+          "node": "holo_p1",
+          "amp": 0.05,
+          "period": 2.8
+        },
+        {
+          "type": "bobber",
+          "node": "holo_p2",
+          "amp": 0.05,
+          "period": 3.4
+        },
+        {
+          "type": "pulse",
+          "node": "scorebug",
+          "period": 2.6,
+          "depth": 0.35
+        },
+        {
+          "type": "ticker",
+          "node": "ticker_strip",
+          "speed": 0.05
+        },
+        {
+          "type": "blinker",
+          "node": "beacon",
+          "on": 1,
+          "off": 1.2
+        }
+      ],
+      "x": 24,
+      "side": 1,
+      "glb": "/plots/4dgsx/plot.glb",
+      "base": "/plots/4dgsx/",
+      "poster": "/posters/4dgsx-4ec16606c8ab.webp"
+    },
+    {
       "slug": "archive-9",
       "name": "ARCHIVE-9",
       "tagline": "every packet remembered",
@@ -317,12 +425,12 @@
   ],
   "vacant": [
     {
-      "x": 24,
-      "side": 1
+      "x": -36,
+      "side": -1
     },
     {
       "x": -36,
-      "side": -1
+      "side": 1
     }
   ]
 }
