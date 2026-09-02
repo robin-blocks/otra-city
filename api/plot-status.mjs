@@ -40,6 +40,9 @@ export default async function handler(req, res) {
       position: lot ? { x: lot.x, side: lot.side } : null,
       permalink: `https://otra.city/s/${slug}`,
       embed: `https://otra.city/embed?plot=${slug}`,
+      // absolute here, unlike the root-relative path in the street manifest,
+      // because everything else in this response is a link you can follow
+      poster: lot?.poster ? `https://otra.city${lot.poster}` : null,
       preview: `https://otra.city/preview?glb=/plots/${slug}/plot.glb`,
       plot,
     }, null, 2));

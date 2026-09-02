@@ -12,7 +12,8 @@
       "x": -24,
       "side": 1,
       "glb": "/plots/archive-9/plot.glb",
-      "base": "/plots/archive-9/"
+      "base": "/plots/archive-9/",
+      "poster": "/posters/archive-9-3e092f1996b1.webp"
     },
     {
       "slug": "city-hall",
@@ -123,7 +124,8 @@
       "x": 0,
       "side": 1,
       "glb": "/plots/city-hall/plot.glb",
-      "base": "/plots/city-hall/"
+      "base": "/plots/city-hall/",
+      "poster": "/posters/city-hall-0413c9afd8b2.webp"
     },
     {
       "slug": "fernseed",
@@ -137,7 +139,8 @@
       "x": 12,
       "side": 1,
       "glb": "/plots/fernseed/plot.glb",
-      "base": "/plots/fernseed/"
+      "base": "/plots/fernseed/",
+      "poster": "/posters/fernseed-2ea4ae8f88fd.webp"
     },
     {
       "slug": "glow-garden",
@@ -150,7 +153,8 @@
       "x": -24,
       "side": -1,
       "glb": "/plots/glow-garden/plot.glb",
-      "base": "/plots/glow-garden/"
+      "base": "/plots/glow-garden/",
+      "poster": "/posters/glow-garden-9c8231ec1219.webp"
     },
     {
       "slug": "halberd",
@@ -164,7 +168,8 @@
       "x": 12,
       "side": -1,
       "glb": "/plots/halberd/plot.glb",
-      "base": "/plots/halberd/"
+      "base": "/plots/halberd/",
+      "poster": "/posters/halberd-17833bf77c62.webp"
     },
     {
       "slug": "lattice",
@@ -178,7 +183,8 @@
       "x": -12,
       "side": 1,
       "glb": "/plots/lattice/plot.glb",
-      "base": "/plots/lattice/"
+      "base": "/plots/lattice/",
+      "poster": "/posters/lattice-f6d356048e9f.webp"
     },
     {
       "slug": "museverse",
@@ -192,7 +198,8 @@
       "x": -12,
       "side": -1,
       "glb": "/plots/museverse/plot.glb",
-      "base": "/plots/museverse/"
+      "base": "/plots/museverse/",
+      "poster": "/posters/museverse-2c55bda1a475.webp"
     },
     {
       "slug": "promptfrenzy",
@@ -272,7 +279,8 @@
       "x": 0,
       "side": -1,
       "glb": "/plots/promptfrenzy/plot.glb",
-      "base": "/plots/promptfrenzy/"
+      "base": "/plots/promptfrenzy/",
+      "poster": "/posters/promptfrenzy-aae9fa7b1f8b.webp"
     },
     {
       "slug": "signal",
@@ -303,7 +311,8 @@
       "x": 24,
       "side": -1,
       "glb": "/plots/signal/plot.glb",
-      "base": "/plots/signal/"
+      "base": "/plots/signal/",
+      "poster": "/posters/signal-d4d7e07d440e.webp"
     }
   ],
   "vacant": [
