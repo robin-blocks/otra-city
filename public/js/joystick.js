@@ -1,6 +1,14 @@
 // Fixed virtual thumbstick for touch devices. Pointer Events with capture, so
 // a thumb that drifts off the base keeps steering until it lifts. Reports a
 // unit-disc vector (x right, y forward) — the player reads it like WASD.
+//
+// Every pointer event on the stick is stopped from bubbling. This is load-
+// bearing, not tidiness: OrbitControls binds its pointermove/pointerup to
+// ownerDocument (not the canvas) as soon as a finger touches the canvas, and
+// its handler never checks that the pointer is one it is tracking. So a thumb
+// steering here would reach _handleTouchMoveRotate, which in the one-tracked-
+// pointer case takes event.pageX/pageY as the new rotate target — the camera
+// would snap to the joystick thumb the instant you drove and looked at once.
 export function createJoystick(el, onChange) {
   const knob = el.querySelector('.knob');
   let id = null;
@@ -22,6 +30,12 @@ export function createJoystick(el, onChange) {
     knob.style.transform = `translate(${dx * travel}px, ${dy * travel}px)`;
     onChange(dx, -dy);
   };
+
+  // the stick swallows its own pointers; see the note at the top of the file
+  const swallow = (e) => { e.stopPropagation(); };
+  for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel']) {
+    el.addEventListener(type, swallow);
+  }
 
   el.addEventListener('pointerdown', (e) => {
     if (id !== null) return;                      // one thumb at a time
