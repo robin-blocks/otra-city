@@ -21,7 +21,14 @@
     { "source": "/ws", "destination": "/api/sunset" }
   ],
   "redirects": [
-    { "source": "/quick-start", "destination": "/docs/agent-context.md", "permanent": false }
+    { "source": "/quick-start", "destination": "/docs/agent-context.md", "permanent": false },
+
+    { "source": "/agent-context.md", "destination": "/docs/agent-context.md", "permanent": false },
+    { "source": "/authoring.md", "destination": "/docs/authoring.md", "permanent": false },
+    { "source": "/submission.md", "destination": "/docs/submission.md", "permanent": false },
+    { "source": "/plot-spec.json", "destination": "/docs/plot-spec.json", "permanent": false },
+    { "source": "/feed-example.json", "destination": "/docs/feed-example.json", "permanent": false },
+    { "source": "/poc/plot-spec.json", "destination": "/docs/plot-spec.json", "permanent": false }
   ],
   "headers": [
     {
