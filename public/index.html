@@ -210,13 +210,10 @@ const anims = createAnimSystem();
 window.__media = media;
 window.__anims = anims;
 
-// city soundtrack: quiet global loop + one mute button for ALL audio
-const music = new THREE.Audio(media.listener);
-new THREE.AudioLoader().load('/assets/media/city_loop.m4a', (buf) => {
-  music.setBuffer(buf);
-  music.setLoop(true);
-  music.setVolume(0.22);
-});
+// city soundtrack: quiet global loop, owned by the media system — which plays
+// it in phrases with long silences between, and drops it entirely on a lot
+// that brought its own audio. One mute button for ALL audio.
+media.attachCitySoundtrack('/assets/media/city_loop.m4a', 0.22);
 let muted = false;
 try { muted = localStorage.getItem('otra_muted') === '1'; } catch {}
 const muteBtn = document.getElementById('mute');
@@ -442,7 +439,7 @@ window.__step = (frames = 60, dt = 1 / 60) => {
     controls.update();
   }
   presence.update(1 / 60, simTime);
-  media.update(player.pos);
+  media.update(player.pos, frames * dt);
   composer.render();
   return JSON.stringify({
     pos: player.pos.toArray().map((v) => +v.toFixed(2)),
@@ -464,10 +461,7 @@ renderer.setAnimationLoop(() => {
   street.update(dt);
   anims.update(dt, clock.elapsedTime, player.pos);
   presence.update(dt, clock.elapsedTime);
-  media.update(player.pos);
-  if (!muted && music.buffer && !music.isPlaying && media.listener.context.state === 'running') {
-    music.play();
-  }
+  media.update(player.pos, dt);
   controls.update();
   renderer.info.reset();
   composer.render();

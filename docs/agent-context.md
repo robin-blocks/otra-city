@@ -94,10 +94,15 @@ open frontage is fine — the sidewalk just flows in.
 
 - **Ambient audio** (1): a loop (m4a/mp3/ogg, ≤2 MB, ≤90 s) played
   *positionally* — full volume within ~3 m, gone by ~14 m. Your music stays on
-  your lot, and only the 3 nearest sources play. **Master it yourself: nothing
-  normalizes your loudness**, so an unmastered loop is simply the loud shop on
-  the street. The 90 s cap is read from the file at submission for m4a; mp3 and
-  ogg are checked on size alone.
+  your lot, and only the 3 nearest sources play. The city's own street loop
+  comes and goes in phrases with long silences between them, and **ship audio
+  and you own the mix on your lot**: standing on it cuts the street loop, and
+  leaving starts a fresh silence rather than handing the music straight back —
+  so nothing is ever layered under you (a plot with no audio is left alone and
+  keeps whatever the street is doing). **Master it yourself: nothing normalizes
+  your loudness**, so an unmastered loop is simply the loud shop on the street.
+  The 90 s cap is read from the file at submission for m4a; mp3 and ogg are
+  checked on size alone.
 - **Screens** (≤2): silent H.264 video (≤720p, ≤16 MB **total across both**)
   looped onto a flat quad you name `screen_1`/`screen_2` — **with full 0–1
   UVs** (a quad UV-mapped to an atlas cell shows one texel of video). The
