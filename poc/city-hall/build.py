@@ -468,7 +468,10 @@ for ang in range(0, 360, 45):
     while t <= 3.35:
         inlay_cells.add((snap(CX + t * math.cos(a), 0.125), snap(CY + t * math.sin(a), 0.125)))
         t += 0.05
+MEDALLION = (0.0, -2.35, 1.02)   # centre + clearance radius on the podium
 for (x, y) in inlay_cells:
+    if math.hypot(x - MEDALLION[0], y - MEDALLION[1]) < MEDALLION[2]:
+        continue
     if squircle(x - CX, y - CY, 4.15) and not squircle(x - CX, y - CY, 1.95):
         INLAY.box((x - 0.0625, y - 0.0625, Z_POD), (x + 0.0625, y + 0.0625, Z_POD + 0.02), "e_cyan_dim", skip=("bottom",))
 
@@ -482,7 +485,7 @@ for sx in (-1, 1):
     S.box((sx * 1.35 - 0.075, GY - 0.08, Z_PLAZA), (sx * 1.35 + 0.075, GY + 0.08, 3.0), "steel_dk")
     S.box((sx * 1.35 - 0.11, GY - 0.11, 3.0), (sx * 1.35 + 0.11, GY + 0.11, 3.1), "e_cyan")
 S.box((-1.5, GY - 0.08, 2.5), (1.5, GY + 0.22, 2.8), "trim")            # lintel
-S.box((-1.5, GY - 0.081, 2.5), (1.5, GY - 0.06, 2.53), "e_gold_soft")   # lintel light line
+S.box((-1.5, GY - 0.09, 2.47), (1.5, GY - 0.06, 2.5), "e_gold_soft")   # lintel light line, under the lintel
 # marquee (pic_1): 16:1 quad on the lintel front, full UVs, ticker anim scrolls it
 TICK = MB("pic_1", [mat_art])
 # 4096x128 tile (32:1) on a 2.88 x 0.24 m band: show 0.375 of the tile at a time, the ticker scrolls the rest
@@ -493,8 +496,8 @@ TICK.finish()
 S.box((-2.1, -4.85, 2.85), (2.1, -4.75, 3.75), "trim")
 for sx in (-1, 1):
     S.box((sx * 1.4 - 0.05, -4.75, 2.62), (sx * 1.4 + 0.05, GY - 0.08, 2.85), "steel_dk")
-S.box((-2.1, -4.86, 2.85), (2.1, -4.74, 2.9), "e_cyan_soft")
-S.box((-2.1, -4.86, 3.7), (2.1, -4.74, 3.75), "e_cyan_soft")
+S.box((-2.1, -4.86, 2.80), (2.1, -4.74, 2.85), "e_cyan_soft")   # below the backer, never coplanar with it
+S.box((-2.1, -4.86, 3.75), (2.1, -4.74, 3.80), "e_cyan_soft")   # above it
 A.face([(-2.0, -4.855, 2.9), (2.0, -4.855, 2.9), (2.0, -4.855, 3.7), (-2.0, -4.855, 3.7)], region_uvs("sign_main"))
 A.face([(2.0, -4.745, 2.9), (-2.0, -4.745, 2.9), (-2.0, -4.745, 3.7), (2.0, -4.745, 3.7)], region_uvs("sign_main"))
 # cornerstone plaques on the front pylons' inner faces + spec plaque by the door
@@ -535,12 +538,12 @@ for suffix, xa, xb in (("L", -1.25, 0.0), ("R", 0.0, 1.25)):
 # ------------------------------------------------------- gallery + screens
 def bay(ang_deg, w, h, zc, name, mats, uvs):
     a = math.radians(ang_deg)
-    r_back = 3.62
+    r_back = 3.54                      # backer spans r 3.36..3.72: through the stepped drum face
     cx, cy = CX + r_back * math.cos(a), CY + r_back * math.sin(a)
-    S.rbox(cx, cy, zc - h / 2 - 0.08, zc + h / 2 + 0.08, w + 0.16, 0.12, a, "trim")
-    S.rbox(cx, cy, zc + h / 2 + 0.08, zc + h / 2 + 0.12, w + 0.16, 0.14, a, "e_cyan_soft")
+    S.rbox(cx, cy, zc - h / 2 - 0.08, zc + h / 2 + 0.08, w + 0.16, 0.36, a, "trim")
+    S.rbox(cx - 0.11 * math.cos(a), cy - 0.11 * math.sin(a), zc + h / 2 + 0.08, zc + h / 2 + 0.12, w + 0.16, 0.14, a, "e_cyan_soft")
     ob = MB(name, mats)
-    ob.rquad(cx, cy, zc - h / 2, zc + h / 2, w, a, uvs, offset=-0.065)
+    ob.rquad(cx, cy, zc - h / 2, zc + h / 2, w, a, uvs, offset=-0.185)   # r = 3.355, clear of every drum corner
     ob.finish()
 
 
@@ -549,16 +552,18 @@ for i, ang in enumerate((22.5, 67.5, 112.5, 157.5)):
 bay(337.5, 1.6, 0.9, 2.0, "screen_1", [mat_art], FULL_UVS)
 bay(202.5, 1.6, 0.9, 2.0, "screen_2", [mat_art], FULL_UVS)
 # hall of builders on the plinth's back face
-S.box((-0.68, CY + 1.9 - 0.02, 0.78), (0.68, CY + 1.9 + 0.03, 1.72), "trim")
+PL_BACK = 2.75    # the plinth's back voxel face (squircle r=1.9 on the 0.25 grid)
+S.box((-0.68, PL_BACK, 0.78), (0.68, PL_BACK + 0.05, 1.72), "trim")
 P6 = MB("pic_6", [mat_art])
-yb = CY + 1.9 + 0.035
+yb = PL_BACK + 0.055
 P6.face([(0.6, yb, 0.8), (-0.6, yb, 0.8), (-0.6, yb, 1.7), (0.6, yb, 1.7)], FULL_UVS)
 P6.finish()
 # live city ledger on the plinth's front face
-yf = CY - 1.9
-S.box((-0.62, yf - 0.03, 0.8), (0.62, yf + 0.02, 1.72), "trim")
+PL_FRONT = -1.25  # the plinth's front voxel face
+S.box((-0.62, PL_FRONT - 0.05, 0.8), (0.62, PL_FRONT, 1.72), "trim")
 PL = MB("panel_live", [mat_art])
-PL.face([(-0.5333, yf - 0.035, 0.85), (0.5333, yf - 0.035, 0.85), (0.5333, yf - 0.035, 1.65), (-0.5333, yf - 0.035, 1.65)],
+yf = PL_FRONT - 0.055
+PL.face([(-0.5333, yf, 0.85), (0.5333, yf, 0.85), (0.5333, yf, 1.65), (-0.5333, yf, 1.65)],
         region_uvs("panel_live"))
 PL.finish()
 
@@ -765,6 +770,14 @@ if DO_RENDER:
         "interior": ((0.0, -4.1, 2.3), (0.0, 2.0, 2.0)),
         "high": ((9.5, -9.5, 8.0), (0.0, 0.75, 2.2)),
         "spawn": ((20.0, -11.5, 2.4), (1.0, 0.5, 2.6)),
+        # interior close-ups (QA)
+        "bay_pic2": ((CX + 2.3 * math.cos(math.radians(22.5)), CY + 2.3 * math.sin(math.radians(22.5)), 1.9),
+                     (CX + 3.55 * math.cos(math.radians(22.5)), CY + 3.55 * math.sin(math.radians(22.5)), 1.95)),
+        "bay_screen1": ((CX + 2.3 * math.cos(math.radians(337.5)), CY + 2.3 * math.sin(math.radians(337.5)), 2.0),
+                        (CX + 3.55 * math.cos(math.radians(337.5)), CY + 3.55 * math.sin(math.radians(337.5)), 2.0)),
+        "ledger": ((0.3, -3.3, 1.6), (0.0, -1.25, 1.25)),
+        "medallion": ((0.0, -4.2, 2.6), (0.0, -2.35, 0.75)),
+        "banner_under": ((0.6, -6.2, 0.8), (0.0, -4.8, 2.9)),
     }
     for fname, (loc, tgt) in shots.items():
         if SHOTS and fname not in SHOTS:
@@ -775,7 +788,7 @@ if DO_RENDER:
         bpy.ops.render.render(write_still=True)
         print("rendered", fname)
 
-    if globals().get("OTRA_PORTRAIT", True):
+    if globals().get("OTRA_PORTRAIT", SHOTS is None):
         scene.render.resolution_x, scene.render.resolution_y = 1024, 768
         cam.data.lens = 28
         cam.location = (7.6, -13.2, 3.0)
