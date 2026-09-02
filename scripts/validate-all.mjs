@@ -3,7 +3,9 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { execSync } from 'node:child_process';
-import { validateIdentity, validateGlb, probeWalkability, probeSurfaces, probeMediaFiles } from '../lib/validate-plot.mjs';
+import { validateIdentity, validateGlb, probeWalkability, probeSurfaces } from '../lib/validate-plot.mjs';
+// on its own line: the line above is edited by other work in flight
+import { probeMediaFiles } from '../lib/validate-plot.mjs';
 
 const root = join(new URL('..', import.meta.url).pathname, 'public', 'plots');
 let failed = 0;
