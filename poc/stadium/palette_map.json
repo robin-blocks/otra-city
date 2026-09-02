@@ -1,0 +1,628 @@
+{
+ "grid": 16,
+ "cell_px": 16,
+ "size": 256,
+ "colors": {
+  "deck": {
+   "cell": [
+    0,
+    0
+   ],
+   "base": "#17161c",
+   "alpha": 255,
+   "emis": null
+  },
+  "apron": {
+   "cell": [
+    1,
+    0
+   ],
+   "base": "#1e2a22",
+   "alpha": 255,
+   "emis": null
+  },
+  "apron_lt": {
+   "cell": [
+    2,
+    0
+   ],
+   "base": "#24352a",
+   "alpha": 255,
+   "emis": null
+  },
+  "pitch": {
+   "cell": [
+    3,
+    0
+   ],
+   "base": "#3f9451",
+   "alpha": 255,
+   "emis": null
+  },
+  "pitch_lt": {
+   "cell": [
+    4,
+    0
+   ],
+   "base": "#358447",
+   "alpha": 255,
+   "emis": null
+  },
+  "concourse": {
+   "cell": [
+    5,
+    0
+   ],
+   "base": "#24222c",
+   "alpha": 255,
+   "emis": null
+  },
+  "terrace": {
+   "cell": [
+    6,
+    0
+   ],
+   "base": "#2a2742",
+   "alpha": 255,
+   "emis": null
+  },
+  "terrace_lt": {
+   "cell": [
+    7,
+    0
+   ],
+   "base": "#343056",
+   "alpha": 255,
+   "emis": null
+  },
+  "riser": {
+   "cell": [
+    8,
+    0
+   ],
+   "base": "#1f1c31",
+   "alpha": 255,
+   "emis": null
+  },
+  "riser_dk": {
+   "cell": [
+    9,
+    0
+   ],
+   "base": "#171428",
+   "alpha": 255,
+   "emis": null
+  },
+  "seat_a": {
+   "cell": [
+    10,
+    0
+   ],
+   "base": "#2d7fd6",
+   "alpha": 255,
+   "emis": null
+  },
+  "seat_b": {
+   "cell": [
+    11,
+    0
+   ],
+   "base": "#d63a6e",
+   "alpha": 255,
+   "emis": null
+  },
+  "seat_c": {
+   "cell": [
+    12,
+    0
+   ],
+   "base": "#e0b43a",
+   "alpha": 255,
+   "emis": null
+  },
+  "seat_d": {
+   "cell": [
+    13,
+    0
+   ],
+   "base": "#3fb37a",
+   "alpha": 255,
+   "emis": null
+  },
+  "seat_dk": {
+   "cell": [
+    14,
+    0
+   ],
+   "base": "#1b1a2a",
+   "alpha": 255,
+   "emis": null
+  },
+  "pier": {
+   "cell": [
+    15,
+    0
+   ],
+   "base": "#2c2a48",
+   "alpha": 255,
+   "emis": null
+  },
+  "pier_dk": {
+   "cell": [
+    0,
+    1
+   ],
+   "base": "#1d1b30",
+   "alpha": 255,
+   "emis": null
+  },
+  "wall": {
+   "cell": [
+    1,
+    1
+   ],
+   "base": "#232037",
+   "alpha": 255,
+   "emis": null
+  },
+  "wall_lt": {
+   "cell": [
+    2,
+    1
+   ],
+   "base": "#2b2848",
+   "alpha": 255,
+   "emis": null
+  },
+  "fascia": {
+   "cell": [
+    3,
+    1
+   ],
+   "base": "#17152a",
+   "alpha": 255,
+   "emis": null
+  },
+  "fascia_lt": {
+   "cell": [
+    4,
+    1
+   ],
+   "base": "#221f38",
+   "alpha": 255,
+   "emis": null
+  },
+  "roof": {
+   "cell": [
+    5,
+    1
+   ],
+   "base": "#1d1a30",
+   "alpha": 255,
+   "emis": null
+  },
+  "steel": {
+   "cell": [
+    6,
+    1
+   ],
+   "base": "#646a80",
+   "alpha": 255,
+   "emis": null
+  },
+  "steel_dk": {
+   "cell": [
+    7,
+    1
+   ],
+   "base": "#3c4152",
+   "alpha": 255,
+   "emis": null
+  },
+  "rail": {
+   "cell": [
+    8,
+    1
+   ],
+   "base": "#8b90a8",
+   "alpha": 255,
+   "emis": null
+  },
+  "mast": {
+   "cell": [
+    9,
+    1
+   ],
+   "base": "#3c4152",
+   "alpha": 255,
+   "emis": null
+  },
+  "mast_dk": {
+   "cell": [
+    10,
+    1
+   ],
+   "base": "#262a38",
+   "alpha": 255,
+   "emis": null
+  },
+  "board": {
+   "cell": [
+    11,
+    1
+   ],
+   "base": "#0d0a14",
+   "alpha": 255,
+   "emis": null
+  },
+  "board_lt": {
+   "cell": [
+    12,
+    1
+   ],
+   "base": "#14101f",
+   "alpha": 255,
+   "emis": null
+  },
+  "white": {
+   "cell": [
+    13,
+    1
+   ],
+   "base": "#e9edf6",
+   "alpha": 255,
+   "emis": null
+  },
+  "gold": {
+   "cell": [
+    14,
+    1
+   ],
+   "base": "#c9a341",
+   "alpha": 255,
+   "emis": null
+  },
+  "gold_dk": {
+   "cell": [
+    15,
+    1
+   ],
+   "base": "#6b5420",
+   "alpha": 255,
+   "emis": null
+  },
+  "ink": {
+   "cell": [
+    0,
+    2
+   ],
+   "base": "#080611",
+   "alpha": 255,
+   "emis": null
+  },
+  "step": {
+   "cell": [
+    1,
+    2
+   ],
+   "base": "#1f1c31",
+   "alpha": 255,
+   "emis": null
+  },
+  "turnstile": {
+   "cell": [
+    2,
+    2
+   ],
+   "base": "#3a3860",
+   "alpha": 255,
+   "emis": null
+  },
+  "e_cyan": {
+   "cell": [
+    3,
+    2
+   ],
+   "base": "#0a2224",
+   "alpha": 255,
+   "emis": "#47f2ff"
+  },
+  "e_cyan_soft": {
+   "cell": [
+    4,
+    2
+   ],
+   "base": "#0a2224",
+   "alpha": 255,
+   "emis": "#32a9b2"
+  },
+  "e_cyan_dim": {
+   "cell": [
+    5,
+    2
+   ],
+   "base": "#0a2224",
+   "alpha": 255,
+   "emis": "#1e666b"
+  },
+  "e_magenta": {
+   "cell": [
+    6,
+    2
+   ],
+   "base": "#240615",
+   "alpha": 255,
+   "emis": "#ff2d95"
+  },
+  "e_magenta_soft": {
+   "cell": [
+    7,
+    2
+   ],
+   "base": "#240615",
+   "alpha": 255,
+   "emis": "#b21f68"
+  },
+  "e_magenta_dim": {
+   "cell": [
+    8,
+    2
+   ],
+   "base": "#240615",
+   "alpha": 255,
+   "emis": "#6b133f"
+  },
+  "e_gold": {
+   "cell": [
+    9,
+    2
+   ],
+   "base": "#241e11",
+   "alpha": 255,
+   "emis": "#ffd479"
+  },
+  "e_gold_soft": {
+   "cell": [
+    10,
+    2
+   ],
+   "base": "#241e11",
+   "alpha": 255,
+   "emis": "#b29455"
+  },
+  "e_gold_dim": {
+   "cell": [
+    11,
+    2
+   ],
+   "base": "#241e11",
+   "alpha": 255,
+   "emis": "#6b5933"
+  },
+  "e_white": {
+   "cell": [
+    12,
+    2
+   ],
+   "base": "#242424",
+   "alpha": 255,
+   "emis": "#ffffff"
+  },
+  "e_white_soft": {
+   "cell": [
+    13,
+    2
+   ],
+   "base": "#242424",
+   "alpha": 255,
+   "emis": "#b2b2b2"
+  },
+  "e_white_dim": {
+   "cell": [
+    14,
+    2
+   ],
+   "base": "#242424",
+   "alpha": 255,
+   "emis": "#6b6b6b"
+  },
+  "e_violet": {
+   "cell": [
+    15,
+    2
+   ],
+   "base": "#110d24",
+   "alpha": 255,
+   "emis": "#7c5cff"
+  },
+  "e_violet_soft": {
+   "cell": [
+    0,
+    3
+   ],
+   "base": "#110d24",
+   "alpha": 255,
+   "emis": "#5740b2"
+  },
+  "e_violet_dim": {
+   "cell": [
+    1,
+    3
+   ],
+   "base": "#110d24",
+   "alpha": 255,
+   "emis": "#34276b"
+  },
+  "e_red": {
+   "cell": [
+    2,
+    3
+   ],
+   "base": "#240807",
+   "alpha": 255,
+   "emis": "#ff3b30"
+  },
+  "e_red_soft": {
+   "cell": [
+    3,
+    3
+   ],
+   "base": "#240807",
+   "alpha": 255,
+   "emis": "#b22922"
+  },
+  "e_red_dim": {
+   "cell": [
+    4,
+    3
+   ],
+   "base": "#240807",
+   "alpha": 255,
+   "emis": "#6b1914"
+  },
+  "e_green": {
+   "cell": [
+    5,
+    3
+   ],
+   "base": "#122418",
+   "alpha": 255,
+   "emis": "#7dffa8"
+  },
+  "e_green_soft": {
+   "cell": [
+    6,
+    3
+   ],
+   "base": "#122418",
+   "alpha": 255,
+   "emis": "#58b276"
+  },
+  "e_green_dim": {
+   "cell": [
+    7,
+    3
+   ],
+   "base": "#122418",
+   "alpha": 255,
+   "emis": "#346b47"
+  },
+  "e_warm": {
+   "cell": [
+    8,
+    3
+   ],
+   "base": "#241b12",
+   "alpha": 255,
+   "emis": "#ffbf80"
+  },
+  "e_warm_soft": {
+   "cell": [
+    9,
+    3
+   ],
+   "base": "#241b12",
+   "alpha": 255,
+   "emis": "#b2865a"
+  },
+  "e_warm_dim": {
+   "cell": [
+    10,
+    3
+   ],
+   "base": "#241b12",
+   "alpha": 255,
+   "emis": "#6b5036"
+  },
+  "e_blue": {
+   "cell": [
+    11,
+    3
+   ],
+   "base": "#091124",
+   "alpha": 255,
+   "emis": "#3d7bff"
+  },
+  "e_blue_soft": {
+   "cell": [
+    12,
+    3
+   ],
+   "base": "#091124",
+   "alpha": 255,
+   "emis": "#2b56b2"
+  },
+  "e_blue_dim": {
+   "cell": [
+    13,
+    3
+   ],
+   "base": "#091124",
+   "alpha": 255,
+   "emis": "#1a346b"
+  },
+  "e_flood": {
+   "cell": [
+    14,
+    3
+   ],
+   "base": "#222324",
+   "alpha": 255,
+   "emis": "#f4f7ff"
+  },
+  "e_flood_soft": {
+   "cell": [
+    15,
+    3
+   ],
+   "base": "#222324",
+   "alpha": 255,
+   "emis": "#abadb2"
+  },
+  "e_flood_dim": {
+   "cell": [
+    0,
+    4
+   ],
+   "base": "#222324",
+   "alpha": 255,
+   "emis": "#66686b"
+  },
+  "glass": {
+   "cell": [
+    1,
+    4
+   ],
+   "base": "#a6e6ff",
+   "alpha": 42,
+   "emis": "#123a44"
+  },
+  "glass_gate": {
+   "cell": [
+    2,
+    4
+   ],
+   "base": "#47f2ff",
+   "alpha": 76,
+   "emis": "#1a5c66"
+  },
+  "beam": {
+   "cell": [
+    3,
+    4
+   ],
+   "base": "#f4f7ff",
+   "alpha": 26,
+   "emis": "#8fa0c8"
+  },
+  "holo_cyan": {
+   "cell": [
+    4,
+    4
+   ],
+   "base": "#47f2ff",
+   "alpha": 140,
+   "emis": "#32a9b3"
+  }
+ }
+}

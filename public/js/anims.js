@@ -49,7 +49,7 @@ export function createAnimSystem() {
         console.warn('anim node missing:', a.node);
         continue;
       }
-      const it = { type: a.type, node, origin, base: node.position.clone() };
+      const it = { type: a.type, node, origin, base: node.position.clone(), container };
       if (a.type === 'spinner') {
         const rpm = THREE.MathUtils.clamp(a.rpm ?? 3, -CAPS.spinner.maxRpm, CAPS.spinner.maxRpm);
         it.rate = (rpm / 60) * Math.PI * 2;
@@ -97,5 +97,10 @@ export function createAnimSystem() {
     }
   }
 
-  return { attach, update, get count() { return items.length; } };
+  // a venue that unloads takes its animations with it
+  function detach(container) {
+    for (let i = items.length - 1; i >= 0; i--) if (items[i].container === container) items.splice(i, 1);
+  }
+
+  return { attach, detach, update, get count() { return items.length; } };
 }

@@ -1,0 +1,334 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "otra.city venue manifest v0.1",
+  "description": "A venue is a city-owned large lot (stadium, park, market...) streamed by distance. Positions are venue-local metres, Y-up, until the client applies `placement`. See docs/venues/ARCHITECTURE.md.",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "kind",
+    "placement",
+    "footprint",
+    "tiers",
+    "assets",
+    "spawn",
+    "cameras",
+    "budgets"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,31}$"
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 40
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "stadium",
+        "park",
+        "market",
+        "museum",
+        "plaza",
+        "other"
+      ]
+    },
+    "tagline": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "url": {
+      "type": "string"
+    },
+    "route": {
+      "type": "string",
+      "pattern": "^/[a-z][a-z0-9-]*$",
+      "description": "permalink path served by index.html, e.g. /stadium"
+    },
+    "placement": {
+      "type": "object",
+      "required": [
+        "x",
+        "z"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        },
+        "yaw": {
+          "type": "number"
+        }
+      }
+    },
+    "footprint": {
+      "type": "object",
+      "required": [
+        "min",
+        "max"
+      ],
+      "properties": {
+        "min": {
+          "$ref": "#/definitions/xz"
+        },
+        "max": {
+          "$ref": "#/definitions/xz"
+        },
+        "height": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 80
+        }
+      }
+    },
+    "tiers": {
+      "type": "object",
+      "required": [
+        "near_m",
+        "inside_margin_m",
+        "hysteresis_m",
+        "unload_after_s"
+      ],
+      "properties": {
+        "near_m": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 200
+        },
+        "inside_margin_m": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 50
+        },
+        "hysteresis_m": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "unload_after_s": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 600
+        }
+      }
+    },
+    "assets": {
+      "type": "object",
+      "required": [
+        "near"
+      ],
+      "properties": {
+        "far": {
+          "type": "string"
+        },
+        "near": {
+          "type": "string"
+        }
+      }
+    },
+    "collision_prefix": {
+      "type": "string"
+    },
+    "lights": {
+      "type": "object",
+      "properties": {
+        "cap": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 50000,
+          "description": "client-side cap on the sum of normalised light intensities; a 10 m plot gets 30, a floodlit bowl needs thousands because its lights sit 25 m from what they light"
+        }
+      }
+    },
+    "spawn": {
+      "type": "object",
+      "required": [
+        "x",
+        "z",
+        "yaw"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        },
+        "yaw": {
+          "type": "number"
+        }
+      }
+    },
+    "gates": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "left",
+          "right",
+          "at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "left": {
+            "type": "string"
+          },
+          "right": {
+            "type": "string"
+          },
+          "at": {
+            "$ref": "#/definitions/xyz"
+          },
+          "slide_m": {
+            "type": "number",
+            "minimum": 0.5,
+            "maximum": 4
+          },
+          "open_m": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "close_m": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 12
+          }
+        }
+      }
+    },
+    "anims": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "required": [
+          "type",
+          "node"
+        ]
+      }
+    },
+    "audio_zone": {
+      "type": "object",
+      "required": [
+        "min",
+        "max"
+      ],
+      "properties": {
+        "min": {
+          "$ref": "#/definitions/xz"
+        },
+        "max": {
+          "$ref": "#/definitions/xz"
+        }
+      }
+    },
+    "seats": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/xyz"
+      }
+    },
+    "cameras": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": {
+          "$ref": "#/definitions/xyz"
+        }
+      }
+    },
+    "modules": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "required": [
+        "glb_bytes",
+        "tris",
+        "materials",
+        "meshes",
+        "texture_px"
+      ],
+      "properties": {
+        "glb_bytes": {
+          "type": "number",
+          "minimum": 1
+        },
+        "tris": {
+          "type": "number",
+          "minimum": 1
+        },
+        "materials": {
+          "type": "number",
+          "minimum": 1
+        },
+        "meshes": {
+          "type": "number",
+          "minimum": 1
+        },
+        "texture_px": {
+          "type": "number",
+          "minimum": 64
+        },
+        "lights": {
+          "type": "number",
+          "minimum": 0
+        },
+        "far_tris": {
+          "type": "number",
+          "minimum": 1
+        },
+        "far_bytes": {
+          "type": "number",
+          "minimum": 1
+        }
+      }
+    },
+    "capacity": {
+      "type": "number",
+      "minimum": 0,
+      "description": "minimum number of seat positions the venue must offer (checked against seats[])"
+    }
+  },
+  "definitions": {
+    "xz": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "number"
+      }
+    },
+    "xyz": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "number"
+      }
+    }
+  }
+}

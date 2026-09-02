@@ -213,6 +213,11 @@ export function createMediaSystem(camera) {
   let phase = 'play';  // 'play' | 'quiet'
   let phaseLeft = 0;   // seconds until this phase ends
   let onLot = false;
+  // Quiet zones: world boxes where a venue owns the mix (the stadium bowl
+  // during a match). Same ducking and hysteresis as standing on a lot that
+  // brought its own audio; venues.js adds and removes them by tier.
+  const quietZones = new Map();
+  const muteSubs = new Set();
 
   const rand = ([a, b]) => a + Math.random() * (b - a);
 
@@ -242,10 +247,13 @@ export function createMediaSystem(camera) {
     if (!music) return;
     // hysteresis: the line you cross to duck sits further in than the one you
     // cross to come back, so a doorway can't flip it every frame
-    const half = LOT_HALF + (onLot ? DUCK_MARGIN : -DUCK_MARGIN);
+    const margin = onLot ? DUCK_MARGIN : -DUCK_MARGIN;
+    const half = LOT_HALF + margin;
     const nowOnLot = audios.some((a) => a.sound.buffer
       && Math.abs(playerPos.x - a.lotPos.x) <= half
-      && Math.abs(playerPos.z - a.lotPos.z) <= half);
+      && Math.abs(playerPos.z - a.lotPos.z) <= half)
+      || [...quietZones.values()].some((z) => playerPos.x >= z.min[0] - margin && playerPos.x <= z.max[0] + margin
+        && playerPos.z >= z.min[1] - margin && playerPos.z <= z.max[1] + margin);
     if (onLot && !nowOnLot) {
       phase = 'quiet';
       phaseLeft = rand(CITY_QUIET_S);
@@ -298,7 +306,15 @@ export function createMediaSystem(camera) {
     attachCitySoundtrack,
     update,
     listener,
-    setMuted(v) { muted = v; listener.setMasterVolume(v ? 0 : 1); },
+    setMuted(v) {
+      muted = v;
+      listener.setMasterVolume(v ? 0 : 1);
+      for (const fn of muteSubs) { try { fn(v); } catch { /* a subscriber must not break the mute */ } }
+    },
+    get muted() { return muted; },
+    subscribeMute(fn) { muteSubs.add(fn); return () => muteSubs.delete(fn); },
+    addQuietZone(id, box) { quietZones.set(id, box); },
+    removeQuietZone(id) { quietZones.delete(id); },
     get state() {
       return {
         unlocked,
@@ -312,6 +328,7 @@ export function createMediaSystem(camera) {
             phase,
             nextIn: +phaseLeft.toFixed(1),
             onLot,
+            quietZones: quietZones.size,
           }
           : null,
         screens: screens.map((s) => ({ ready: s.video.readyState, playing: !s.video.paused, t: +s.video.currentTime.toFixed(2) })),

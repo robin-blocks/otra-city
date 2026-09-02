@@ -139,6 +139,7 @@
     <div id="stats">loading…</div>
     <div class="controls"><span class="kbd"><span class="keys"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span> or arrows to walk · <span class="key">Shift</span> to run · drag to orbit · scroll to zoom</span><span class="touch">stick to walk (push to the rim to run) · drag to look · pinch to zoom</span></div>
     <div class="dim meta"><span class="kbd">doors are automatic · click an info board, then the pill, to visit a project ·</span><span class="touch">doors are automatic · tap an info board, then the pill, to visit a project ·</span>
+      <a href="/stadium">stadium</a> ·
       <a href="https://github.com/robin-blocks/otra-city" target="_blank" rel="noopener">github ↗</a></div>
   </div>
   <a id="outlink" href="https://otra.city" target="_blank" rel="noopener">otra.city ↗</a>
@@ -170,6 +171,10 @@ import { loadStreet, FRONT_LINE } from '/js/street.js';
 import { createMediaSystem } from '/js/media.js';
 import { createAnimSystem } from '/js/anims.js';
 import { createPresence } from '/js/presence.js';
+import { loadWorld } from '/js/world.js';
+import { buildRoads } from '/js/roads.js';
+import { createVenues } from '/js/venues.js';
+import { createDoorSystem } from '/js/doors.js';
 
 const params = new URLSearchParams(location.search);
 // embed mode: /embed?plot=slug (the documented form) or any ?embed=1
@@ -310,26 +315,38 @@ renderer.domElement.addEventListener('pointerdown', (e) => {
   else dismiss();
 });
 
-const doorCtrls = [];
+const doors = createDoorSystem();
+window.__doors = doors;
 const loader = new GLTFLoader().setDRACOLoader(
   new DRACOLoader().setDecoderPath('/vendor/three/jsm/libs/draco/gltf/'));
 
 const street = await loadStreet(scene);
 interactables.push(...street.interactables);
-// The walkable bounds, the ground and the far plane all follow the street's
-// real length, so a boulevard that has grown past its launch size stays
-// reachable instead of ending in an invisible wall.
-player.setBounds(street.bounds);
-const groundSize = Math.max(300, street.bounds.x * 2 + 60);
+// The world beyond the boulevard: roads, venues, the walkable fence and the
+// fog line that lets a stadium read from the spawn. The boulevard's own half
+// length is the street's, which derives it from the manifest — so a street
+// that has grown past its launch size stays walkable and keeps its ground.
+const world = await loadWorld({ street });
+window.__world = world;
+player.setBounds(world.contains);
+const groundSize = Math.max(300, world.reach * 2 + 60);
 if (groundSize > ground.geometry.parameters.width) {
   ground.geometry.dispose();
   ground.geometry = new THREE.PlaneGeometry(groundSize, groundSize);
 }
-const far = Math.max(220, street.bounds.x * 2 + 40);
-if (far > camera.far) {
-  camera.far = far;
+scene.fog.near = world.presets.fog[0];
+scene.fog.far = world.presets.fog[1];
+if (world.presets.cameraFar > camera.far) {
+  camera.far = world.presets.cameraFar;
   camera.updateProjectionMatrix();
 }
+const roads = buildRoads(scene, world);
+interactables.push(...roads.interactables);
+const venues = createVenues(scene, world, { loader, player, doors, anims, media, camera, renderer });
+window.__venues = venues;
+// /stadium and /v/<id> are Vercel rewrites; ?venue=<id> is the same spawn
+// for a dev server that has no rewrites
+const venueRoute = spawnPlot ? null : world.venueForPath(params.get('venue') ? `/v/${params.get('venue')}` : location.pathname);
 
 // spawn: permalink visitors arrive on the sidewalk outside their plot;
 // everyone else at the west end of the boulevard
@@ -349,6 +366,18 @@ if (lot) {
   document.getElementById('tagline').textContent = `${lot.name} — ${lot.tagline}`;
   const out = document.getElementById('outlink');
   out.href = `https://otra.city/s/${lot.slug}`;
+  out.textContent = 'open in otra.city ↗';
+} else if (venueRoute) {
+  // a venue permalink (/stadium, /v/<id>) arrives on its forecourt, facing it
+  const s = world.toWorld(venueRoute, venueRoute.spawn);
+  avatar.group.position.set(s.x, 0, s.z);
+  player.yaw = s.yaw;
+  camDist = 10;
+  camHeight = 3;
+  camSide = 0;
+  document.getElementById('tagline').textContent = `${venueRoute.name} — ${venueRoute.tagline || ''}`;
+  const out = document.getElementById('outlink');
+  out.href = `https://otra.city${venueRoute.route || `/v/${venueRoute.id}`}`;
   out.textContent = 'open in otra.city ↗';
 } else {
   avatar.group.position.set(-20, 0, 0);
@@ -381,13 +410,12 @@ Promise.all(street.manifest.lots.map((p) => new Promise((resolve) => {
       total += l.intensity;
     }
     if (total > LIGHT_CAP) for (const l of plotLights) l.intensity *= LIGHT_CAP / total;
-    const doors = ['door_panel_L', 'door_panel_R'].map((n) => gltf.scene.getObjectByName(n));
-    if (doors[0] && doors[1]) {
-      doorCtrls.push({
-        doors,
+    const panels = ['door_panel_L', 'door_panel_R'].map((n) => gltf.scene.getObjectByName(n));
+    if (panels[0] && panels[1]) {
+      doors.add(p.slug, {
+        left: panels[0],
+        right: panels[1],
         at: new THREE.Vector3(0, 0, 4.62).applyMatrix4(container.matrixWorld),
-        open01: 0,
-        target: 0,
       });
     }
     media.attach(container, gltf.scene, p.media, p.base);
@@ -409,7 +437,7 @@ Promise.all(street.manifest.lots.map((p) => new Promise((resolve) => {
     resolve([]);
   });
 }))).then((meshLists) => {
-  player.setColliders([ground, ...street.colliders, ...meshLists.flat()]);
+  player.setColliders([ground, ...street.colliders, ...roads.colliders, ...meshLists.flat()]);
   const EMISSIVE_PEAK = 1.2;
   scene.traverse((o) => {
     for (const m of [].concat(o.material || [])) {
@@ -423,17 +451,7 @@ Promise.all(street.manifest.lots.map((p) => new Promise((resolve) => {
   document.getElementById('stats').dataset.load = `${loaded}/${street.manifest.lots.length} plots in ${ms} ms`;
 });
 
-const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
-function updateDoors(dt) {
-  for (const d of doorCtrls) {
-    const dist = Math.hypot(player.pos.x - d.at.x, player.pos.z - d.at.z);
-    d.target = dist < 2.4 ? 1 : dist > 3.1 ? 0 : d.target;
-    d.open01 = THREE.MathUtils.clamp(d.open01 + Math.sign(d.target - d.open01) * (dt / 0.7), 0, 1);
-    const e = ease(d.open01);
-    d.doors[0].position.x = -1.2 * e;
-    d.doors[1].position.x = 1.2 * e;
-  }
-}
+// doors and gates: /js/doors.js (plots and venues share it)
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
@@ -447,7 +465,8 @@ window.__step = (frames = 60, dt = 1 / 60) => {
   for (let i = 0; i < frames; i++) {
     simTime += dt;
     player.update(dt, simTime);
-    updateDoors(dt);
+    doors.update(dt, player.pos);
+    venues.update(dt, player.pos, simTime);
     street.update(dt);
     anims.update(dt, simTime, player.pos);
     controls.update();
@@ -457,8 +476,9 @@ window.__step = (frames = 60, dt = 1 / 60) => {
   composer.render();
   return JSON.stringify({
     pos: player.pos.toArray().map((v) => +v.toFixed(2)),
-    doors: doorCtrls.map((d) => +d.open01.toFixed(2)),
+    doors: doors.state().map((d) => d.open),
     peers: presence.count,
+    tiers: venues.state().map((v) => v.tier),
   });
 };
 
@@ -471,7 +491,8 @@ renderer.info.autoReset = false;
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
   const speed = player.update(dt, clock.elapsedTime);
-  updateDoors(dt);
+  doors.update(dt, player.pos);
+  venues.update(dt, player.pos, clock.elapsedTime);
   street.update(dt);
   anims.update(dt, clock.elapsedTime, player.pos);
   presence.update(dt, clock.elapsedTime);
@@ -481,7 +502,7 @@ renderer.setAnimationLoop(() => {
   composer.render();
   const i = renderer.info.render;
   const peers = presence.count ? ` · ${presence.count} nearby` : '';
-  stats.textContent = `${stats.dataset.load || 'loading…'} · ${i.triangles} tris · ${i.calls} calls · ${speed.toFixed(1)} m/s${peers}`;
+  stats.textContent = `${stats.dataset.load || 'loading…'} · ${i.triangles} tris · ${i.calls} calls · ${speed.toFixed(1)} m/s${peers}${venues.hudText()}`;
 });
 </script>
 </body>

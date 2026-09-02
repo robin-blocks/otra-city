@@ -53,5 +53,11 @@
       "x": -36,
       "side": 1
     }
+  ],
+  "reserved": [
+    {
+      "x_min": 48,
+      "reason": "stadium precinct — roads and venue east of the boulevard (docs/venues/ARCHITECTURE.md)"
+    }
   ]
 }

@@ -22,6 +22,15 @@ const registryPath = join(root, 'lots.json');
 const registry = JSON.parse(readFileSync(registryPath));
 const PITCH = registry.lot_pitch || 12;
 const KEEP_VACANT = registry.keep_vacant ?? 2;
+// Reserved positions are never allocated and never shown as vacant: a rule
+// matches a lot when its x is within [x_min, x_max] (either bound optional)
+// on the given side (optional). Venue precincts reserve the ground they and
+// their roads stand on — see docs/venues/ARCHITECTURE.md.
+const RESERVED = registry.reserved || [];
+const reserved = (p) => RESERVED.some((r) =>
+  (r.x_min === undefined || p.x >= r.x_min) &&
+  (r.x_max === undefined || p.x <= r.x_max) &&
+  (r.side === undefined || r.side === p.side));
 
 // every lot position, ordered by walking distance from the central spawn
 function* positions() {
@@ -51,7 +60,7 @@ if (unassigned.length) {
   const gen = positions();
   for (const slug of unassigned) {
     let spot;
-    do { spot = gen.next().value; } while (taken.has(key(spot)));
+    do { spot = gen.next().value; } while (taken.has(key(spot)) || reserved(spot));
     assigned[slug] = spot;
     taken.add(key(spot));
   }
@@ -62,7 +71,7 @@ const vacant = [];
 const gen = positions();
 while (vacant.length < KEEP_VACANT) {
   const spot = gen.next().value;
-  if (!taken.has(key(spot))) {
+  if (!taken.has(key(spot)) && !reserved(spot)) {
     vacant.push(spot);
     taken.add(key(spot));
   }
