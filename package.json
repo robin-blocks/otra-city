@@ -12,7 +12,8 @@
     "api": "node scripts/dev-api.mjs",
     "manifest": "node scripts/build-manifest.mjs",
     "posters": "node scripts/render-posters.mjs",
-    "validate": "node scripts/validate-all.mjs"
+    "validate": "node scripts/validate-all.mjs",
+    "shot": "node scripts/preview-shot.mjs"
   },
   "keywords": [],
   "author": "",
