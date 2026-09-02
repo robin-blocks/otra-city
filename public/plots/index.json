@@ -380,7 +380,7 @@
         ],
         "feed": {
           "node": "panel_live",
-          "url": "https://promptfrenzy.com/api/otra/feed",
+          "url": "https://www.promptfrenzy.com/api/otra/feed",
           "interval_s": 300
         }
       },
@@ -388,7 +388,7 @@
       "side": -1,
       "glb": "/plots/promptfrenzy/plot.glb",
       "base": "/plots/promptfrenzy/",
-      "poster": "/posters/promptfrenzy-aae9fa7b1f8b.webp"
+      "poster": "/posters/promptfrenzy-5d8a47a79f5d.webp"
     },
     {
       "slug": "signal",
