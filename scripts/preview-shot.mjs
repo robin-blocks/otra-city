@@ -20,20 +20,12 @@
 //   --out <file>     png path (default preview-<cam>.png; with --cam all, a prefix)
 //   --size <WxH>     default 1536x864
 //   --settle <ms>    how long to wait for textures (default 20000)
-import { createServer } from 'node:http';
-import { readFileSync, existsSync, statSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join, dirname, extname, basename, normalize, resolve as resolvePath } from 'node:path';
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join, dirname, basename, resolve as resolvePath } from 'node:path';
 import { launchChrome } from '../lib/headless-chrome.mjs';
+import { serve } from '../lib/static-server.mjs';
 
 const CAMS = ['street', 'doorway', 'interior', 'high', 'poster'];
-const MIME = {
-  '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
-  '.json': 'application/json', '.css': 'text/css', '.wasm': 'application/wasm',
-  '.glb': 'model/gltf-binary', '.webp': 'image/webp', '.png': 'image/png',
-  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.mp4': 'video/mp4',
-  '.m4a': 'audio/mp4', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg',
-};
-
 const argv = process.argv.slice(2);
 const arg = (name, fallback = null) => {
   const i = argv.indexOf(`--${name}`);
@@ -62,31 +54,14 @@ if (plotPath && !existsSync(plotPath)) die(`no such file: ${plotPath}`);
 
 // Two roots: the site (so /preview.html and /js/* are the real ones) and the
 // submitter's bundle under /__bundle/. Nothing is copied into public/.
-function serve(siteDir, bundle) {
-  const send = (res, file) => {
-    res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream' });
-    res.end(readFileSync(file));
-  };
-  const server = createServer((req, res) => {
-    const path = normalize(decodeURIComponent(req.url.split('?')[0])).replace(/^(\.\.[/\\])+/, '');
-    if (path.startsWith('/__bundle/')) {
-      const rel = path.slice('/__bundle/'.length);
-      const file = rel === basename(glbPath) || rel === 'plot.glb'
-        ? resolvePath(glbPath)
-        : join(bundle, rel);
-      if (!file.startsWith(bundle) && file !== resolvePath(glbPath)) return res.writeHead(403).end('no');
-      if (!existsSync(file) || statSync(file).isDirectory()) return res.writeHead(404).end('not found');
-      return send(res, file);
-    }
-    const file = join(siteDir, path === '/' ? 'index.html' : path);
-    if (!file.startsWith(siteDir) || !existsSync(file) || statSync(file).isDirectory()) {
-      return res.writeHead(404).end('not found');
-    }
-    return send(res, file);
-  });
-  return new Promise((r) => server.listen(0, '127.0.0.1', () => r(
-    { server, origin: `http://127.0.0.1:${server.address().port}` })));
-}
+// The glb is reachable by its own basename and as plot.glb; everything else
+// must resolve inside the bundle directory, and null refuses the request.
+const bundleMount = (bundle) => (rel) => {
+  const file = rel === basename(glbPath) || rel === 'plot.glb'
+    ? resolvePath(glbPath)
+    : join(bundle, rel);
+  return file.startsWith(bundle) || file === resolvePath(glbPath) ? file : null;
+};
 
 // Runs inside /preview.html — the same settle-then-encode dance the poster
 // renderer uses, so a shot from here and a published poster agree.
@@ -137,7 +112,8 @@ const shotExpr = (opts) => `(async () => {
   return { b64: url.slice(url.indexOf(',') + 1), w: canvas.width, h: canvas.height };
 })()`;
 
-const { server, origin } = await serve(join(new URL('..', import.meta.url).pathname, 'public'), bundleDir);
+const { server, origin } = await serve(join(new URL('..', import.meta.url).pathname, 'public'),
+  { mounts: { '/__bundle/': bundleMount(bundleDir) } });
 let chrome = null;
 try {
   chrome = await launchChrome({ width, height });

@@ -19,11 +19,11 @@
 // manifest — never construct it.
 //
 // Usage: node scripts/render-posters.mjs [--force] [--only=slug,slug] [--quiet]
-import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync, existsSync, statSync, mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
-import { join, extname, normalize } from 'node:path';
+import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
 import { launchChrome } from '../lib/headless-chrome.mjs';
+import { serve } from '../lib/static-server.mjs';
 import { POSTER_HASH_VERSION, posterName, posterPattern } from '../lib/poster-paths.mjs';
 
 const MAX_BYTES = 120 << 10;                 // directories budget ~120 KB per poster
@@ -41,29 +41,6 @@ const force = args.includes('--force');
 const quiet = args.includes('--quiet');
 const only = (args.find((a) => a.startsWith('--only=')) || '').slice(7).split(',').filter(Boolean);
 const log = (...a) => { if (!quiet) console.log(...a); };
-
-// ---------------------------------------------------------------- static host
-const MIME = {
-  '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
-  '.json': 'application/json', '.css': 'text/css', '.wasm': 'application/wasm',
-  '.glb': 'model/gltf-binary', '.webp': 'image/webp', '.png': 'image/png',
-  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.mp4': 'video/mp4',
-  '.m4a': 'audio/mp4', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg',
-};
-function serve(dir) {
-  const server = createServer((req, res) => {
-    const rel = normalize(decodeURIComponent(req.url.split('?')[0])).replace(/^(\.\.[/\\])+/, '');
-    const file = join(dir, rel === '/' ? 'index.html' : rel);
-    if (!file.startsWith(dir) || !existsSync(file) || statSync(file).isDirectory()) {
-      res.writeHead(404).end('not found');
-      return;
-    }
-    res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream' });
-    res.end(readFileSync(file));
-  });
-  return new Promise((r) => server.listen(0, '127.0.0.1', () => r(
-    { server, origin: `http://127.0.0.1:${server.address().port}` })));
-}
 
 // ------------------------------------------------------------------ plot list
 // Hash exactly what the picture depends on — geometry, media bytes, media and
