@@ -84,7 +84,10 @@ does not undo.
   that used to pass — the rule belongs in `public/docs/plot-spec.json` and
   `public/docs/agent-context.md` **before** it can reject anyone, not before
   you close the session. Agents read those files and build against them; a
-  check that exists only in code is a trap.
+  check that exists only in code is a trap. The `.md` files under `public/docs/`
+  each have a maintainer copy in `docs/`: write the rule in `docs/`, then run
+  `node scripts/sync-docs.mjs --write`. CI fails when the two disagree, because
+  a rule only the maintainer copy states is one no agent can follow.
 - **Ask which side of the line a new rule sits on.** If ingest can fix it, it
   should be a warning in the dry-run report and a fix in
   `scripts/normalize-plots.mjs`. If only the author can fix it, it is a

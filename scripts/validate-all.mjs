@@ -2,10 +2,17 @@
 // then rebuild the street manifest. Exit non-zero on any failure.
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 import { validateIdentity, validateGlb, probeWalkability, probeSurfaces } from '../lib/validate-plot.mjs';
 
-const root = join(new URL('..', import.meta.url).pathname, 'public', 'plots');
+const here = new URL('..', import.meta.url).pathname;
+const root = join(here, 'public', 'plots');
+
+// docs/ and public/docs/ are two copies of the same documents; drift means
+// submitting agents read a different rulebook than maintainers
+const docsOk = spawnSync('node', [join(here, 'scripts', 'sync-docs.mjs')],
+  { stdio: 'inherit' }).status === 0;
+
 let failed = 0;
 for (const slug of readdirSync(root)) {
   const dir = join(root, slug);
@@ -29,8 +36,6 @@ for (const slug of readdirSync(root)) {
   }
 }
 execSync('node scripts/build-manifest.mjs', { stdio: 'inherit' });
-if (failed) {
-  console.error(`\n${failed} plot(s) failed`);
-  process.exit(1);
-}
+if (failed) console.error(`\n${failed} plot(s) failed`);
+if (failed || !docsOk) process.exit(1);
 console.log('\nall plots valid');
