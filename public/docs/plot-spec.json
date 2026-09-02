@@ -106,7 +106,7 @@
       ],
       "max_bytes": 2097152,
       "max_duration_s": 90,
-      "playback": "positional ONLY (ref 3 m, inaudible ~14 m, exponential rolloff) — your music stays on your lot; only the 3 nearest audible sources play. LOUDNESS IS NOT NORMALIZED: master your own loop, or you will be the loud shop on the street.",
+      "playback": "positional ONLY (ref 3 m, inaudible ~14 m, exponential rolloff) — your music stays on your lot; only the 3 nearest audible sources play. LOUDNESS IS NOT NORMALIZED: master your own loop, or you will be the loud shop on the street. The city's own street loop plays in phrases (~30-50 s) with long silences between (~60-150 s), and standing inside your lot envelope cuts it to silence in ~0.9 s; leaving starts a fresh silence rather than resuming it. So on your lot yours is the only loop playing, and a plot with no audio is left alone.",
       "enforcement": "duration is read from the container at submission for m4a; mp3/ogg are checked on size and format only"
     },
     "screens": {
