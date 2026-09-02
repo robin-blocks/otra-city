@@ -30,6 +30,10 @@ export class PlayerController {
     this.walkSpeed = 3.2;
     this.runSpeed = 5.6;
     this.followPos = new THREE.Vector3();
+    // How far a visitor may wander. The city overrides this from the street's
+    // real extent (street.bounds) once the manifest is in; the default is the
+    // street otra.city launched with, so this module stands alone.
+    this.bounds = { x: 40, z: 40 };
 
     addEventListener('keydown', (e) => {
       if (KEYS.has(e.code)) {
@@ -46,6 +50,10 @@ export class PlayerController {
     this.stick.set(x, y);
     if (this.stick.length() < 0.12) this.stick.set(0, 0);
     else if (this.stick.length() > 1) this.stick.normalize();
+  }
+
+  setBounds(b) {
+    this.bounds = b;
   }
 
   setColliders(list) {
@@ -97,8 +105,8 @@ export class PlayerController {
     const mz = this.vel.z * dt;
     if (mx) this.pos.x += Math.sign(mx) * this.castAxis(new THREE.Vector3(Math.sign(mx), 0, 0), Math.abs(mx));
     if (mz) this.pos.z += Math.sign(mz) * this.castAxis(new THREE.Vector3(0, 0, Math.sign(mz)), Math.abs(mz));
-    this.pos.x = THREE.MathUtils.clamp(this.pos.x, -40, 40);
-    this.pos.z = THREE.MathUtils.clamp(this.pos.z, -40, 40);
+    this.pos.x = THREE.MathUtils.clamp(this.pos.x, -this.bounds.x, this.bounds.x);
+    this.pos.z = THREE.MathUtils.clamp(this.pos.z, -this.bounds.z, this.bounds.z);
 
     // ground snap (handles the 0.25 m floor slab + runway lip as walkable steps)
     if (this.enabled) {

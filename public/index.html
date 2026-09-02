@@ -316,6 +316,20 @@ const loader = new GLTFLoader().setDRACOLoader(
 
 const street = await loadStreet(scene);
 interactables.push(...street.interactables);
+// The walkable bounds, the ground and the far plane all follow the street's
+// real length, so a boulevard that has grown past its launch size stays
+// reachable instead of ending in an invisible wall.
+player.setBounds(street.bounds);
+const groundSize = Math.max(300, street.bounds.x * 2 + 60);
+if (groundSize > ground.geometry.parameters.width) {
+  ground.geometry.dispose();
+  ground.geometry = new THREE.PlaneGeometry(groundSize, groundSize);
+}
+const far = Math.max(220, street.bounds.x * 2 + 40);
+if (far > camera.far) {
+  camera.far = far;
+  camera.updateProjectionMatrix();
+}
 
 // spawn: permalink visitors arrive on the sidewalk outside their plot;
 // everyone else at the west end of the boulevard

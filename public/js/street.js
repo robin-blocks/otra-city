@@ -5,6 +5,12 @@ import * as THREE from 'three';
 export const LOT_PITCH = 12;
 export const FRONT_LINE = 6.5;
 
+const LOT_HALF = 5;           // plots are a 10 x 10 m envelope (plot-spec size_m)
+const ROAD_MARGIN = 1;        // kerb beyond the outermost lot
+const LAMP_INSET = 12;        // lamps and lane dashes stop short of the road ends
+const LAUNCH_HALF_LOTS = 36;  // never shrink below the street the city launched with
+const SEGMENT_WARN = 120;     // ~40 plots: past here the boulevard wants segmenting
+
 const mat = (color, opts = {}) =>
   new THREE.MeshStandardMaterial({ color, roughness: 0.92, ...opts });
 const emat = (color, intensity, base = 0x0d0a14) =>
@@ -94,19 +100,39 @@ export async function loadStreet(scene) {
   const asphalt = mat(0x17161c);
   const paving = mat(0x24222c, { roughness: 0.85 });
   const dark = mat(0x241f38);
+  // One material per fixture kind, not one per fixture: the dash and lamp-head
+  // counts grow with the street, and a material each would grow with them.
+  const dashGlow = emat(0xffbf80, 0.5);
+  const lampGlow = emat(0xffbf80, 2.5);
 
-  box(84, 0.12, 8, asphalt, 0, -0.05, 0, g, colliders);
-  box(84, 0.3, 2.5, paving, 0, 0.0, 5.25, g, colliders);
-  box(84, 0.3, 2.5, paving, 0, 0.0, -5.25, g, colliders);
-  for (let x = -30; x <= 30; x += 4.5) {
-    box(0.9, 0.03, 0.16, emat(0xffbf80, 0.5), x, 0.02, 0, g);
+  // The land registry hands out lots from an ENDLESS ring (the positions()
+  // generator in build-manifest.mjs), so the road, the lamp run and the
+  // walkable bounds are all DERIVED from how far the city has actually been
+  // claimed. Hardcoding them is how a plot ends up on a lot with no road under
+  // it that nobody can walk to. With today's outermost lot at x = 36 this
+  // reproduces the original 84 m street exactly, lamp for lamp.
+  const xs = [...manifest.lots, ...(manifest.vacant || [])].map((l) => Math.abs(l.x));
+  const halfLen = Math.max(...xs, LAUNCH_HALF_LOTS) + LOT_HALF + ROAD_MARGIN;
+  if (halfLen > SEGMENT_WARN) {
+    console.warn(`otra.city: the boulevard is ${(halfLen * 2).toFixed(0)} m long — time to split it into segments`);
   }
-  for (const [i, lx] of [-30, -18, -6, 6, 18, 30].entries()) {
-    const lz = (i % 2 === 0 ? -1 : 1) * 6.2;
-    box(0.14, 3.3, 0.14, dark, lx, 1.65, lz, g, colliders);
-    box(0.34, 0.14, 0.34, emat(0xffbf80, 2.5), lx, 3.37, lz, g);
+
+  box(halfLen * 2, 0.12, 8, asphalt, 0, -0.05, 0, g, colliders);
+  box(halfLen * 2, 0.3, 2.5, paving, 0, 0.0, 5.25, g, colliders);
+  box(halfLen * 2, 0.3, 2.5, paving, 0, 0.0, -5.25, g, colliders);
+  const lampMax = halfLen - LAMP_INSET;
+  for (let x = -lampMax; x <= lampMax + 1e-6; x += 4.5) {
+    box(0.9, 0.03, 0.16, dashGlow, x, 0.02, 0, g);
+  }
+  // A lamp's kerb is derived from its own x, never from its index in the run:
+  // extending the street westward would otherwise flip every lamp in the city
+  // to the opposite side of the road.
+  for (let x = -lampMax; x <= lampMax + 1e-6; x += LOT_PITCH) {
+    const lz = (Math.round((x - LOT_PITCH / 2) / LOT_PITCH) % 2 === 0 ? 1 : -1) * 6.2;
+    box(0.14, 3.3, 0.14, dark, x, 1.65, lz, g, colliders);
+    box(0.34, 0.14, 0.34, lampGlow, x, 3.37, lz, g);
     const light = new THREE.PointLight(0xffbf80, 40, 26, 2);
-    light.position.set(lx, 3.4, lz);
+    light.position.set(x, 3.4, lz);
     g.add(light);
   }
 
@@ -138,6 +164,8 @@ export async function loadStreet(scene) {
     group: g,
     colliders,
     interactables,
+    // How far a visitor may walk: the road's own extent, less a 2 m kerb.
+    bounds: { x: halfLen - 2, z: 40 },
     update(dt) {
       t += dt;
       for (const m of animated) {
