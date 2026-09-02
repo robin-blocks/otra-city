@@ -7,7 +7,7 @@
     "doc": "docs"
   },
   "scripts": {
-    "dev": "python3 -m http.server 5173 --bind 127.0.0.1 --directory public",
+    "dev": "node scripts/serve-public.mjs",
     "presence": "node server/presence.mjs",
     "api": "node scripts/dev-api.mjs",
     "manifest": "node scripts/build-manifest.mjs",
@@ -15,6 +15,7 @@
     "validate": "node scripts/validate-all.mjs",
     "qa": "node scripts/qa-walkthrough.mjs",
     "shot": "node scripts/preview-shot.mjs",
+    "check": "node scripts/check-client.mjs",
     "venues": "node scripts/build-venues.mjs",
     "venue:check": "node scripts/venue-check.mjs",
     "venue:shot": "node scripts/venue-shot.mjs",

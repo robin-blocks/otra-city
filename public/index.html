@@ -175,16 +175,27 @@ import { loadWorld } from '/js/world.js';
 import { buildRoads } from '/js/roads.js';
 import { createVenues } from '/js/venues.js';
 import { createDoorSystem } from '/js/doors.js';
+import { createLightPool } from '/js/lights.js';
+import { attachPerfGuard } from '/js/perfguard.js';
+import { PRESETS } from '/js/quality.js';
 
 const params = new URLSearchParams(location.search);
+// Tooling loads the page with ?headless=1: graphics pinned, the frame-rate
+// guard off, and the drawing buffer kept so a screenshot can be read back.
+const headless = params.get('headless') === '1';
+// Every uncaught error, kept: the client check reads this list, because a
+// module that dies half-way through boot renders a black scene and no clue.
+const errors = [];
+addEventListener('error', (e) => errors.push(String(e.message || e)));
+addEventListener('unhandledrejection', (e) => errors.push('unhandled: ' + String((e.reason && e.reason.message) || e.reason)));
 // embed mode: /embed?plot=slug (the documented form) or any ?embed=1
 const embed = params.get('embed') === '1' || location.pathname.replace(/\/$/, '') === '/embed';
 if (embed) document.body.classList.add('embed');
 const spawnPlot = params.get('plot') || (location.pathname.startsWith('/s/') ? location.pathname.split('/')[2] : null);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: headless });
 renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));   // the graphics preset lowers this below
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
 document.body.appendChild(renderer.domElement);
@@ -209,6 +220,13 @@ ground.rotation.x = -Math.PI / 2;
 ground.position.y = -0.01;
 scene.add(ground);
 scene.add(new THREE.HemisphereLight(0x8899ff, 0x080610, 0.25));
+// The light budget: a fixed pool of point lights allocated before the first
+// frame, so NUM_POINT_LIGHTS never changes afterwards (a change recompiles
+// every material in the scene). Street lamps and plots register light
+// SOURCES; the pool follows the visitor and lights the nearest few, so the
+// per-fragment cost stays flat however far the boulevard grows.
+// See js/lights.js.
+const lights = createLightPool(scene, PRESETS.high.lights);
 
 const media = createMediaSystem(camera);
 const anims = createAnimSystem();
@@ -236,8 +254,15 @@ muteBtn.addEventListener('click', (e) => {
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.12, 0.3, 1.0));
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.12, 0.3, 1.0);
+composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
+// Graphics preset: picked from the hardware at boot (or pinned with ?q=), and
+// stepped down at runtime if the frame rate says the guess was too generous.
+const perf = attachPerfGuard({
+  renderer, composer, bloom: bloomPass, lights, params,
+  notify: (text) => window.__toast && window.__toast(text),
+});
 
 const avatar = createAvatar();
 const fill = new THREE.PointLight(0xffd9b0, 0.7, 3.5, 2);
@@ -322,6 +347,7 @@ const loader = new GLTFLoader().setDRACOLoader(
 
 const street = await loadStreet(scene);
 interactables.push(...street.interactables);
+for (const s of street.sources) lights.add(s);
 // The world beyond the boulevard: roads, venues, the walkable fence and the
 // fog line that lets a stadium read from the spawn. The boulevard's own half
 // length is the street's, which derives it from the manifest — so a street
@@ -342,6 +368,7 @@ if (world.presets.cameraFar > camera.far) {
 }
 const roads = buildRoads(scene, world);
 interactables.push(...roads.interactables);
+for (const s of roads.sources) lights.add(s);
 const venues = createVenues(scene, world, { loader, player, doors, anims, media, camera, renderer });
 window.__venues = venues;
 // /stadium and /v/<id> are Vercel rewrites; ?venue=<id> is the same spawn
@@ -351,18 +378,24 @@ const venueRoute = spawnPlot ? null : world.venueForPath(params.get('venue') ? `
 // spawn: permalink visitors arrive on the sidewalk outside their plot;
 // everyone else at the west end of the boulevard
 const lot = street.manifest.lots.find((l) => l.slug === spawnPlot);
-// Permalink arrivals get an establishing shot: standing on the pavement facing
-// the plot, with the camera far enough back and centred to hold the whole
-// 10 x 6 m frontage. The default boulevard spawn stays close and casual.
-let camDist = 4.6;
-let camHeight = 2.4;
-let camSide = 0.6;
+// Put the visitor at (x, z) facing `yaw`, camera behind them. The default
+// boulevard spawn is close and casual; a permalink arrival gets an
+// establishing shot, standing on the pavement facing the thing it links to
+// with the camera far enough back to hold the whole frontage. It is a
+// function because the client check teleports through it too.
+function placeAt(x, z, yaw, { camDist = 4.6, camHeight = 2.4, camSide = 0.6 } = {}) {
+  avatar.group.position.set(x, 0, z);
+  player.yaw = yaw;
+  avatar.group.rotation.y = yaw;
+  player.vel.set(0, 0, 0);
+  const back = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)).multiplyScalar(-camDist);
+  camera.position.copy(avatar.group.position).add(back).add(new THREE.Vector3(camSide, camHeight, 0));
+  player.followPos.set(x, 1.15, z);   // no chase-camera sweep across the city
+  controls.target.copy(avatar.group.position).add(new THREE.Vector3(0, 1.3, 0));
+}
+const outsideLot = (l) => [l.x, l.side * 4.8, l.side > 0 ? 0 : Math.PI, { camDist: 10, camHeight: 2.7, camSide: 0 }];
 if (lot) {
-  avatar.group.position.set(lot.x, 0, lot.side * 4.8);
-  player.yaw = lot.side > 0 ? 0 : Math.PI;
-  camDist = 10;
-  camHeight = 2.7;
-  camSide = 0;
+  placeAt(...outsideLot(lot));
   document.getElementById('tagline').textContent = `${lot.name} — ${lot.tagline}`;
   const out = document.getElementById('outlink');
   out.href = `https://otra.city/s/${lot.slug}`;
@@ -370,25 +403,17 @@ if (lot) {
 } else if (venueRoute) {
   // a venue permalink (/stadium, /v/<id>) arrives on its forecourt, facing it
   const s = world.toWorld(venueRoute, venueRoute.spawn);
-  avatar.group.position.set(s.x, 0, s.z);
-  player.yaw = s.yaw;
-  camDist = 10;
-  camHeight = 3;
-  camSide = 0;
+  placeAt(s.x, s.z, s.yaw, { camDist: 10, camHeight: 3, camSide: 0 });
   document.getElementById('tagline').textContent = `${venueRoute.name} — ${venueRoute.tagline || ''}`;
   const out = document.getElementById('outlink');
   out.href = `https://otra.city${venueRoute.route || `/v/${venueRoute.id}`}`;
   out.textContent = 'open in otra.city ↗';
 } else {
-  avatar.group.position.set(-20, 0, 0);
-  player.yaw = Math.PI / 2;
+  placeAt(-20, 0, Math.PI / 2);
 }
-avatar.group.rotation.y = player.yaw;
-const back = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)).multiplyScalar(-camDist);
-camera.position.copy(avatar.group.position).add(back).add(new THREE.Vector3(camSide, camHeight, 0));
-controls.target.copy(avatar.group.position).add(new THREE.Vector3(0, 1.3, 0));
 
 let loaded = 0;
+let cityReady = false;
 const t0 = performance.now();
 const bust = '?v=' + Date.now();
 Promise.all(street.manifest.lots.map((p) => new Promise((resolve) => {
@@ -397,7 +422,6 @@ Promise.all(street.manifest.lots.map((p) => new Promise((resolve) => {
     container.position.set(p.x, 0, p.side * (FRONT_LINE + 5));
     container.rotation.y = p.side > 0 ? Math.PI : 0;
     container.add(gltf.scene);
-    scene.add(container);
     container.updateMatrixWorld(true);
     const LIGHT_CAP = 30;
     const plotLights = [];
@@ -410,6 +434,15 @@ Promise.all(street.manifest.lots.map((p) => new Promise((resolve) => {
       total += l.intensity;
     }
     if (total > LIGHT_CAP) for (const l of plotLights) l.intensity *= LIGHT_CAP / total;
+    // Point lights leave the glb and become pool sources — the pool is what
+    // shines, so the per-fragment cost stays flat however many plots the
+    // street grows. Spot and directional lights (rare) stay where authored.
+    for (const l of plotLights) {
+      if (!l.isPointLight) continue;
+      lights.add({ position: l.getWorldPosition(new THREE.Vector3()), color: l.color, intensity: l.intensity, distance: l.distance, decay: l.decay });
+      l.removeFromParent();
+    }
+    scene.add(container);
     const panels = ['door_panel_L', 'door_panel_R'].map((n) => gltf.scene.getObjectByName(n));
     if (panels[0] && panels[1]) {
       doors.add(p.slug, {
@@ -449,6 +482,8 @@ Promise.all(street.manifest.lots.map((p) => new Promise((resolve) => {
   });
   const ms = (performance.now() - t0).toFixed(0);
   document.getElementById('stats').dataset.load = `${loaded}/${street.manifest.lots.length} plots in ${ms} ms`;
+  cityReady = true;
+  perf.begin();   // the frame is real from here: start listening to it
 });
 
 // doors and gates: /js/doors.js (plots and venues share it)
@@ -469,10 +504,12 @@ window.__step = (frames = 60, dt = 1 / 60) => {
     venues.update(dt, player.pos, simTime);
     street.update(dt);
     anims.update(dt, simTime, player.pos);
+    lights.update(player.pos, dt);
     controls.update();
   }
   presence.update(1 / 60, simTime);
   media.update(player.pos, frames * dt);
+  renderer.info.reset();
   composer.render();
   return JSON.stringify({
     pos: player.pos.toArray().map((v) => +v.toFixed(2)),
@@ -495,27 +532,107 @@ function frame() {
   venues.update(dt, player.pos, clock.elapsedTime);
   street.update(dt);
   anims.update(dt, clock.elapsedTime, player.pos);
+  lights.update(player.pos, dt);
   presence.update(dt, clock.elapsedTime);
   media.update(player.pos, dt);
   controls.update();
   renderer.info.reset();
   composer.render();
+  perf.tick(performance.now());
   const i = renderer.info.render;
   const peers = presence.count ? ` · ${presence.count} nearby` : '';
-  stats.textContent = `${stats.dataset.load || 'loading…'} · ${i.triangles} tris · ${i.calls} calls · ${speed.toFixed(1)} m/s${peers}${venues.hudText()}`;
+  stats.textContent = `${stats.dataset.load || 'loading…'} · ${i.triangles} tris · ${i.calls} calls · ${speed.toFixed(1)} m/s${peers}${venues.hudText()} · gfx ${perf.quality}`;
 }
 renderer.setAnimationLoop(frame);
 
-// The automation surface, on the same terms preview.html offers window.__preview:
-// a supported handle, not an accident. scripts/qa-walkthrough.mjs walks this page
-// in CI through it. Nothing here is new state — these are the objects the render
-// loop already holds — and pause() exists because __step and the animation loop
-// are two clocks: anything measuring draw calls has to stop one of them first.
+// The automation surface, on the same terms preview.html offers
+// window.__preview: a supported handle, not an accident. The client check
+// (scripts/check-client.mjs) drives this page through it in CI, and it is
+// what to poke from a console when the picture is wrong. The first row is
+// the objects the render loop already holds; pause() exists because __step
+// and the animation loop are two clocks, and anything measuring draw calls
+// has to stop one of them first.
 window.__city = {
-  scene, camera, renderer, composer, controls, street, doors, venues, interactables,
+  scene, camera, renderer, composer, controls, street, world, roads, venues,
+  doors, interactables, lights, perf, errors,
   step: window.__step,
   pause() { renderer.setAnimationLoop(null); },
   resume() { renderer.setAnimationLoop(frame); },
+  get ready() { return cityReady; },
+  get lots() { return street.manifest.lots; },
+  walk: (x, y) => player.setStick(x, y),
+  // a slug (the permalink spawn outside that lot) or { x, z, yaw }
+  teleport(target) {
+    if (typeof target === 'string') {
+      const l = street.manifest.lots.find((q) => q.slug === target);
+      if (!l) return false;
+      placeAt(...outsideLot(l));
+      return true;
+    }
+    placeAt(target.x, target.z, target.yaw ?? player.yaw);
+    return true;
+  },
+  door: (id) => { const d = doors.state().find((x) => x.id === id); return d ? +d.open.toFixed(2) : null; },
+  setQuality: (name) => perf.setPreset(name),
+  stats() {
+    const info = renderer.info;
+    let point = 0;
+    let spot = 0;
+    scene.traverse((o) => { if (o.isPointLight) point += 1; else if (o.isSpotLight) spot += 1; });
+    return {
+      plots: { loaded, total: street.manifest.lots.length },
+      calls: info.render.calls,
+      triangles: info.render.triangles,
+      geometries: info.memory.geometries,
+      textures: info.memory.textures,
+      programs: info.programs.length,
+      pixelRatio: renderer.getPixelRatio(),
+      size: [renderer.domElement.width, renderer.domElement.height],
+      quality: perf.quality,
+      bloom: bloomPass.enabled,
+      lights: { ...lights.stats(), point, spot },
+      pos: player.pos.toArray().map((v) => +v.toFixed(2)),
+      peers: presence.count,
+      errors: errors.length,
+      anims: anims.count,
+      venues: venues.state().map((v) => ({ id: v.id, tier: v.tier })),
+    };
+  },
+  // What the HUD is showing, as facts a check can assert on.
+  audit() {
+    const q = (s) => document.querySelector(s);
+    const vis = (el) => {
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      const s = getComputedStyle(el);
+      return r.width > 2 && r.height > 2 && s.display !== 'none' && s.visibility !== 'hidden' && +s.opacity > 0.02;
+    };
+    const rect = (el) => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+    };
+    return {
+      viewport: [innerWidth, innerHeight],
+      coarse: matchMedia('(pointer: coarse)').matches,
+      embed: document.body.classList.contains('embed'),
+      hud: vis(q('#hud')),
+      stats: vis(q('#stats')),
+      meta: vis(q('#hud .meta')),
+      controls: vis(q('#hud .controls')),
+      controlsText: (q('#hud .controls')?.innerText || '').replace(/\s+/g, ' ').trim(),
+      kbd: vis(q('#hud .controls .kbd')),
+      touch: vis(q('#hud .controls .touch')),
+      stick: vis(q('#stick')),
+      stickRect: rect(q('#stick')),
+      mute: rect(q('#mute')),
+      close: rect(q('#hud-close')),
+      topbar: rect(q('#topbar')),
+      outlink: vis(q('#outlink')) ? { href: q('#outlink').href, text: q('#outlink').textContent } : null,
+      tagline: q('#tagline')?.textContent || '',
+      overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    };
+  },
 };
 </script>
 </body>

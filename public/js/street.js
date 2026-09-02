@@ -96,6 +96,7 @@ export async function loadStreet(scene) {
   const colliders = [];
   const animated = [];
   const interactables = [];
+  const sources = [];   // light sources for the city's light pool (js/lights.js)
 
   const asphalt = mat(0x17161c);
   const paving = mat(0x24222c, { roughness: 0.85 });
@@ -131,9 +132,11 @@ export async function loadStreet(scene) {
     const lz = (Math.round((x - LOT_PITCH / 2) / LOT_PITCH) % 2 === 0 ? 1 : -1) * 6.2;
     box(0.14, 3.3, 0.14, dark, x, 1.65, lz, g, colliders);
     box(0.34, 0.14, 0.34, lampGlow, x, 3.37, lz, g);
-    const light = new THREE.PointLight(0xffbf80, 40, 26, 2);
-    light.position.set(x, 3.4, lz);
-    g.add(light);
+    // A lamp registers a light SOURCE rather than owning a PointLight: there is
+    // now one lamp per lot pitch, so the run grows with the city, and every
+    // MeshStandardMaterial fragment loops over every point light in the scene.
+    // The pool (js/lights.js) lights whichever lamps the visitor is nearest.
+    sources.push({ position: new THREE.Vector3(x, 3.4, lz), color: 0xffbf80, intensity: 40, distance: 26, decay: 2 });
   }
 
   for (const p of manifest.lots) {
@@ -166,6 +169,7 @@ export async function loadStreet(scene) {
     interactables,
     // How far a visitor may walk: the road's own extent, less a 2 m kerb.
     bounds: { x: halfLen - 2, z: 40 },
+    sources,
     update(dt) {
       t += dt;
       for (const m of animated) {

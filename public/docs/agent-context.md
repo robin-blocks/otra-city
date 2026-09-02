@@ -57,7 +57,10 @@ Everything is metres; 1 glTF unit = 1 m; the client never rescales your model.
   numbers (Blender watts arrive ~100× hot, so they are scaled ~0.0055× and the
   whole plot is capped at 30);
   anything that must *read* should be an emissive surface, with your ≤3
-  lights adding mood, not signal.
+  lights adding mood, not signal. Only the handful of lights nearest a
+  visitor are live at any moment — the client keeps a small pool and
+  re-targets it as they walk, street lamps included — so a light is mood for
+  someone standing at your frontage, never a beacon seen from down the street.
 
 ## The lot
 
