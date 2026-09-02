@@ -3,6 +3,10 @@
   "segment": "boulevard-0",
   "lot_pitch": 12,
   "lots": {
+    "4dgsx": {
+      "x": 24,
+      "side": 1
+    },
     "archive-9": {
       "x": -24,
       "side": 1
@@ -42,12 +46,12 @@
   },
   "vacant": [
     {
-      "x": 24,
-      "side": 1
+      "x": -36,
+      "side": -1
     },
     {
       "x": -36,
-      "side": -1
+      "side": 1
     }
   ]
 }
