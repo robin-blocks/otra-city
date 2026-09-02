@@ -4,6 +4,8 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { execSync, spawnSync } from 'node:child_process';
 import { validateIdentity, validateGlb, probeWalkability, probeSurfaces } from '../lib/validate-plot.mjs';
+// on its own line: the line above is edited by other work in flight
+import { probeMediaFiles } from '../lib/validate-plot.mjs';
 
 const here = new URL('..', import.meta.url).pathname;
 const root = join(here, 'public', 'plots');
@@ -26,11 +28,20 @@ for (const slug of readdirSync(root)) {
   // runs AFTER normalize-plots in CI: coincident faces are an ingest fix, so
   // anything still reported here is a defect normalization could not resolve
   const surf = await probeSurfaces(glb, { plot });
-  const ok = id.ok && budgets.ok && walk.ok && surf.ok;
+  // Committed media gets the same duration/resolution probes the API runs, so
+  // a bundle cannot pass the dry run and then sit in the repo unchecked (or
+  // arrive by fork+PR without ever meeting them).
+  const mediaDir = join(dir, 'media');
+  const files = {};
+  if (existsSync(mediaDir)) {
+    for (const name of readdirSync(mediaDir)) files[name] = readFileSync(join(mediaDir, name));
+  }
+  const probes = probeMediaFiles(plot, files);
+  const ok = id.ok && budgets.ok && walk.ok && surf.ok && probes.ok;
   if (!ok) failed += 1;
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${slug}`);
   if (!ok) {
-    for (const c of [...id.checks, ...budgets.checks, ...walk.checks, ...surf.checks]) {
+    for (const c of [...id.checks, ...budgets.checks, ...walk.checks, ...surf.checks, ...probes.checks]) {
       if (!c.ok) console.log(`      FAIL ${c.name}: ${c.detail}`);
     }
   }

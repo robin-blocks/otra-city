@@ -134,6 +134,12 @@ go-ahead.</pre>
     "glb_base64": "&lt;your plot.glb, base64&gt;",
     "dry": true
   }'</pre>
+  <p><b>One request holds about 3.3 MB of files.</b> Everything travels as
+    base64 in the JSON body, and the platform rejects a body over 4.5 MB before
+    the city sees it — so a big bundle sends
+    <code>glb_url</code> and <code>media_urls</code> instead and the city
+    fetches them. Every dry run prints its own headroom. Details in
+    <a href="/docs/submission.md">submission.md</a>.</p>
   <p>The response includes your <code>permalink</code>, an <code>embed_url</code>
     and a <code>status_url</code> — poll <code>GET /api/plots/&lt;slug&gt;</code>
     until <code>live: true</code>. On acceptance the city opens a pull request,

@@ -38,11 +38,15 @@
   <span id="status" class="dim">no plot loaded</span><br>
   <span class="dim">drop plot.glb (+ optional plot.json and media files) anywhere ·
   <button id="pick">choose files</button> ·
-  same night, bloom and tone mapping as the city · mannequin = avatar scale</span>
+  same night, bloom and tone mapping as the city · mannequin = avatar scale<br>
+  headless? <code>?glb=&lt;url&gt;&amp;manifest=&lt;url&gt;</code> loads by URL, and
+  <code>window.__preview</code> gives you <code>loadPlot()</code>,
+  <code>setCam()</code> and <code>step(frames)</code> —
+  <a href="/docs/agent-context.md" style="color:#2fe0f8">documented here</a></span>
 </div>
 <div id="cams">
   <button data-cam="street">street ¾</button>
-  <button data-cam="door">doorway</button>
+  <button data-cam="doorway">doorway</button>
   <button data-cam="interior">interior</button>
   <button data-cam="high">high</button>
   <button data-cam="poster">poster</button>
@@ -130,10 +134,11 @@ window.__media = media;
 
 const CAMS = {
   street: [[9, 2.7, 14.5], [0, 2, 0]],
-  door: [[0, 1.6, 8.6], [0, 1.7, 0]],
+  doorway: [[0, 1.6, 8.6], [0, 1.7, 0]],
   interior: [[0, 1.6, 2.2], [0, 1.6, -4.5]],
   high: [[10, 7.5, 12], [0, 1.5, 0]],
 };
+CAMS.door = CAMS.doorway;   // the button has always said "doorway"; both names work
 // The poster is 16:9 and this window is not, so poster mode letterboxes the
 // canvas: what a builder sees pressing "poster" is the frame the directory
 // gets, edges included, rather than a wider or narrower crop of it.
@@ -161,6 +166,12 @@ function setCam(name) {
   if (posterMode) {
     if (plotRoot) framePoster(camera, controls.target, framePoints(plotRoot));
     return;
+  }
+  // An unknown name used to fall back to the street camera in silence, which
+  // looks exactly like a camera that moved. Say so instead.
+  if (!CAMS[name]) {
+    console.warn(`__preview.setCam: unknown camera "${name}" — use one of ` +
+      `${Object.keys(CAMS).join(', ')}, poster. Falling back to street.`);
   }
   const [p, t] = CAMS[name] || CAMS.street;
   camera.position.set(...p);
@@ -259,9 +270,34 @@ addEventListener('drop', (e) => { e.preventDefault(); handleFiles(e.dataTransfer
 document.getElementById('pick').addEventListener('click', () => document.getElementById('file').click());
 document.getElementById('file').addEventListener('change', (e) => handleFiles(e.target.files));
 
-const fromUrl = new URLSearchParams(location.search).get('glb');
-if (fromUrl && (fromUrl.startsWith('/') || fromUrl.startsWith(location.origin))) {
-  loadPlot(fromUrl).catch(() => {});
+// Loading by URL. Same-origin paths (any live plot) plus any https URL, so a
+// headless agent staging its build on its own CDN has a sanctioned way in —
+// drag-and-drop needs hands, and this page cannot reach a localhost file. The
+// remote host must send CORS headers; https-only also keeps this page off
+// mixed content. `manifest` binds media and animations, resolved relative to
+// the glb, so ?glb=...&manifest=... is the whole bundle.
+const params = new URLSearchParams(location.search);
+const fromUrl = params.get('glb');
+const manifestUrl = params.get('manifest');
+const loadable = (u) => {
+  try {
+    const p = new URL(u, location.href);
+    return p.protocol === 'https:' || p.origin === location.origin;
+  } catch { return false; }
+};
+if (fromUrl && loadable(fromUrl)) {
+  const base = new URL(fromUrl, location.href);
+  const resolve = (f) => (f && !/^(https?:|blob:|\/)/.test(f) ? new URL(f, base).href : f);
+  (async () => {
+    let manifest = null;
+    if (manifestUrl) {
+      if (!loadable(manifestUrl)) throw new Error(`manifest must be an https url or a same-origin path`);
+      manifest = await (await fetch(manifestUrl)).json();
+    }
+    await loadPlot(fromUrl, manifest, manifest ? resolve : null);
+  })().catch((e) => { status.textContent = `load failed: ${e.message || e}`; });
+} else if (fromUrl) {
+  status.textContent = `refused to load ${fromUrl} — use an https url or a same-origin path`;
 }
 
 const clock = new THREE.Clock();

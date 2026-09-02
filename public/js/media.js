@@ -130,8 +130,14 @@ export function createMediaSystem(camera) {
     const state = { mesh, url: cfg.file, count: 0 };
     const poll = async () => {
       try {
-        const sep = state.url.includes('?') ? '&' : '?';
-        const r = await fetch(state.url + sep + 't=' + Date.now());
+        // NO cache-buster. Every visitor's browser polls this URL directly, so
+        // a unique query string per poll would make every one of them a CDN
+        // MISS and bill the plot owner a function invocation per visitor per
+        // interval, forever. `cache: 'no-store'` keeps the panel current
+        // without that: the browser never serves its own stale copy, while the
+        // owner's CDN still answers from the edge and their origin sees one
+        // request per cache lifetime.
+        const r = await fetch(state.url, { cache: 'no-store' });
         if (!r.ok) return;
         const data = await r.json();
         const old = mesh.material;

@@ -1,5 +1,6 @@
 // POST /api/plots/submit — the no-fork submission path (ai-directory model).
-// Accepts JSON { plot: {...}, glb_base64, media?: { "name.ext": base64 } },
+// Accepts JSON { plot: {...}, glb_base64 | glb_url,
+//                media?: { "name.ext": base64 }, media_urls?: { "name.ext": url } },
 // runs the exact published checks, verifies the backlink (unless the domain
 // is pre-trusted, e.g. existing PromptFrenzy AI-directory listees), then
 // creates the PR with the directory bot's credentials. The submitter needs
@@ -7,53 +8,161 @@
 //
 // Env: GITHUB_TOKEN (bot PAT with repo scope), GITHUB_REPO ("owner/name").
 // Without a token — or with { dry: true } — it validates and reports only.
-import { validateIdentity, validateGlb, probeWalkability, validateMediaDecl, probeSurfaces, SPEC } from '../lib/validate-plot.mjs';
+import { validateIdentity, validateGlb, probeWalkability, validateMediaDecl, probeSurfaces, probeMediaFiles, SPEC } from '../lib/validate-plot.mjs';
+import { fetchAsset } from '../lib/fetch-asset.mjs';
 import { readFileSync } from 'node:fs';
 
 const TRUSTED = JSON.parse(readFileSync(new URL('../trusted.json', import.meta.url)));
-const MEDIA_EXT = {
-  m4a: 2 << 20, mp3: 2 << 20, ogg: 2 << 20, mp4: 16 << 20, json: 64 << 10,
-  png: 2 << 20, jpg: 2 << 20, jpeg: 2 << 20, webp: 2 << 20,
+
+// Per-file ceilings, read from the SPEC the docs publish rather than repeated
+// here. The two had already drifted: the spec caps screens at 16 MiB TOTAL and
+// this table was checking 16 MiB PER FILE, so two screens could pass at double
+// the published budget. A number that lives in one place cannot drift again.
+const SM = SPEC.media;
+const AUDIO_MAX = SM.ambient_audio.max_bytes;
+const PICTURE_MAX = SM.pictures.max_bytes_each;
+const SCREENS_TOTAL = SM.screens.max_bytes_total;
+const FEED_JSON_MAX = 64 << 10;              // a bundled live-feed document
+const MEDIA_MAX = {
+  m4a: AUDIO_MAX, mp3: AUDIO_MAX, ogg: AUDIO_MAX,
+  mp4: SCREENS_TOTAL,                        // one screen may spend the whole allowance
+  png: PICTURE_MAX, jpg: PICTURE_MAX, jpeg: PICTURE_MAX, webp: PICTURE_MAX,
+  json: FEED_JSON_MAX,
 };
+
+// The platform rejects a request body over this BEFORE the function runs: a
+// bare text/plain 413, no JSON, no report, nothing this code can catch or
+// explain. Base64 inflates every file by a third on the way in, so the real
+// ceiling for an inline bundle is ~3.3 MB of actual bytes — well under the sum
+// of the published per-file caps. Bundles that big must come in by URL.
+const REQUEST_BODY_LIMIT = 4.5e6;
+const MB = (n) => `${(n / 1e6).toFixed(2)} MB`;
+const KiB = (n) => `${(n / 1024).toFixed(0)} KiB`;
+
+// What the panel renderer can actually draw. Measured in the real 512x384
+// canvas with the fonts renderFeed uses, at the x each string starts from:
+// these are the lengths at which text runs off the panel, not a style guide.
+const PANEL = { big: 8, title: 28, sub: 33, bars: 16 };
+
+// The old check asked only whether one of the four keys existed, so a feed
+// whose bars were strings passed the dry run and then drew an empty chart on
+// the lot. Type errors fail here; things that merely won't fit are reported in
+// the detail, because a clipped headline is the author's call, not a defect.
+function feedShape(d) {
+  if (!d || typeof d !== 'object' || Array.isArray(d)) {
+    return { ok: false, why: 'is not a JSON object' };
+  }
+  if (!['title', 'big', 'sub', 'bars'].some((k) => k in d)) {
+    return { ok: false, why: 'has none of title, big, sub, bars' };
+  }
+  for (const k of ['title', 'big', 'sub']) {
+    const v = d[k];
+    if (k in d && v !== null && typeof v !== 'string' && typeof v !== 'number') {
+      return { ok: false, why: `${k} must be a string or number (got ${Array.isArray(v) ? 'array' : typeof v})` };
+    }
+  }
+  const notes = [];
+  if ('bars' in d) {
+    if (!Array.isArray(d.bars)) {
+      return { ok: false, why: `bars must be an array of plain numbers (got ${typeof d.bars})` };
+    }
+    const bad = d.bars.filter((b) => typeof b !== 'number' || !Number.isFinite(b)).length;
+    if (bad) {
+      return { ok: false, why: `${bad} of ${d.bars.length} bars are not finite numbers — those draw nothing` };
+    }
+    if (d.bars.length > PANEL.bars) notes.push(`${d.bars.length} bars, only the first ${PANEL.bars} are drawn`);
+  }
+  for (const [k, max] of [['big', PANEL.big], ['title', PANEL.title], ['sub', PANEL.sub]]) {
+    const len = String(d[k] ?? '').length;
+    if (len > max) notes.push(`${k} is ${len} chars, ~${max} fit on the panel`);
+  }
+  return { ok: true, notes };
+}
+
+const CITY_ORIGIN = 'https://otra.city';
+const corsOpen = (v) => v === '*' || (v || '').toLowerCase() === CITY_ORIGIN;
+
+// A visitor's browser applies CORS to EVERY hop, so a redirect that does not
+// itself carry Access-Control-Allow-Origin stops the fetch dead however open
+// the destination is. node's fetch follows redirects with no CORS at all, so
+// walking them by hand is the only way this check can mean what it says —
+// otherwise a plot passes the dry run and its panel never leaves the fallback
+// texture in the real city. (Found exactly this on a live plot.)
+async function fetchLikeABrowser(url, maxHops = 3) {
+  let current = url;
+  for (let hop = 0; ; hop++) {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 8000);
+    const r = await fetch(current, {
+      signal: ctl.signal,
+      redirect: 'manual',
+      headers: { 'user-agent': 'otra-city-bot/1.0', origin: CITY_ORIGIN },
+    });
+    clearTimeout(t);
+    const cors = r.headers.get('access-control-allow-origin');
+    const location = r.headers.get('location');
+    if (r.status >= 300 && r.status < 400 && location) {
+      const next = new URL(location, current).href;
+      if (!corsOpen(cors)) {
+        return { blocked: `${current} answers ${r.status} -> ${next} without "Access-Control-Allow-Origin" ` +
+          `on the redirect itself. A browser stops there even though the destination is open, so the panel ` +
+          `would never leave its authored texture. Declare ${next} as your feed url, or send the header on the redirect too.` };
+      }
+      if (hop >= maxHops) return { blocked: `more than ${maxHops} redirects from ${url}` };
+      current = next;
+      continue;
+    }
+    return { r, cors, finalUrl: current };
+  }
+}
 
 // Live-feed dry check: fetch the declared endpoint (or parse the bundled
 // file) and validate the shape, so a broken feed fails HERE, not on the lot.
 async function checkFeed(feed, media) {
-  const shapeOk = (d) => d && typeof d === 'object' &&
-    ['title', 'big', 'sub', 'bars'].some((k) => k in d);
   try {
     if (feed.url) {
-      const ctl = new AbortController();
-      const t = setTimeout(() => ctl.abort(), 8000);
-      const r = await fetch(feed.url, { signal: ctl.signal, headers: { 'user-agent': 'otra-city-bot/1.0' } });
-      clearTimeout(t);
+      const hop = await fetchLikeABrowser(feed.url);
+      if (hop.blocked) return { ok: false, detail: hop.blocked };
+      const { r, cors } = hop;
       if (!r.ok) return { ok: false, detail: `GET ${feed.url} -> ${r.status}` };
-      const cors = r.headers.get('access-control-allow-origin');
       const data = await r.json();
-      if (!shapeOk(data)) return { ok: false, detail: 'response is not {title, big, sub, bars[]}' };
+      const shape = feedShape(data);
+      if (!shape.ok) return { ok: false, detail: `response ${shape.why} — the panel needs {title, big, sub, bars[]}` };
+      const fits = shape.notes.length ? ` — note: ${shape.notes.join('; ')}` : '';
       return {
-        ok: cors === '*',
-        detail: cors === '*'
+        ok: corsOpen(cors),
+        detail: (corsOpen(cors)
           ? `endpoint OK, shape OK, CORS OK (panel falls back to its authored texture if it ever breaks)`
-          : `shape OK but missing "Access-Control-Allow-Origin: *" — the browser polls this URL directly, so without CORS the panel will only ever show its authored texture`,
+          : `shape OK but missing "Access-Control-Allow-Origin: *" — the browser polls this URL directly, so without CORS the panel will only ever show its authored texture`) + fits,
       };
     }
     const name = (feed.file || '').split('/').pop();
     const b64 = media[name];
     if (!b64) return { ok: false, detail: `bundled feed ${feed.file} not found in media` };
     const data = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
-    if (!shapeOk(data)) return { ok: false, detail: 'bundled feed is not {title, big, sub, bars[]}' };
-    return { ok: true, detail: `bundled feed OK — update it by resubmitting; upgrade to a live url any time` };
+    const shape = feedShape(data);
+    if (!shape.ok) return { ok: false, detail: `bundled feed ${shape.why} — the panel needs {title, big, sub, bars[]}` };
+    return { ok: true,
+      detail: `bundled feed OK — update it by resubmitting; upgrade to a live url any time` +
+        (shape.notes.length ? ` — note: ${shape.notes.join('; ')}` : '') };
   } catch (e) {
     return { ok: false, detail: `feed check failed: ${e.name || e}` };
   }
 }
 
+// Returns the parsed bundle AND the wire size, so the report can tell a
+// submitter how close they came to the body limit above — the difference
+// between "you have room for a longer video" and a mystery 413 next time.
 async function readBody(req) {
-  if (req.body) return typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+  if (req.body) {
+    const raw = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    return { body: typeof req.body === 'string' ? JSON.parse(req.body) : req.body,
+      bytes: Buffer.byteLength(raw) };
+  }
   const chunks = [];
   for await (const c of req) chunks.push(c);
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  const buf = Buffer.concat(chunks);
+  return { body: JSON.parse(buf.toString('utf8')), bytes: buf.length };
 }
 
 async function checkBacklink(url, slug) {
@@ -237,13 +346,27 @@ export default async function handler(req, res) {
     return;
   }
   try {
-    const body = await readBody(req);
+    const { body, bytes: requestBytes } = await readBody(req);
     const plot = body.plot || {};
     const result = { spec_version: SPEC.version, identity: null, budgets: null, walkability: null, backlink: null };
 
     result.identity = validateIdentity(plot);
-    if (!body.glb_base64) throw new Error('glb_base64 missing');
-    const glb = Buffer.from(body.glb_base64, 'base64');
+
+    // Two ways to hand over the files. Inline base64 is simplest and is capped
+    // by the platform's request-body limit; urls are fetched server-side under
+    // the same per-file caps, which is the only way to spend the full media
+    // budget. They can be mixed.
+    let fetchedBytes = 0;
+    let glb;
+    if (body.glb_base64) {
+      glb = Buffer.from(body.glb_base64, 'base64');
+    } else if (body.glb_url) {
+      glb = await fetchAsset(body.glb_url, { maxBytes: SPEC.budgets.max_glb_bytes, label: 'glb' });
+      fetchedBytes += glb.length;
+    } else {
+      throw new Error('send your build as glb_base64 (inline, subject to the 4.5 MB request-body limit) ' +
+        'or glb_url (an https url the city fetches). See https://otra.city/docs/submission.md');
+    }
     const requireDoor = plot.type === 'shop';
     result.budgets = await validateGlb(glb, { requireDoor });
     delete result.budgets.doc;
@@ -254,19 +377,58 @@ export default async function handler(req, res) {
     // so a video mapped to an atlas cell is a rejection.
     result.surfaces = await probeSurfaces(glb, { plot });
 
-    const media = body.media || {};
+    const media = { ...(body.media || {}) };
+    for (const [name, src] of Object.entries(body.media_urls || {})) {
+      if (name in media) {
+        throw new Error(`media "${name}" was sent twice — once inline and once in media_urls; pick one`);
+      }
+      if (!/^[a-z0-9._-]+$/i.test(name)) {
+        throw new Error(`media "${name}": the key is the filename and must be [a-z0-9._-]`);
+      }
+      const cap = MEDIA_MAX[name.split('.').pop().toLowerCase()];
+      if (!cap) throw new Error(`media "${name}": that extension is not an accepted media type`);
+      const buf = await fetchAsset(src, { maxBytes: cap, label: `media ${name}` });
+      media[name] = buf.toString('base64');
+      fetchedBytes += buf.length;
+    }
+
     const mediaChecks = [];
     let mediaOk = true;
+    let screenBytes = 0;
+    const buffers = {};
     for (const [name, b64] of Object.entries(media)) {
       const ext = name.split('.').pop().toLowerCase();
-      const size = Buffer.from(b64, 'base64').length;
-      const ok = !!MEDIA_EXT[ext] && size <= MEDIA_EXT[ext] && /^[a-z0-9._-]+$/i.test(name);
+      const buf = Buffer.from(b64, 'base64');
+      const size = buf.length;
+      buffers[name] = buf;
+      const cap = MEDIA_MAX[ext];
+      const ok = !!cap && size <= cap && /^[a-z0-9._-]+$/i.test(name);
+      if (ext === 'mp4') screenBytes += size;
       mediaOk &&= ok;
-      mediaChecks.push({ name: `media ${name}`, ok, detail: `${(size / 1024).toFixed(0)} KiB ${ext}` });
+      mediaChecks.push({
+        name: `media ${name}`,
+        ok,
+        detail: ok ? `${KiB(size)} ${ext}`
+          : !cap ? `${KiB(size)} — .${ext} is not an accepted media type`
+            : size > cap ? `${KiB(size)} — over the ${KiB(cap)} cap for .${ext}`
+              : `${KiB(size)} — filename must be [a-z0-9._-]`,
+      });
+    }
+    // The screens budget is a TOTAL across both videos, which the per-file
+    // ceiling above cannot express.
+    if (screenBytes) {
+      const ok = screenBytes <= SCREENS_TOTAL;
+      mediaOk &&= ok;
+      mediaChecks.push({ name: 'screens total', ok,
+        detail: `${KiB(screenBytes)} of ${KiB(SCREENS_TOTAL)} across all mp4 screens` });
     }
     const decl = validateMediaDecl(plot, Object.keys(media));
     mediaChecks.push(...decl.checks);
     mediaOk &&= decl.ok;
+    // Duration and resolution — the caps the docs published and nothing read.
+    const probes = probeMediaFiles(plot, buffers);
+    mediaChecks.push(...probes.checks);
+    mediaOk &&= probes.ok;
     result.media = { checks: mediaChecks, ok: mediaOk };
 
     if (plot.media?.feed) result.feed = await checkFeed(plot.media.feed, media);
@@ -290,6 +452,18 @@ export default async function handler(req, res) {
       lines.push(`${c.ok ? 'PASS' : advisory ? 'WARN' : 'FAIL'}  ${c.name.padEnd(14)} ${c.detail}` +
         (c.ok || !advisory ? '' : ' [separated at ingest — fix your source to see it as you built it]'));
     }
+    // Advisory: a submission that got this far is already inside the limit.
+    // It is here so the next, larger bundle is a budget rather than a mystery.
+    result.payload = {
+      bytes: requestBytes,
+      limit_bytes: REQUEST_BODY_LIMIT,
+      ok: requestBytes <= REQUEST_BODY_LIMIT * 0.9,
+    };
+    result.payload.fetched_bytes = fetchedBytes;
+    lines.push(`${result.payload.ok ? 'PASS' : 'WARN'}  payload        ` +
+      `${MB(requestBytes)} of ${MB(REQUEST_BODY_LIMIT)} request body` +
+      (fetchedBytes ? ` + ${MB(fetchedBytes)} fetched by url (not subject to the limit)` : '') +
+      (result.payload.ok ? '' : ' — close to the platform limit; send large files by url instead'));
     if (result.feed) lines.push(`${result.feed.ok ? 'PASS' : 'FAIL'}  live feed      ${result.feed.detail}`);
     if (result.backlink) lines.push(`${result.backlink.ok ? 'PASS' : 'FAIL'}  backlink       ${result.backlink.detail}`);
     if (result.ownership) lines.push(`${result.ownership.ok ? 'PASS' : 'FAIL'}  ownership      ${result.ownership.detail}`);
