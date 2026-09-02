@@ -22,7 +22,9 @@ export class PlayerController {
     this.yaw = Math.PI; // face -z (toward the shop) at spawn
     this.keys = new Set();
     this.stick = new THREE.Vector2(); // analog input: x right, y forward, unit disc
-    this.colliders = [];
+    this.colliders = [];   // the world: ground, street, plots
+    this.extra = [];       // added and removed at runtime (venues)
+    this.all = [];
     this.enabled = false;
     this.ray = new THREE.Raycaster();
     this.radius = 0.28;
@@ -30,9 +32,11 @@ export class PlayerController {
     this.walkSpeed = 3.2;
     this.runSpeed = 5.6;
     this.followPos = new THREE.Vector3();
-    // How far a visitor may wander. The city overrides this from the street's
-    // real extent (street.bounds) once the manifest is in; the default is the
-    // street otra.city launched with, so this module stands alone.
+    // How far a visitor may wander: a { x, z } box, or an (x, z) => boolean
+    // for a world that is no longer a rectangle — the city passes
+    // world.contains once roads and venues are in, and that predicate is
+    // built from the street's own extent. The default is the street
+    // otra.city launched with, so this module stands alone.
     this.bounds = { x: 40, z: 40 };
 
     addEventListener('keydown', (e) => {
@@ -52,15 +56,32 @@ export class PlayerController {
     else if (this.stick.length() > 1) this.stick.normalize();
   }
 
-  setBounds(b) {
-    this.bounds = b;
-  }
-
   setColliders(list) {
     this.colliders = list;
+    this.all = [...this.colliders, ...this.extra];
     this.enabled = true;
     this.followPos.set(this.pos.x, this.pos.y + 1.15, this.pos.z);
     this.controls.target.copy(this.followPos);
+  }
+
+  addColliders(list) {
+    this.extra.push(...list);
+    this.all = [...this.colliders, ...this.extra];
+  }
+
+  removeColliders(list) {
+    const drop = new Set(list);
+    this.extra = this.extra.filter((c) => !drop.has(c));
+    this.all = [...this.colliders, ...this.extra];
+  }
+
+  setBounds(bounds) {
+    this.bounds = bounds;
+  }
+
+  inBounds(x, z) {
+    const b = this.bounds;
+    return typeof b === 'function' ? b(x, z) : Math.abs(x) <= b.x && Math.abs(z) <= b.z;
   }
 
   castAxis(dir, dist) {
@@ -68,7 +89,7 @@ export class PlayerController {
     for (const h of this.rayHeights) {
       this.ray.set(new THREE.Vector3(this.pos.x, this.pos.y + h, this.pos.z), dir);
       this.ray.far = dist + this.radius;
-      const hit = this.ray.intersectObjects(this.colliders, false)[0];
+      const hit = this.ray.intersectObjects(this.all, false)[0];
       if (hit) allowed = Math.min(allowed, Math.max(0, hit.distance - this.radius));
     }
     return allowed;
@@ -103,16 +124,22 @@ export class PlayerController {
     // per-axis move with ray clamping (axis-aligned world -> free wall sliding)
     const mx = this.vel.x * dt;
     const mz = this.vel.z * dt;
-    if (mx) this.pos.x += Math.sign(mx) * this.castAxis(new THREE.Vector3(Math.sign(mx), 0, 0), Math.abs(mx));
-    if (mz) this.pos.z += Math.sign(mz) * this.castAxis(new THREE.Vector3(0, 0, Math.sign(mz)), Math.abs(mz));
-    this.pos.x = THREE.MathUtils.clamp(this.pos.x, -this.bounds.x, this.bounds.x);
-    this.pos.z = THREE.MathUtils.clamp(this.pos.z, -this.bounds.z, this.bounds.z);
+    // an axis move that would leave the walkable world is dropped, which
+    // slides you along its edge exactly like a wall
+    if (mx) {
+      const nx = this.pos.x + Math.sign(mx) * this.castAxis(new THREE.Vector3(Math.sign(mx), 0, 0), Math.abs(mx));
+      if (this.inBounds(nx, this.pos.z)) this.pos.x = nx;
+    }
+    if (mz) {
+      const nz = this.pos.z + Math.sign(mz) * this.castAxis(new THREE.Vector3(0, 0, Math.sign(mz)), Math.abs(mz));
+      if (this.inBounds(this.pos.x, nz)) this.pos.z = nz;
+    }
 
     // ground snap (handles the 0.25 m floor slab + runway lip as walkable steps)
     if (this.enabled) {
       this.ray.set(new THREE.Vector3(this.pos.x, this.pos.y + 1.6, this.pos.z), DOWN);
       this.ray.far = 4;
-      const hit = this.ray.intersectObjects(this.colliders, false)[0];
+      const hit = this.ray.intersectObjects(this.all, false)[0];
       const gy = hit ? hit.point.y : 0;
       if (gy - this.pos.y < 0.45) this.pos.y += (gy - this.pos.y) * (1 - Math.exp(-25 * dt));
     }

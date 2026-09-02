@@ -1,0 +1,51 @@
+# Venues (stadium and friends) live outside the plot pipeline, and
+# validate-plots.yml only fires on public/plots/**, so the venue system gets
+# its own gate: manifest schema + index in sync, GLB budgets and node
+# contract, the tier cycle (load → inside → unload with GPU memory returned),
+# walkability from the forecourt to the seats, and the fixture screenshots as
+# artifacts. Headless Chrome is the runner's Google Chrome, as for posters.
+name: venues
+on:
+  pull_request:
+    paths:
+      - 'public/venues/**'
+      - 'public/city/**'
+      - 'public/js/**'
+      - 'public/index.html'
+      - 'public/venue.html'
+      - 'scripts/venue-*.mjs'
+      - 'scripts/build-venues.mjs'
+      - 'lib/**'
+      - 'docs/venues/venue-schema.json'
+      - '.github/workflows/venues.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'public/venues/**'
+      - 'public/city/**'
+      - 'public/js/**'
+      - 'public/index.html'
+      - 'public/venue.html'
+      - 'scripts/venue-*.mjs'
+      - 'scripts/build-venues.mjs'
+      - 'lib/**'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: node scripts/build-venues.mjs --check --strict
+      - run: node scripts/venue-check.mjs --all --out poc/out/venue-check.json
+      - run: node scripts/venue-shot.mjs --all --out poc/out/shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: venue-evidence
+          path: |
+            poc/out/venue-check.json
+            poc/out/shots/*.png
+          if-no-files-found: warn

@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Venue fixture — otra.city</title>
+<meta name="robots" content="noindex">
+<style>
+  html, body { margin: 0; height: 100%; background: #0a0817; overflow: hidden; }
+  #hud {
+    position: fixed; left: 12px; top: 12px; z-index: 2; color: #cfd3e8; max-width: 440px;
+    font: 12px/1.55 ui-monospace, Menlo, monospace;
+    background: rgba(10, 8, 23, .78); border: 1px solid #31234f; padding: 10px 12px; border-radius: 8px;
+  }
+  #hud b { color: #2fe0f8; }
+  #hud .dim { color: #8a86a0; }
+  #bar { position: fixed; left: 12px; bottom: 12px; z-index: 2; display: flex; gap: 8px; flex-wrap: wrap; max-width: 90vw; }
+  #bar button {
+    background: #150f26; color: #cfd3e8; border: 1px solid #31234f;
+    font: 600 12px/1 ui-monospace, Menlo, monospace; padding: 8px 12px; border-radius: 999px; cursor: pointer;
+  }
+  #bar button:hover, #bar button.on { border-color: #2fe0f8; color: #2fe0f8; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <b>venue fixture</b> — the real client pipeline, one venue, fixed cameras<br>
+  <span id="status" class="dim">loading…</span><br>
+  <span class="dim"><code>?venue=&lt;id&gt;&amp;tier=0|1|2&amp;cam=&lt;name&gt;&amp;bundle=&lt;url&gt;&amp;fast=1&amp;street=0</code> ·
+  <code>window.__venue</code>: setPos, setLocal, setTier, setCam, step, stats, walkability, state</span>
+</div>
+<div id="bar"></div>
+<script type="importmap">
+{
+  "imports": {
+    "three": "/vendor/three/three.module.js",
+    "three/addons/": "/vendor/three/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { createAvatar } from '/js/avatar.js';
+import { createMediaSystem } from '/js/media.js';
+import { createAnimSystem } from '/js/anims.js';
+import { loadStreet } from '/js/street.js';
+import { loadWorld } from '/js/world.js';
+import { buildRoads } from '/js/roads.js';
+import { createVenues } from '/js/venues.js';
+import { createDoorSystem } from '/js/doors.js';
+
+// Errors are evidence: keep every one so a headless check can read them back.
+const errors = [];
+addEventListener('error', (e) => errors.push(String(e.message || e)));
+addEventListener('unhandledrejection', (e) => errors.push('unhandled: ' + String(e.reason?.message || e.reason)));
+const origError = console.error.bind(console);
+console.error = (...a) => { errors.push(a.map(String).join(' ')); origError(...a); };
+
+const params = new URLSearchParams(location.search);
+const status = document.getElementById('status');
+
+// ---- identical pipeline to index.html ----
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.info.autoReset = false;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0817);
+scene.fog = new THREE.Fog(0x0a0817, 32, 95);
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 220);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300),
+  new THREE.MeshStandardMaterial({ color: 0x121017, roughness: 0.95 }));
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.01;
+scene.add(ground);
+scene.add(new THREE.HemisphereLight(0x8899ff, 0x080610, 0.25));
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.12, 0.3, 1.0));
+composer.addPass(new OutputPass());
+const loader = new GLTFLoader().setDRACOLoader(new DRACOLoader().setDecoderPath('/vendor/three/jsm/libs/draco/gltf/'));
+const media = createMediaSystem(camera);
+const anims = createAnimSystem();
+const doors = createDoorSystem();
+
+// The probe stands in for the player: a position the streamer and doors
+// react to, a mannequin at avatar scale, and the collider lists a venue adds
+// to and removes from.
+const mannequin = createAvatar();
+scene.add(mannequin.group);
+const probe = {
+  pos: mannequin.group.position,
+  colliders: [], extra: [], all: [],
+  addColliders(list) { this.extra.push(...list); this.all = [...this.colliders, ...this.extra]; },
+  removeColliders(list) { const drop = new Set(list); this.extra = this.extra.filter((c) => !drop.has(c)); this.all = [...this.colliders, ...this.extra]; },
+};
+
+const street = params.get('street') === '0' ? null : await loadStreet(scene);
+const world = await loadWorld({ street });
+scene.fog.near = world.presets.fog[0];
+scene.fog.far = world.presets.fog[1];
+camera.far = Math.max(camera.far, world.presets.cameraFar);
+camera.updateProjectionMatrix();
+const roads = buildRoads(scene, world);
+probe.colliders = [ground, ...(street?.colliders || []), ...roads.colliders];
+probe.all = [...probe.colliders];
+
+const id = params.get('venue') || world.venues[0]?.id;
+const def = world.venues.find((v) => v.id === id);
+if (!def) status.textContent = `no venue "${id}" in /venues/index.json`;
+if (def && params.get('fast') === '1') def.tiers.unload_after_s = 0;
+// test hooks: mount a fixed bundle instead of the schedule, or read the
+// programme from a mock origin (venue-check serves one)
+// This page is served on the public /venue route, so a query parameter must
+// never become code: the SDK may only come from 4dgsx.com or this origin,
+// and bundle/feed URLs must be https (they are data the SDK fetches).
+const httpsOnly = (u) => { try { const x = new URL(u, location.href); return x.protocol === 'https:' || x.origin === location.origin ? x.href : null; } catch { return null; } };
+const sdkAllowed = (u) => { const h = httpsOnly(u); return h && (h.startsWith('https://4dgsx.com/') || new URL(h).origin === location.origin) ? h : null; };
+for (const m of def?.modules || []) {
+  if (m.type !== 'match-4dgsx') continue;
+  if (params.get('bundle')) m.bundle = httpsOnly(params.get('bundle')) || undefined;
+  if (params.get('feed_origin')) m.origin = httpsOnly(params.get('feed_origin')) || undefined;
+  if (params.get('sdk')) {
+    const ok = sdkAllowed(params.get('sdk'));
+    if (ok) m.sdk = ok; else console.warn('venue fixture: ?sdk= must point at 4dgsx.com or this origin; ignored');
+  }
+}
+const venues = createVenues(scene, world, { loader, player: probe, doors, anims, media, camera, renderer });
+const V = def ? venues.get(id) : null;
+
+const toWorld = (x, z) => world.toWorld(def, { x, z });
+function setPos(x, z) { probe.pos.set(x, 0, z); return probe.pos.toArray(); }
+function setLocal(x, z) { const w = toWorld(x, z); return setPos(w.x, w.z); }
+function setCam(name) {
+  const cam = def?.cameras?.[name];
+  if (!cam) { console.warn(`unknown camera "${name}" — one of ${Object.keys(def?.cameras || {}).join(', ')}`); return false; }
+  const p = toWorld(cam[0][0], cam[0][2]);
+  const t = toWorld(cam[1][0], cam[1][2]);
+  camera.position.set(p.x, cam[0][1], p.z);
+  controls.target.set(t.x, cam[1][1], t.z);
+  for (const b of document.querySelectorAll('#bar button[data-cam]')) b.classList.toggle('on', b.dataset.cam === name);
+  return true;
+}
+function setTier(tier) { if (V) V.force = tier; }
+
+let simT = 0;
+function step(frames = 30, dt = 1 / 60) {
+  for (let i = 0; i < frames; i++) {
+    simT += dt;
+    doors.update(dt, probe.pos);
+    venues.update(dt, probe.pos, simT);
+    anims.update(dt, simT, probe.pos);
+    if (street) street.update(dt);
+  }
+  media.update(probe.pos, frames * dt);
+  controls.update();
+  renderer.info.reset();
+  composer.render();
+  return stats();
+}
+function countTree(root) {
+  let meshes = 0; let tris = 0; const mats = new Set();
+  if (root) root.traverse((o) => {
+    if (!o.isMesh || !o.visible) return;
+    meshes += 1;
+    const g = o.geometry;
+    tris += g.index ? g.index.count / 3 : (g.attributes.position?.count || 0) / 3;
+    for (const m of [].concat(o.material)) mats.add(m);
+  });
+  return { meshes, tris: Math.round(tris), materials: mats.size };
+}
+function stats() {
+  let lights = 0;
+  scene.traverse((o) => { if (o.isLight && !o.isHemisphereLight && o.intensity > 0) lights += 1; });
+  const r = renderer.info.render;
+  return {
+    venue: id, tier: V?.tier ?? null, want: V?.want ?? null, loaded: !!V?.near,
+    calls: r.calls, tris: r.triangles, lights,
+    memory: { ...renderer.info.memory },
+    impostor: countTree(V?.far), near: countTree(V?.near),
+    colliders: probe.extra.length, doors: doors.count, anims: anims.count,
+    pos: probe.pos.toArray().map((v) => +v.toFixed(2)),
+    errors: errors.slice(),
+  };
+}
+
+// Flood-fill walkability over the venue and its approach, with the rules the
+// player obeys: a 0.28 m body steps up at most 0.35 m and needs 2 m of
+// headroom. Every cell may hold several floors (the deck under a lintel, a
+// gangway under a screen frame), so the fill walks (cell, floor) nodes rather
+// than assuming the first surface seen from above is the ground. Gate panels
+// are ignored: the doors open for a visitor.
+function walkability({ cell = 0.5, maxStep = 0.35, headroom = 2.0, margin = 14, points = [] } = {}) {
+  if (!V?.near) return { ok: false, reason: 'venue not loaded' };
+  const b = def.bounds;
+  const min = [b.min[0] - margin, b.min[1] - margin];
+  const max = [b.max[0] + margin, b.max[1] + margin];
+  const gatePanels = new Set();
+  for (const g of def.gates || []) for (const n of [g.left, g.right]) V.nodes[n]?.traverse((o) => { if (o.isMesh) gatePanels.add(o); });
+  const cols = probe.all.filter((c) => !gatePanels.has(c));
+  const ray = new THREE.Raycaster();
+  const nx = Math.ceil((max[0] - min[0]) / cell);
+  const nz = Math.ceil((max[1] - min[1]) / cell);
+  const floors = new Array(nx * nz);
+  const down = new THREE.Vector3(0, -1, 0);
+  const nrm = new THREE.Vector3();
+  let walkable = 0;
+  for (let i = 0; i < nx; i++) {
+    for (let j = 0; j < nz; j++) {
+      const x = min[0] + (i + 0.5) * cell;
+      const z = min[1] + (j + 0.5) * cell;
+      ray.set(new THREE.Vector3(x, 60, z), down);
+      ray.far = 70;
+      const hits = ray.intersectObjects(cols, false);   // nearest first = top down
+      const layers = [];
+      for (let h = 0; h < hits.length; h++) {
+        const hit = hits[h];
+        if (!hit.face) continue;
+        nrm.copy(hit.face.normal).transformDirection(hit.object.matrixWorld);
+        if (nrm.y < 0.5) continue;                       // walls and undersides are not floors
+        const above = h > 0 ? hits[h - 1].point.y : Infinity;
+        if (above - hit.point.y >= headroom) layers.push(hit.point.y);
+        if (layers.length === 8) break;
+      }
+      floors[i * nz + j] = layers;
+      if (layers.length) walkable += 1;
+    }
+  }
+  const cellOf = (x, z) => [Math.floor((x - min[0]) / cell), Math.floor((z - min[1]) / cell)];
+  const idx = (i, j) => (i >= 0 && j >= 0 && i < nx && j < nz ? i * nz + j : -1);
+  const key = (k, l) => k * 8 + l;
+  const s = toWorld(def.spawn.x, def.spawn.z);
+  const [si, sj] = cellOf(s.x, s.z);
+  const sk = idx(si, sj);
+  let startLayer = -1;
+  if (sk >= 0) { let bd = Infinity; floors[sk].forEach((y, l) => { if (Math.abs(y) < bd) { bd = Math.abs(y); startLayer = l; } }); }
+  const seen = new Set();
+  const queue = [];
+  const reachedAt = new Map();   // cell -> reached floor heights
+  if (startLayer >= 0) { seen.add(key(sk, startLayer)); queue.push([si, sj, startLayer]); }
+  // Two counts, because a cell can hold several floors (a gangway under a
+  // screen frame): `nodes` is how much surface the fill walked, `reachable`
+  // is how many CELLS it got to — the one that compares with `walkable`.
+  let nodes = 0;
+  while (queue.length) {
+    const [i, j, l] = queue.shift();
+    nodes += 1;
+    const k = idx(i, j);
+    const y = floors[k][l];
+    if (!reachedAt.has(k)) reachedAt.set(k, []);
+    reachedAt.get(k).push(y);
+    for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const kk = idx(i + di, j + dj);
+      if (kk < 0) continue;
+      const ls = floors[kk];
+      for (let m = 0; m < ls.length; m++) {
+        if (Math.abs(ls[m] - y) > maxStep) continue;
+        const kid = key(kk, m);
+        if (seen.has(kid)) continue;
+        seen.add(kid);
+        queue.push([i + di, j + dj, m]);
+      }
+    }
+  }
+  // reached within r metres, and (when y is given) within dy of that height
+  const near = (x, z, r = 0.6, y = null, dy = 0.6) => {
+    const [ci, cj] = cellOf(x, z);
+    const n = Math.ceil(r / cell);
+    for (let i = ci - n; i <= ci + n; i++) {
+      for (let j = cj - n; j <= cj + n; j++) {
+        const ys = reachedAt.get(idx(i, j));
+        if (ys && (y === null || ys.some((v) => Math.abs(v - y) <= dy))) return true;
+      }
+    }
+    return false;
+  };
+  const seats = (def.seats || []).map(([x, y, z]) => { const w = toWorld(x, z); return near(w.x, w.z, 0.6, y, 0.6); });
+  const gates = (def.gates || []).map((g) => { const w = toWorld(g.at[0], g.at[2]); return { id: g.id, reachable: near(w.x, w.z, 1.2) }; });
+  const probes = points.map(([x, z]) => {
+    const [i, j] = cellOf(x, z);
+    const k = idx(i, j);
+    return { x, z, floors: k >= 0 ? floors[k].map((v) => +v.toFixed(2)) : null, reached: k >= 0 ? (reachedAt.get(k) || []).map((v) => +v.toFixed(2)) : [] };
+  });
+  return {
+    ok: startLayer >= 0, cell, cells: nx * nz, walkable, reachable: reachedAt.size, nodes,
+    seatsTotal: seats.length, seatsReachable: seats.filter(Boolean).length, gates, probes,
+    spawn: { x: s.x, z: s.z, ground: startLayer >= 0 ? +floors[sk][startLayer].toFixed(2) : null },
+  };
+}
+
+// buttons
+const bar = document.getElementById('bar');
+const btn = (label, fn, attrs = {}) => { const b = document.createElement('button'); b.textContent = label; Object.assign(b.dataset, attrs); b.addEventListener('click', fn); bar.append(b); return b; };
+for (const t of [0, 1, 2]) btn(`tier ${t}`, () => setTier(t));
+btn('auto', () => setTier(null));
+for (const name of Object.keys(def?.cameras || {})) btn(name, () => setCam(name), { cam: name });
+
+if (def) {
+  const t = params.get('tier');
+  if (t !== null) setTier(Number(t));
+  const spawn = toWorld(def.spawn.x, def.spawn.z);
+  setPos(spawn.x, spawn.z);
+  mannequin.group.rotation.y = def.spawn.yaw + (def.placement.yaw || 0);
+  setCam(params.get('cam') || Object.keys(def.cameras)[0]);
+}
+
+window.__venue = {
+  id, def, world, venues, scene, camera, renderer, controls, media, anims, doors, probe, roads, street, mannequin,
+  setPos, setLocal, setTier, setCam, step, stats, walkability,
+  whenLoaded: () => venues.whenLoaded(id),
+  state: () => ({ venues: venues.state(), doors: doors.state(), media: media.state, errors: errors.slice() }),
+  errors,
+};
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  simT += dt;
+  doors.update(dt, probe.pos);
+  venues.update(dt, probe.pos, simT);
+  anims.update(dt, simT, probe.pos);
+  if (street) street.update(dt);
+  media.update(probe.pos, dt);
+  controls.update();
+  renderer.info.reset();
+  composer.render();
+  const s = stats();
+  status.textContent = `${def ? def.name : '—'} · tier ${s.tier} (want ${s.want}) · ${s.calls} calls · ${s.tris} tris · ${s.lights} lights · ${s.colliders} venue colliders${s.errors.length ? ` · ${s.errors.length} error(s)` : ''}`;
+});
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

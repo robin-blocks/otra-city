@@ -1,0 +1,34 @@
+{
+  "comment": "City-owned roads beyond the boulevard (which street.js draws, x -42..42). Metres, x east, z = side (+z north). Rendered by public/js/roads.js; walkable bounds derived by public/js/world.js.",
+  "light_budget": 6,
+  "nodes": {
+    "blvd_e": [42, 0],
+    "rb": [60, 0],
+    "bay_n": [60, 26],
+    "bay_s": [60, -26]
+  },
+  "segments": [
+    { "id": "approach", "from": "blvd_e", "to": "rb", "width": 8, "pavement": 2.5, "kind": "avenue", "dashes": true, "lamps_every": 12, "lit": true },
+    { "id": "arm_n", "from": "rb", "to": "bay_n", "width": 8, "pavement": 2.5, "kind": "bay", "dashes": false, "lamps_every": 0, "lit": false },
+    { "id": "arm_s", "from": "rb", "to": "bay_s", "width": 8, "pavement": 2.5, "kind": "bay", "dashes": false, "lamps_every": 0, "lit": false }
+  ],
+  "roundabouts": [
+    { "id": "rb", "at": "rb", "island_r": 4, "outer_r": 9, "pavement": 2.5, "lamps": 4, "lit": true,
+      "totem": { "lines": ["STADIUM", "otra.city/stadium"], "color": "#2fe0f8" } }
+  ],
+  "aprons": [
+    { "id": "forecourt", "min": [69, -18], "max": [74, 18], "kind": "paving", "height": 0.25 }
+  ],
+  "bays": [
+    { "id": "coach_n", "min": [56, 26], "max": [64, 34], "label": "COACHES" },
+    { "id": "coach_s", "min": [56, -34], "max": [64, -26], "label": "DROP-OFF" }
+  ],
+  "crossings": [
+    { "at": [47, 0], "axis": "z", "span": 8, "width": 3 }
+  ],
+  "signs": [
+    { "at": [40.6, 7.4], "yaw": -1.5708, "lines": ["STADIUM →", "otra.city/stadium"], "color": "#ffd479" },
+    { "at": [70.5, -19.2], "yaw": -1.5708, "lines": ["GATES →", "no ticket needed"], "color": "#2fe0f8" }
+  ],
+  "bollards": [[69.6, -15], [69.6, -12], [69.6, -9], [69.6, 9], [69.6, 12], [69.6, 15]]
+}

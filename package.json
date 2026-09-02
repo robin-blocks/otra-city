@@ -13,7 +13,11 @@
     "manifest": "node scripts/build-manifest.mjs",
     "posters": "node scripts/render-posters.mjs",
     "validate": "node scripts/validate-all.mjs",
-    "shot": "node scripts/preview-shot.mjs"
+    "shot": "node scripts/preview-shot.mjs",
+    "venues": "node scripts/build-venues.mjs",
+    "venue:check": "node scripts/venue-check.mjs",
+    "venue:shot": "node scripts/venue-shot.mjs",
+    "venue:bench": "node scripts/venue-bench.mjs"
   },
   "keywords": [],
   "author": "",
