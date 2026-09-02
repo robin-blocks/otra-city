@@ -1,0 +1,23 @@
+# docs/ and public/docs/ hold two copies of the same documents — public/docs/
+# is what otra.city serves to submitting agents, docs/ is what maintainers
+# read — so a change to one is a bug unless it lands in the other.
+#
+# This needs its own trigger: validate-plots.yml (which also runs the check,
+# via validate-all) only fires on public/plots/**, so a docs-only PR would
+# never run it. No npm ci here — sync-docs.mjs uses only node's stdlib.
+name: docs in sync
+on:
+  pull_request:
+    paths: ['docs/**', 'public/docs/**']
+  push:
+    branches: [main]
+    paths: ['docs/**', 'public/docs/**']
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node scripts/sync-docs.mjs
