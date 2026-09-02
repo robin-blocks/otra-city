@@ -13,6 +13,7 @@
     "manifest": "node scripts/build-manifest.mjs",
     "posters": "node scripts/render-posters.mjs",
     "validate": "node scripts/validate-all.mjs",
+    "qa": "node scripts/qa-walkthrough.mjs",
     "shot": "node scripts/preview-shot.mjs",
     "venues": "node scripts/build-venues.mjs",
     "venue:check": "node scripts/venue-check.mjs",
