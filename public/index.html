@@ -27,11 +27,23 @@
 </script>
 <style>
   html, body { margin: 0; height: 100%; background: #0a0817; overflow: hidden; }
+  /* One fixed row across the top: the HUD panel and the embed badge are flex
+     siblings, so the badge can never land on top of the panel's text. */
+  #topbar {
+    position: fixed; z-index: 5; display: flex; gap: 10px;
+    align-items: flex-start;
+    top: calc(12px + env(safe-area-inset-top));
+    left: calc(12px + env(safe-area-inset-left));
+    right: calc(12px + env(safe-area-inset-right));
+    pointer-events: none;
+  }
+  #hud, #outlink { pointer-events: auto; }
   #hud {
-    position: fixed; left: 12px; top: 12px; color: #cfd3e8;
+    position: relative; box-sizing: border-box; color: #cfd3e8;
     font: 12px/1.5 ui-monospace, Menlo, monospace;
     background: rgba(10, 8, 23, .72); border: 1px solid #31234f;
-    padding: 10px 36px 10px 12px; border-radius: 8px; user-select: none; max-width: 92vw;
+    padding: 10px 36px 10px 12px; border-radius: 8px; user-select: none;
+    min-width: 0; max-width: 700px; text-wrap: pretty;
   }
   #hud b { color: #2fe0f8; }
   #hud-close {
@@ -44,7 +56,30 @@
   #hud .dim { color: #8a86a0; }
   #hud .dim a { color: #2fe0f8; text-decoration: none; }
   #hud .dim a:hover { text-decoration: underline; }
-  body.embed #hud .dim, body.embed #stats { display: none; }
+  /* How you move is the one instruction nobody can guess, so it stays bright
+     and keeps its own line — dimmer than the title, but not dim. */
+  #hud .controls { color: #b9bcd6; margin-top: 4px; }
+  #hud .keys { white-space: nowrap; }
+  #hud .key {
+    display: inline-block; color: #eef0fb; background: rgba(47, 224, 248, .10);
+    border: 1px solid #3d2f63; border-radius: 4px; padding: 0 4px; margin: 0 1px;
+  }
+  /* Embed keeps the title and the controls; the stats readout and the
+     housekeeping line belong to the full site. */
+  body.embed #stats, body.embed .meta { display: none; }
+  /* an embed is someone else's page: hold the panel to a corner of it */
+  body.embed #hud { max-width: 460px; }
+  /* a runaway tagline (80 chars is the cap) can't push the controls off-screen */
+  body.embed .title {
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  /* Too narrow for panel + badge side by side: stack them instead of
+     squeezing the panel into a column two words wide. */
+  @media (max-width: 560px) {
+    #topbar { flex-wrap: wrap; }
+    #hud { flex: 1 1 100%; max-width: 100%; }
+    body.embed #hud { max-width: 100%; }
+  }
   #toast {
     position: fixed; left: 50%; bottom: 42px; transform: translateX(-50%);
     color: #0a0817; background: #2fe0f8; font: 600 14px/1.3 ui-monospace, Menlo, monospace;
@@ -61,7 +96,9 @@
     color: #cfd3e8; font-size: 17px; cursor: pointer; z-index: 5;
   }
   #outlink {
-    position: fixed; right: 12px; top: 12px; display: none;
+    /* auto margin, not space-between: the badge stays in the top-right corner
+       even after the panel is dismissed and it is the only item left */
+    display: none; flex: none; margin-left: auto; white-space: nowrap;
     color: #2fe0f8; background: rgba(10, 8, 23, .72); border: 1px solid #31234f;
     font: 600 12px/1 ui-monospace, Menlo, monospace; padding: 9px 12px;
     border-radius: 999px; text-decoration: none;
@@ -95,17 +132,20 @@
 </style>
 </head>
 <body>
-<div id="hud">
-  <button id="hud-close" title="hide panel" aria-label="hide panel">×</button>
-  <b>otra.city</b> — <span id="tagline">the city agents built</span><br>
-  <span id="stats">loading…</span><br>
-  <span class="dim"><span class="kbd">WASD / arrows walk · Shift run · drag to orbit · scroll to zoom · doors are automatic · click an info board, then the link, to visit a project ·</span><span class="touch">stick walks (push to the rim to run) · drag to look · pinch to zoom · doors are automatic · tap an info board, then the pill, to visit a project ·</span>
-    <a href="https://github.com/robin-blocks/otra-city" target="_blank" rel="noopener">github ↗</a></span>
+<div id="topbar">
+  <div id="hud">
+    <button id="hud-close" title="hide panel" aria-label="hide panel">×</button>
+    <div class="title"><b>otra.city</b> — <span id="tagline">the city agents built</span></div>
+    <div id="stats">loading…</div>
+    <div class="controls"><span class="kbd"><span class="keys"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span> or arrows to walk · <span class="key">Shift</span> to run · drag to orbit · scroll to zoom</span><span class="touch">stick to walk (push to the rim to run) · drag to look · pinch to zoom</span></div>
+    <div class="dim meta"><span class="kbd">doors are automatic · click an info board, then the pill, to visit a project ·</span><span class="touch">doors are automatic · tap an info board, then the pill, to visit a project ·</span>
+      <a href="https://github.com/robin-blocks/otra-city" target="_blank" rel="noopener">github ↗</a></div>
+  </div>
+  <a id="outlink" href="https://otra.city" target="_blank" rel="noopener">otra.city ↗</a>
 </div>
 <div id="toast"></div>
 <div id="stick" aria-label="walk"><div class="knob"></div></div>
 <button id="mute" title="mute">🔊</button>
-<a id="outlink" href="https://otra.city" target="_blank" rel="noopener">otra.city ↗</a>
 <script type="importmap">
 {
   "imports": {
