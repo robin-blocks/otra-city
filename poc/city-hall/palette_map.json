@@ -1,0 +1,637 @@
+{
+ "grid": 16,
+ "cell_px": 16,
+ "size": 256,
+ "colors": {
+  "plaza": {
+   "cell": [
+    0,
+    0
+   ],
+   "base": "#1a1826",
+   "alpha": 255,
+   "emis": null
+  },
+  "podium": {
+   "cell": [
+    1,
+    0
+   ],
+   "base": "#232037",
+   "alpha": 255,
+   "emis": null
+  },
+  "podium_top": {
+   "cell": [
+    2,
+    0
+   ],
+   "base": "#2a2742",
+   "alpha": 255,
+   "emis": null
+  },
+  "step": {
+   "cell": [
+    3,
+    0
+   ],
+   "base": "#1f1c31",
+   "alpha": 255,
+   "emis": null
+  },
+  "column": {
+   "cell": [
+    4,
+    0
+   ],
+   "base": "#2c2a48",
+   "alpha": 255,
+   "emis": null
+  },
+  "column_lt": {
+   "cell": [
+    5,
+    0
+   ],
+   "base": "#3a3860",
+   "alpha": 255,
+   "emis": null
+  },
+  "capital": {
+   "cell": [
+    6,
+    0
+   ],
+   "base": "#46446c",
+   "alpha": 255,
+   "emis": null
+  },
+  "beam": {
+   "cell": [
+    7,
+    0
+   ],
+   "base": "#221f38",
+   "alpha": 255,
+   "emis": null
+  },
+  "beam_dk": {
+   "cell": [
+    8,
+    0
+   ],
+   "base": "#17152a",
+   "alpha": 255,
+   "emis": null
+  },
+  "rib": {
+   "cell": [
+    9,
+    0
+   ],
+   "base": "#2f2d4a",
+   "alpha": 255,
+   "emis": null
+  },
+  "rib_dk": {
+   "cell": [
+    10,
+    0
+   ],
+   "base": "#1d1b30",
+   "alpha": 255,
+   "emis": null
+  },
+  "drum": {
+   "cell": [
+    11,
+    0
+   ],
+   "base": "#1e1a33",
+   "alpha": 255,
+   "emis": null
+  },
+  "drum_lt": {
+   "cell": [
+    12,
+    0
+   ],
+   "base": "#2b2648",
+   "alpha": 255,
+   "emis": null
+  },
+  "trim": {
+   "cell": [
+    13,
+    0
+   ],
+   "base": "#0d0a14",
+   "alpha": 255,
+   "emis": null
+  },
+  "steel": {
+   "cell": [
+    14,
+    0
+   ],
+   "base": "#646a80",
+   "alpha": 255,
+   "emis": null
+  },
+  "steel_dk": {
+   "cell": [
+    15,
+    0
+   ],
+   "base": "#3c4152",
+   "alpha": 255,
+   "emis": null
+  },
+  "plinth": {
+   "cell": [
+    0,
+    1
+   ],
+   "base": "#8b90a8",
+   "alpha": 255,
+   "emis": null
+  },
+  "plinth_dk": {
+   "cell": [
+    1,
+    1
+   ],
+   "base": "#5a5f75",
+   "alpha": 255,
+   "emis": null
+  },
+  "white": {
+   "cell": [
+    2,
+    1
+   ],
+   "base": "#e9edf6",
+   "alpha": 255,
+   "emis": null
+  },
+  "gold": {
+   "cell": [
+    3,
+    1
+   ],
+   "base": "#c9a341",
+   "alpha": 255,
+   "emis": null
+  },
+  "gold_dk": {
+   "cell": [
+    4,
+    1
+   ],
+   "base": "#6b5420",
+   "alpha": 255,
+   "emis": null
+  },
+  "road": {
+   "cell": [
+    5,
+    1
+   ],
+   "base": "#17161c",
+   "alpha": 255,
+   "emis": null
+  },
+  "paving": {
+   "cell": [
+    6,
+    1
+   ],
+   "base": "#24222c",
+   "alpha": 255,
+   "emis": null
+  },
+  "bench": {
+   "cell": [
+    7,
+    1
+   ],
+   "base": "#3a2f52",
+   "alpha": 255,
+   "emis": null
+  },
+  "soil": {
+   "cell": [
+    8,
+    1
+   ],
+   "base": "#1b1a12",
+   "alpha": 255,
+   "emis": null
+  },
+  "leaf": {
+   "cell": [
+    9,
+    1
+   ],
+   "base": "#1f4a2c",
+   "alpha": 255,
+   "emis": null
+  },
+  "cyan_dk": {
+   "cell": [
+    10,
+    1
+   ],
+   "base": "#0f4a52",
+   "alpha": 255,
+   "emis": null
+  },
+  "magenta_dk": {
+   "cell": [
+    11,
+    1
+   ],
+   "base": "#4a1030",
+   "alpha": 255,
+   "emis": null
+  },
+  "ink": {
+   "cell": [
+    12,
+    1
+   ],
+   "base": "#080611",
+   "alpha": 255,
+   "emis": null
+  },
+  "e_cyan": {
+   "cell": [
+    13,
+    1
+   ],
+   "base": "#0a2224",
+   "alpha": 255,
+   "emis": "#47f2ff"
+  },
+  "e_cyan_soft": {
+   "cell": [
+    14,
+    1
+   ],
+   "base": "#0a2224",
+   "alpha": 255,
+   "emis": "#32a9b2"
+  },
+  "e_cyan_dim": {
+   "cell": [
+    15,
+    1
+   ],
+   "base": "#0a2224",
+   "alpha": 255,
+   "emis": "#1e666b"
+  },
+  "e_magenta": {
+   "cell": [
+    0,
+    2
+   ],
+   "base": "#240615",
+   "alpha": 255,
+   "emis": "#ff2d95"
+  },
+  "e_magenta_soft": {
+   "cell": [
+    1,
+    2
+   ],
+   "base": "#240615",
+   "alpha": 255,
+   "emis": "#b21f68"
+  },
+  "e_magenta_dim": {
+   "cell": [
+    2,
+    2
+   ],
+   "base": "#240615",
+   "alpha": 255,
+   "emis": "#6b133f"
+  },
+  "e_gold": {
+   "cell": [
+    3,
+    2
+   ],
+   "base": "#241d09",
+   "alpha": 255,
+   "emis": "#ffd23e"
+  },
+  "e_gold_soft": {
+   "cell": [
+    4,
+    2
+   ],
+   "base": "#241d09",
+   "alpha": 255,
+   "emis": "#b2932b"
+  },
+  "e_gold_dim": {
+   "cell": [
+    5,
+    2
+   ],
+   "base": "#241d09",
+   "alpha": 255,
+   "emis": "#6b581a"
+  },
+  "e_white": {
+   "cell": [
+    6,
+    2
+   ],
+   "base": "#242424",
+   "alpha": 255,
+   "emis": "#ffffff"
+  },
+  "e_white_soft": {
+   "cell": [
+    7,
+    2
+   ],
+   "base": "#242424",
+   "alpha": 255,
+   "emis": "#b2b2b2"
+  },
+  "e_white_dim": {
+   "cell": [
+    8,
+    2
+   ],
+   "base": "#242424",
+   "alpha": 255,
+   "emis": "#6b6b6b"
+  },
+  "e_violet": {
+   "cell": [
+    9,
+    2
+   ],
+   "base": "#110d24",
+   "alpha": 255,
+   "emis": "#7c5cff"
+  },
+  "e_violet_soft": {
+   "cell": [
+    10,
+    2
+   ],
+   "base": "#110d24",
+   "alpha": 255,
+   "emis": "#5740b2"
+  },
+  "e_violet_dim": {
+   "cell": [
+    11,
+    2
+   ],
+   "base": "#110d24",
+   "alpha": 255,
+   "emis": "#34276b"
+  },
+  "e_red": {
+   "cell": [
+    12,
+    2
+   ],
+   "base": "#240807",
+   "alpha": 255,
+   "emis": "#ff3b30"
+  },
+  "e_red_soft": {
+   "cell": [
+    13,
+    2
+   ],
+   "base": "#240807",
+   "alpha": 255,
+   "emis": "#b22922"
+  },
+  "e_red_dim": {
+   "cell": [
+    14,
+    2
+   ],
+   "base": "#240807",
+   "alpha": 255,
+   "emis": "#6b1914"
+  },
+  "e_green": {
+   "cell": [
+    15,
+    2
+   ],
+   "base": "#122418",
+   "alpha": 255,
+   "emis": "#7dffa8"
+  },
+  "e_green_soft": {
+   "cell": [
+    0,
+    3
+   ],
+   "base": "#122418",
+   "alpha": 255,
+   "emis": "#58b276"
+  },
+  "e_green_dim": {
+   "cell": [
+    1,
+    3
+   ],
+   "base": "#122418",
+   "alpha": 255,
+   "emis": "#346b47"
+  },
+  "e_warm": {
+   "cell": [
+    2,
+    3
+   ],
+   "base": "#241b12",
+   "alpha": 255,
+   "emis": "#ffbf80"
+  },
+  "e_warm_soft": {
+   "cell": [
+    3,
+    3
+   ],
+   "base": "#241b12",
+   "alpha": 255,
+   "emis": "#b2865a"
+  },
+  "e_warm_dim": {
+   "cell": [
+    4,
+    3
+   ],
+   "base": "#241b12",
+   "alpha": 255,
+   "emis": "#6b5036"
+  },
+  "e_blue": {
+   "cell": [
+    5,
+    3
+   ],
+   "base": "#091124",
+   "alpha": 255,
+   "emis": "#3d7bff"
+  },
+  "e_blue_soft": {
+   "cell": [
+    6,
+    3
+   ],
+   "base": "#091124",
+   "alpha": 255,
+   "emis": "#2b56b2"
+  },
+  "e_blue_dim": {
+   "cell": [
+    7,
+    3
+   ],
+   "base": "#091124",
+   "alpha": 255,
+   "emis": "#1a346b"
+  },
+  "glass": {
+   "cell": [
+    8,
+    3
+   ],
+   "base": "#a6e6ff",
+   "alpha": 42,
+   "emis": "#123a44"
+  },
+  "glass_gate": {
+   "cell": [
+    9,
+    3
+   ],
+   "base": "#47f2ff",
+   "alpha": 76,
+   "emis": "#1a5c66"
+  },
+  "holo_white": {
+   "cell": [
+    10,
+    3
+   ],
+   "base": "#e9edf6",
+   "alpha": 120,
+   "emis": "#a8acb3"
+  },
+  "holo_vacant": {
+   "cell": [
+    11,
+    3
+   ],
+   "base": "#47f2ff",
+   "alpha": 60,
+   "emis": "#1e6670"
+  },
+  "holo_cyan": {
+   "cell": [
+    12,
+    3
+   ],
+   "base": "#47f2ff",
+   "alpha": 140,
+   "emis": "#32a9b3"
+  },
+  "holo_archive-9": {
+   "cell": [
+    13,
+    3
+   ],
+   "base": "#47f2ff",
+   "alpha": 150,
+   "emis": "#3cced9"
+  },
+  "holo_city-hall": {
+   "cell": [
+    14,
+    3
+   ],
+   "base": "#47f2ff",
+   "alpha": 150,
+   "emis": "#3cced9"
+  },
+  "holo_fernseed": {
+   "cell": [
+    15,
+    3
+   ],
+   "base": "#7dffa8",
+   "alpha": 150,
+   "emis": "#6ad98f"
+  },
+  "holo_glow-garden": {
+   "cell": [
+    0,
+    4
+   ],
+   "base": "#7dffa8",
+   "alpha": 150,
+   "emis": "#6ad98f"
+  },
+  "holo_halberd": {
+   "cell": [
+    1,
+    4
+   ],
+   "base": "#ff5d5d",
+   "alpha": 150,
+   "emis": "#d94f4f"
+  },
+  "holo_lattice": {
+   "cell": [
+    2,
+    4
+   ],
+   "base": "#9fd8ff",
+   "alpha": 150,
+   "emis": "#87b8d9"
+  },
+  "holo_museverse": {
+   "cell": [
+    3,
+    4
+   ],
+   "base": "#ffd23e",
+   "alpha": 150,
+   "emis": "#d9b235"
+  },
+  "holo_promptfrenzy": {
+   "cell": [
+    4,
+    4
+   ],
+   "base": "#FF2D7A",
+   "alpha": 150,
+   "emis": "#d92668"
+  },
+  "holo_signal": {
+   "cell": [
+    5,
+    4
+   ],
+   "base": "#a78bff",
+   "alpha": 150,
+   "emis": "#8e76d9"
+  }
+ }
+}
