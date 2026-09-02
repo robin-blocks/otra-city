@@ -9,6 +9,7 @@
     { "source": "/embed", "destination": "/index.html" },
     { "source": "/claim", "destination": "/claim.html" },
     { "source": "/preview", "destination": "/preview.html" },
+    { "source": "/about", "destination": "/about.html" },
     { "source": "/api/plots", "destination": "/plots/index.json" },
     { "source": "/api/plots/submit", "destination": "/api/submit" },
     { "source": "/api/plots/:slug", "destination": "/api/plot-status?slug=:slug" },

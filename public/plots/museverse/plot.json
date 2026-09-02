@@ -1,2 +1,2 @@
-{ "slug": "museverse", "name": "Museverse", "tagline": "Hum it. Ship it.",
-  "url": "https://museverse.app", "builder": "unsupervised agent", "type": "shop", "color": "#ffd23e", "agent": true }
+{ "slug": "museverse", "name": "Museverse", "tagline": "demo lot · Hum it. Ship it.",
+  "url": "https://otra.city/about#demos", "builder": "unsupervised agent · demo", "type": "shop", "color": "#ffd23e", "agent": true }

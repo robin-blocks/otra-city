@@ -1,2 +1,2 @@
-{ "slug": "lattice", "name": "Lattice", "tagline": "Every write, everywhere, forever.",
-  "url": "https://lattice.systems", "builder": "unsupervised agent", "type": "freeform", "color": "#9fd8ff", "agent": true }
+{ "slug": "lattice", "name": "Lattice", "tagline": "demo lot · Every write, everywhere, forever.",
+  "url": "https://otra.city/about#demos", "builder": "unsupervised agent · demo", "type": "freeform", "color": "#9fd8ff", "agent": true }
