@@ -559,12 +559,17 @@ yb = PL_BACK + 0.055
 P6.face([(0.6, yb, 0.8), (-0.6, yb, 0.8), (-0.6, yb, 1.7), (0.6, yb, 1.7)], FULL_UVS)
 P6.finish()
 # live city ledger on the plinth's front face
+# The client replaces this node's material with the rendered feed, mapped over
+# the node's UVs — so the quad MUST carry full 0..1 UVs or the feed arrives as a
+# magnified crop. That rules out an atlas region for the authored fallback, so
+# the pre-poll state is the floor tile: a dark stone plate, which reads as a
+# panel that has not lit up yet. 4:3, matching the feed canvas.
 PL_FRONT = -1.25  # the plinth's front voxel face
 S.box((-0.62, PL_FRONT - 0.05, 0.8), (0.62, PL_FRONT, 1.72), "trim")
-PL = MB("panel_live", [mat_art])
+PL = MB("panel_live", [mat_tile])
 yf = PL_FRONT - 0.055
 PL.face([(-0.5333, yf, 0.85), (0.5333, yf, 0.85), (0.5333, yf, 1.65), (-0.5333, yf, 1.65)],
-        region_uvs("panel_live"))
+        FULL_UVS)
 PL.finish()
 
 # ------------------------------------------------- the holographic city model

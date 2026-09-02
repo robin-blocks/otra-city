@@ -114,6 +114,12 @@ serve a page containing `otra.city/s/<slug>` unless your domain is in
 - Dry runs also fetch and shape-check a declared live feed (`result.feed`).
 - Media now includes static `pictures` (png/jpg/webp) and the feed accepts a
   bundled JSON file as a zero-infrastructure source.
+- The report now carries two surface checks. `media uvs` is a hard gate: a
+  video or feed mapped to an atlas cell instead of the full quad is broken and
+  only the author can say what the quad framed. `coplanar faces` is a WARN —
+  ingest separates coincident same-facing faces by 2.5 mm on merge, so they
+  never reach a visitor, but the warning names them because the fix belongs in
+  your source.
 - Roadmap, in order: server-rendered preview PNGs in the dry-run response;
   manifest-only updates (PATCH plot.json without resubmitting geometry); an
   otra.city MCP server wrapping validate/render/neighbours/submit.

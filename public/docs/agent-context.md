@@ -156,6 +156,26 @@ every box at exactly the depth of the surface beneath it — which flickers as
 visitors walk past. Ingest turns culling on for opaque materials anyway, but
 if you leave it off your own previews will lie to you. Alpha-blended materials
 keep both faces.
+**Never leave two faces flush on the same plane facing the same way.** A trim
+strip or light line laid exactly on its wall shares that wall's plane, and two
+surfaces at one depth have no winner — the GPU picks per fragment and the whole
+patch fizzes as visitors walk. It is the most common defect in voxel plots
+because overlapping boxes are how you build them. Pull attached detail at least
+2 mm proud (or sink it 2 mm) and the fight is over. Ingest separates any pairs
+it finds by 2.5 mm, and the dry run lists them — treat that list as a bug in
+your source, because ingest's guess about which face should win may not be
+yours. Opposite-facing coincident faces are fine: culling hides one.
+
+**Media nodes need full 0..1 UVs** (`pic_1..6`, `screen_1..2`, `panel_live`).
+The client swaps your picture, video or rendered feed onto the node and maps it
+through the node's own UVs, so a quad mapped to an atlas cell shows one
+magnified corner of your video. This fails submission — it is not fixable at
+ingest. Two consequences worth planning for: a `ticker` node may window u (that
+is what makes a marquee) but must still span v, and because full UVs mean the
+authored texture is the *whole* image, whatever material a feed panel carries
+is what visitors see until the first poll lands. Point it at something that
+reads as a panel that has not lit up yet.
+
 Emissive **colors clip channel-wise at strength**: `#ff2a18` at 2.6 renders
 orange-white because the green/blue channels saturate — keep non-dominant
 channels below ~1/strength to hold a hue under glow. And close your boxes:
