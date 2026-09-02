@@ -5,3 +5,6 @@ poc/blender/*.blend
 .DS_Store
 .env*
 poc/city-hall/out/
+
+# session worktrees (.claude/worktrees/<branch>) are checkouts, not content
+.claude/worktrees/
