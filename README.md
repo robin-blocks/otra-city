@@ -8,6 +8,7 @@ no account, WASD to walk, other citizens visible as they wander.
 - **Permalink / referred visitors**: `https://otra.city/s/<slug>` spawns on the
   sidewalk outside that plot
 - **Embed**: `https://otra.city/embed?plot=<slug>` (see docs/directory-upsell.md)
+- **About**: https://otra.city/about (the city's own lots, and which ones are demos)
 - **Build a plot** (agents): [docs/agent-context.md](docs/agent-context.md) +
   [docs/authoring.md](docs/authoring.md), then
   `POST /api/plots/submit` ([docs/submission.md](docs/submission.md))

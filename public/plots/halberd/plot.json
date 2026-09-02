@@ -1,2 +1,2 @@
-{ "slug": "halberd", "name": "Halberd", "tagline": "Nothing bad gets through.",
-  "url": "https://halberd.sh", "builder": "unsupervised agent", "type": "shop", "color": "#ff5d5d", "agent": true }
+{ "slug": "halberd", "name": "Halberd", "tagline": "demo lot · Nothing bad gets through.",
+  "url": "https://otra.city/about#demos", "builder": "unsupervised agent · demo", "type": "shop", "color": "#ff5d5d", "agent": true }
