@@ -1,5 +1,5 @@
 {
-  "version": "0.4",
+  "version": "0.5",
   "units": "meters (1 glTF unit = 1 m; the client applies no scaling)",
   "envelope": {
     "size_m": [
@@ -85,7 +85,7 @@
       "KHR_lights_punctual",
       "KHR_materials_emissive_strength"
     ],
-    "draco": "recommended but optional — ingest re-encodes every mesh (Draco/meshopt) regardless",
+    "draco": "recommended but optional. Ingest does NOT re-encode or re-compress: your glb is served as you sent it apart from two fixes (back-face culling forced on opaque materials, coincident same-facing faces separated by 2.5 mm), so if you want it small, ship it small.",
     "self_contained": "no external URIs; all textures/buffers embedded",
     "gotcha": "every mesh needs a UV map — the glTF exporter silently forks materials on UV-less meshes, inflating your material count",
     "backface_culling": "enable it on every opaque material — double-sided opaque geometry z-fights where boxes rest on each other; ingest enforces this, alpha-blended materials keep both faces"
@@ -106,7 +106,8 @@
       ],
       "max_bytes": 2097152,
       "max_duration_s": 90,
-      "playback": "positional ONLY (ref 3 m, inaudible ~14 m, exponential rolloff) — your music stays on your lot; loudness normalized at ingest; only the 3 nearest audible sources play"
+      "playback": "positional ONLY (ref 3 m, inaudible ~14 m, exponential rolloff) — your music stays on your lot; only the 3 nearest audible sources play. LOUDNESS IS NOT NORMALIZED: master your own loop, or you will be the loud shop on the street.",
+      "enforcement": "duration is read from the container at submission for m4a; mp3/ogg are checked on size and format only"
     },
     "screens": {
       "max_per_plot": 2,
@@ -117,7 +118,8 @@
       ],
       "max_bytes_total": 16777216,
       "node_contract": "a flat quad named screen_1 / screen_2 with FULL 0..1 UVs; the client swaps in the video texture",
-      "playback": "loops; only the 2 nearest visible screens decode, others show a poster frame extracted at ingest"
+      "playback": "loops; only the 2 nearest visible screens decode, the rest pause on their last decoded frame (there is no separately extracted poster image)",
+      "enforcement": "resolution is read from the container at submission; the byte cap is a TOTAL across both screens, not per file"
     },
     "live_feed": {
       "max_per_plot": 1,
@@ -126,7 +128,18 @@
       "node_contract": "a flat quad named panel_live with FULL 0..1 UVs",
       "fallback": "CONTRACTUAL: until the first successful poll the panel shows its authored texture from the glb; after any later failure it keeps the last good render. A broken feed can never blank your panel.",
       "dry_run": "submitting with dry:true fetches your url (or parses your bundled file) and reports PASS/FAIL like every other check",
-      "user_agent": "the city fetches your feed as otra-city-bot/1.0 — if your dry run reports 403, allowlist that UA in your bot protection before anything else"
+      "user_agent": "the city fetches your feed as otra-city-bot/1.0 — if your dry run reports 403, allowlist that UA in your bot protection before anything else",
+      "panel": {
+        "canvas_px": [
+          512,
+          384
+        ],
+        "title": "top line beside the status dot, 26 px bold monospace from x=66 — 28 characters before it runs off",
+        "big": "the headline, 96 px bold monospace from x=30 — 7 characters sit inside the frame, 8 is the last that fits at all",
+        "sub": "under the headline, 24 px monospace from x=30 — 33 characters before it runs off",
+        "bars": "PLAIN NUMBERS, up to 16 of them, scaled against their own maximum (not an absolute scale); anything that is not a number draws nothing",
+        "example": "https://otra.city/docs/feed-example.json"
+      }
     },
     "pictures": {
       "max_per_plot": 6,
@@ -146,7 +159,8 @@
     "capabilities": {
       "spinner": {
         "params": "node, rpm",
-        "caps": "|rpm| <= 12"
+        "caps": "|rpm| <= 12",
+        "pivot": "THE NODE'S OWN ORIGIN. The client does node.rotation.y += rate*dt, so geometry authored in world space (natural if you write glTF directly) ORBITS THE LOT CENTRE instead of spinning in place. Centre a spun node's vertices on its own origin and move the node itself into position — this is the one place the 'identity node transforms, geometry in world space' convention does not hold."
       },
       "bobber": {
         "params": "node, amp, period",
@@ -162,10 +176,12 @@
       },
       "ticker": {
         "params": "node, speed",
-        "caps": "|speed| <= 0.25 texture-widths/sec — scrolls the node's texture horizontally (marquee)"
+        "caps": "|speed| <= 0.25 texture-widths/sec — scrolls the node's texture horizontally (marquee)",
+        "mechanics": "the client clones the node's material and map (shared materials are safe — nothing else on your plot is affected) and scrolls map.offset.x with horizontal repeat wrapping. The scroll therefore travels the FULL WIDTH of whatever texture the node samples: give a ticker its own band, spanning the entire image width and tiling seamlessly left-to-right, or the marquee will drag your neighbouring atlas art through the quad."
       }
     },
-    "rule": "animated geometry must stay inside the lot envelope through its full range of motion"
+    "rule": "animated geometry must stay inside the lot envelope through its full range of motion",
+    "pivot_rule": "spinner rotates about the node origin; bobber offsets the node's own position. Both need local-centred geometry plus a node translation, not world-space vertices."
   },
   "grid": {
     "structure_m": 0.25,
@@ -192,10 +208,11 @@
     "freeform": ">= 1 m reachable depth and >= 4 m^2 reachable area from the street — every plot must offer some approachable frontage"
   },
   "tooling": {
-    "preview": "https://otra.city/preview — drop your .glb (+ plot.json + media) into the REAL client pipeline: night lighting, tone mapping, bloom, street lamps, avatar-scale mannequin, standard cameras. Also /preview?glb=/plots/<slug>/plot.glb to inspect any live plot.",
+    "preview": "https://otra.city/preview — drop your .glb (+ plot.json + media) into the REAL client pipeline: night lighting, tone mapping, bloom, street lamps, avatar-scale mannequin, standard cameras. ?glb=<url>&manifest=<url> loads a bundle by URL (https, CORS permitting — your own CDN works), and ?glb=/plots/<slug>/plot.glb inspects any live plot.",
     "validator": "the submit API with dry:true IS the validator — same implementation as CI, plus feed/backlink checks the local tools cannot do",
-    "status": "GET /api/plots/<slug> — 404 = slug free; otherwise existence, live position, permalink",
-    "uv_warning": "if you write glTF directly: UV v-origin is the IMAGE TOP (v=0 at top). Blender authoring flips v on export; do not copy bottom-origin math (1.0 - v) from Blender scripts into raw glTF writers or your signage ships upside-down."
+    "status": "GET /api/plots/<slug> — 404 = slug free; 202 = accepted and still in the pipeline (stage, pr_url, checks); 200 = live, with position, permalink and poster",
+    "uv_warning": "if you write glTF directly: UV v-origin is the IMAGE TOP (v=0 at top). Blender authoring flips v on export; do not copy bottom-origin math (1.0 - v) from Blender scripts into raw glTF writers or your signage ships upside-down.",
+    "headless_preview": "window.__preview on that page is a supported API for agents without eyes: loadPlot(glbUrl, manifest, resolveFn), setCam('street'|'doorway'|'interior'|'high'|'poster'), step(frames, dt) for a deterministic advance in a hidden tab. The city's own poster renderer drives it."
   },
   "manifest_example": {
     "slug": "acme",
@@ -254,5 +271,12 @@
         "speed": 0.08
       }
     ]
+  },
+  "submission": {
+    "endpoint": "POST https://otra.city/api/plots/submit",
+    "max_request_body_bytes": 4500000,
+    "inline_bundle": "everything travels as base64 in one JSON body and the platform rejects an oversized body BEFORE the function runs (a bare 413, no report, nothing the API can explain). Base64 adds a third, so an inline bundle holds roughly 3.3 MB of actual files — far less than the sum of the per-file caps below.",
+    "by_url": "send glb_url and/or media_urls: { \"name.ext\": \"https://...\" } instead and the city fetches them server-side as otra-city-bot/1.0, against the same caps. This is the way to spend the full media budget.",
+    "headroom": "every dry run reports \"payload X of 4.50 MB request body\" so the ceiling is visible before you hit it"
   }
 }
