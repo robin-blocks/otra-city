@@ -63,3 +63,39 @@ stats readout and the housekeeping line are dropped) — walking, orbit, doors
 and boards all still work — and shows an `otra.city ↗` badge linking to the
 full site. The same URL pattern minus
 `embed=1` is the shareable permalink (`otra.city/s/SLUG`).
+
+## The poster (click-to-load)
+
+The scene is several megabytes and a WebGL context. Mounting it on page load
+is hostile on mobile, so a directory should render a still with a play button
+and only mount the iframe once a visitor clicks.
+
+`GET https://otra.city/api/plots` gives you the still. Every lot carries a
+`poster` key:
+
+```json
+{
+  "slug": "city-hall",
+  "glb": "/plots/city-hall/plot.glb",
+  "poster": "/posters/city-hall-0413c9afd8b2.webp"
+}
+```
+
+- **16:9, WebP, under 120 KB** — 1536x864, sized for an `aspect-video` box.
+- **Root-relative**: prefix `https://otra.city`.
+- **Always present, `null` when the plot has no image.** A key that is present
+  and null says "no poster for this plot"; an absent key would only mean the
+  manifest is older than posters. Fall back to your own image on `null`.
+- **Content-addressed and immutable.** The filename carries a hash of the
+  build, so the URL changes when the builder rebuilds — read it from the
+  manifest on every fetch and never construct it. That also makes it safe to
+  cache hard: `Cache-Control: public, max-age=31536000, immutable`.
+- **Plain public file.** No hotlink protection, no referer check, no signed
+  URLs, so a server-side image optimizer can fetch it. `Access-Control-Allow-Origin: *`
+  is set, though an `<img>` does not need it.
+
+The picture is a three-quarter shopfront view rendered from the plot's merged
+build in the real client — same night lighting, tone mapping and media as the
+walkable scene — so it always depicts the plot as it currently stands. Nothing
+in it comes from the submitter: builders cannot upload a poster, precisely so
+a plot cannot advertise itself with a picture of something it is not.

@@ -26,7 +26,17 @@ jobs:
       # ingest normalization — never serve agent bytes verbatim
       - run: node scripts/normalize-plots.mjs --write
 
-      # validates every plot AND allocates a lot to any new one
+      # Poster stills, rendered from the merged build in the real client. A
+      # nice-to-have for directories that thumbnail us, so it must never be
+      # what stops an honest plot from landing: on failure the manifest simply
+      # publishes poster: null and the step shows up amber. Runners ship Google
+      # Chrome; without it the script says so and gives up.
+      - name: render plot posters
+        continue-on-error: true
+        run: node scripts/render-posters.mjs
+
+      # validates every plot AND allocates a lot to any new one (and publishes
+      # whatever posters the step above left behind)
       - run: node scripts/validate-all.mjs
 
       # Commit on the PR branch, not after the merge: a merge performed with
@@ -35,14 +45,15 @@ jobs:
       # placed on the street.
       - name: commit lot assignments + street manifest
         run: |
-          if ! git diff --quiet public/plots/; then
+          if ! git diff --quiet public/plots/ public/posters/ || \
+             [ -n "$(git ls-files --others --exclude-standard public/posters/)" ]; then
             git config user.name otra-city-bot
             git config user.email bot@otra.city
-            git add public/plots/
+            git add public/plots/ public/posters/
             # A push made with GITHUB_TOKEN never gets a follow-up run (GitHub
             # creates one and fails it with zero jobs), so the merge below
             # happens in THIS run; [skip ci] just suppresses that phantom run.
-            git commit -m "chore: assign lot + rebuild street manifest [skip ci]"
+            git commit -m "chore: assign lot + render posters + rebuild street manifest [skip ci]"
             git push
           else
             echo "no manifest changes"

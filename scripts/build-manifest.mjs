@@ -14,8 +14,10 @@
 //     show for the claim boards
 import { readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { POSTER_DIR, posterUrl, findPoster } from '../lib/poster-paths.mjs';
 
-const root = join(new URL('..', import.meta.url).pathname, 'public', 'plots');
+const base = join(new URL('..', import.meta.url).pathname, 'public');
+const root = join(base, 'plots');
 const registryPath = join(root, 'lots.json');
 const registry = JSON.parse(readFileSync(registryPath));
 const PITCH = registry.lot_pitch || 12;
@@ -66,10 +68,24 @@ while (vacant.length < KEEP_VACANT) {
   }
 }
 
+// Posters are rendered from the merged build by scripts/render-posters.mjs
+// and published here so a directory can show a plot without downloading it.
+// The key is ALWAYS present: null says "this plot has no poster", which a
+// consumer can tell apart from a manifest that predates posters entirely.
+const posters = existsSync(join(base, POSTER_DIR)) ? readdirSync(join(base, POSTER_DIR)) : [];
+
 const lots = slugs.map((slug) => {
   const plot = JSON.parse(readFileSync(join(root, slug, 'plot.json')));
   const pos = assigned[slug];
-  return { ...plot, x: pos.x, side: pos.side, glb: `/plots/${slug}/plot.glb`, base: `/plots/${slug}/` };
+  const poster = findPoster(slug, posters);
+  return {
+    ...plot,
+    x: pos.x,
+    side: pos.side,
+    glb: `/plots/${slug}/plot.glb`,
+    base: `/plots/${slug}/`,
+    poster: poster ? posterUrl(poster) : null,
+  };
 });
 
 // persist assignments (deterministic key order) so lots never shuffle
