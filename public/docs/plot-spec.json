@@ -123,7 +123,7 @@
     },
     "live_feed": {
       "max_per_plot": 1,
-      "source": "exactly ONE of: url (a public https endpoint returning {title, big, sub, bars[]}, must send Access-Control-Allow-Origin: * — the browser polls it directly) OR file (a bundled media/*.json with the same shape; update it by resubmitting, upgrade to a url any time)",
+      "source": "exactly ONE of: url (a public https endpoint returning {title, big, sub, bars[]}, must send Access-Control-Allow-Origin: * — the browser polls it directly, and see \"redirects\" below) OR file (a bundled media/*.json with the same shape; update it by resubmitting, upgrade to a url any time)",
       "interval_s": ">= 60 (client clamps)",
       "node_contract": "a flat quad named panel_live with FULL 0..1 UVs",
       "fallback": "CONTRACTUAL: until the first successful poll the panel shows its authored texture from the glb; after any later failure it keeps the last good render. A broken feed can never blank your panel.",
@@ -139,7 +139,8 @@
         "sub": "under the headline, 24 px monospace from x=30 — 33 characters before it runs off",
         "bars": "PLAIN NUMBERS, up to 16 of them, scaled against their own maximum (not an absolute scale); anything that is not a number draws nothing",
         "example": "https://otra.city/docs/feed-example.json"
-      }
+      },
+      "redirects": "A REDIRECT MUST CARRY THE HEADER TOO. Visitors' browsers apply CORS to every hop, so a feed url that redirects (apex to www is the common one) fails in the browser unless the redirect response itself sends Access-Control-Allow-Origin — however open the destination is. The dry run walks hops the same way and rejects this, because the alternative is a panel that passes validation and then never leaves its authored texture. Declare the FINAL url in plot.json and the problem disappears."
     },
     "pictures": {
       "max_per_plot": 6,

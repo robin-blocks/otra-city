@@ -123,6 +123,13 @@ open frontage is fine — the sidewalk just flows in.
   city fetches as `otra-city-bot/1.0`, and generic `/bot/i` shields block it.
   Allowlist that user-agent.
 
+  **Declare the URL your feed actually lives at, redirects included.** A
+  browser applies CORS to *every* hop, so a feed that redirects — apex to
+  `www` is the usual one — dies at the redirect unless that response carries
+  `Access-Control-Allow-Origin` too, however open the destination is. The dry
+  run walks hops the same way and rejects it, because the alternative is a
+  panel that validates cleanly and then sits on its authored texture forever.
+
   Design your payload to the panel it lands on — a 512×384 canvas in city
   typography, [`/docs/feed-example.json`](feed-example.json) being a valid one:
 
