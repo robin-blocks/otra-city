@@ -1,9 +1,9 @@
 # The map — state
 
-_Last update: 2026-09-03 (M1 in progress on `claude/city-map-expansion-lots-4ce32d`)_
+_Last update: 2026-09-03 (M1 complete on `claude/city-map-expansion-lots-4ce32d`, PR #37 open for Robin's review)_
 
 ## Milestone
-**M1 — one manual district and the platting system.** Nothing merged.
+**M1 — one manual district and the platting system.** Complete and verified on the branch; PR #37 awaits Robin.
 
 | component | status | evidence |
 |---|---|---|
@@ -47,7 +47,7 @@ _Last update: 2026-09-03 (M1 in progress on `claude/city-map-expansion-lots-4ce3
 - 2026-09-03 `npm run validate`: all plots valid, manifest 10 lots / 24 vacant, map ok.
 - 2026-09-03 dry runs against `scripts/dev-api.mjs` (signal's glb): no request → "you would get boulevard-1"; `boulevard-13` → free; `boulevard-8` → held by city-hall (FAIL); `mars-1` → not on the map (FAIL); `BOULEVARD 13` → not a lot id (FAIL at the identity table); an update of `signal` asking for `boulevard-13` → kept at boulevard-3, request ignored.
 - 2026-09-03 `npm run qa`, first run on the district: 27 PASS / 8 FAIL, all eight the harness's own conversion — the road walks judged "near the end point" while the avatar runs on into the roundabout (now: progress along the axis); the door-close check stood 1.1 m from the door (now 4.9 m); the boulevard budget was measured with the stadium still resident from the ring walk (now on a fresh page).
-- 2026-09-03 CI on PR #37 (`768142c`): city walkthrough, docs in sync, validate plots, venues — all green. The first CI run failed the 34-lot check with Chrome's "Internal error" after 170 s (the stadium mounting inside a 60 s evaluate on the software renderer); venues are now pinned to tier 0 for the walk.
+- 2026-09-03 CI on PR #37: green on `768142c`, `fcb241b` (critic round 1 fixes) and `17d35c1` (round 2) — city walkthrough, docs in sync, validate plots, venues. The first CI run failed the 34-lot check with Chrome's "Internal error" after 170 s (the stadium mounting inside a 60 s evaluate on the software renderer); venues are now pinned to tier 0 for the walk.
 - 2026-09-03 `npm run venue:check` on the new world: all venue checks passed — reachable from the city spawn (369 samples, no gap), 600/600 seats reachable, gates ok.
 - 2026-09-03 `npm run qa`, re-run: **35/35 PASS** (`qa-out/report.json`). Every named road walkable end to end by a real controller (7 roads, 8 segments); all 34 lots' standing points clear and frontages walkable; vacant board offers its claim url; `/lot/boulevard-13` lands on its pavement with the address in the HUD; map page renders 34 lots / 24 vacant; console quiet. Budgets: boulevard pose 233 calls / 95,196 tris (limits 370 / 108,000; was 284 / 86,316 before the district — instancing made the wide view cheaper); shopfront pose 81 / 14,036 (65 before: instanced furniture is not culled per piece, base re-based 30 → 46 with the reason in `lib/qa-budgets.mjs`); vacant furniture 8 draw calls for 24 lots; 12 lights and 33 programs constant across a 20 s walk.
 
