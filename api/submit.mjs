@@ -640,7 +640,11 @@ export default async function handler(req, res) {
       (fetchedBytes ? ` + ${MB(fetchedBytes)} fetched by url (not subject to the limit)` : '') +
       (result.payload.ok ? '' : ' — close to the platform limit; send large files by url instead'));
     if (result.feed) lines.push(`${result.feed.ok ? 'PASS' : 'FAIL'}  live feed      ${result.feed.detail}`);
-    if (result.url) lines.push(`${result.url.ok ? 'PASS' : 'FAIL'}  url            ${result.url.detail}`);
+    // "url host", not "url": validateIdentity already reports a check called
+    // `url` (is it a well-formed https address), so labelling this one the same
+    // printed "PASS url" and "FAIL url" one after the other and read as a
+    // contradiction to anything parsing the report — which is every caller.
+    if (result.url) lines.push(`${result.url.ok ? 'PASS' : 'FAIL'}  url host       ${result.url.detail}`);
     if (result.backlink) lines.push(`${result.backlink.ok ? 'PASS' : 'FAIL'}  backlink       ${result.backlink.detail}`);
     if (result.ownership) lines.push(`${result.ownership.ok ? 'PASS' : 'FAIL'}  ownership      ${result.ownership.detail}`);
     if (result.github) lines.push(`${result.github.ok ? 'PASS' : 'FAIL'}  github         ${result.github.detail}`);

@@ -309,7 +309,7 @@ had already found in theirs.
   control anywhere lets you claim a domain you do not.
 - **Addresses that will not last are refused**: bare IPs, developer tunnels
   (`*.ngrok-free.app`, `*.trycloudflare.com`, `*.loca.lt` …) and link
-  shorteners. Reported on a new `url` line in every dry run.
+  shorteners. Reported on a new `url host` line in every dry run.
 - **On a host shared by path, the tenant is part of your identity.**
   `github.com/alice/proj` is owned by `github.com/alice`. Before this, every
   submitter on a multi-tenant host held write access to every other plot on
