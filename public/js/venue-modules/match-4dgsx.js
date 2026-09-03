@@ -18,7 +18,9 @@ const FEED_ORIGIN = 'https://4dgsx.com';
 const BOARD_W = 1024;
 const BOARD_H = 576;
 let sdkPromise = null;
-const loadSdk = (url) => (sdkPromise ??= import(url));
+// A rejected import must not be cached: the module retries the SDK on the
+// next activation, which it cannot do if the failure is remembered forever.
+const loadSdk = (url) => (sdkPromise ??= import(url).catch((e) => { sdkPromise = null; throw e; }));
 
 function findMesh(node) {
   if (!node) return null;
@@ -122,25 +124,25 @@ export function create(ctx) {
       g.fillStyle = live ? '#ff3b30' : '#ffd479';
       g.font = '700 34px Menlo, monospace';
       g.fillText(live ? '● LIVE' : (st.state || 'match').toUpperCase(), W / 2, 140);
-      for (const [team, x] of [[a, 160], [b, W - 160]]) {
+      for (const [team, x] of [[a, 150], [b, W - 150]]) {
         if (!team) continue;
         g.fillStyle = rgb(team.color);
-        g.fillRect(x - 110, 172, 220, 14);
+        g.fillRect(x - 105, 172, 210, 14);
         g.fillStyle = '#e9edf6';
         g.font = '900 84px Menlo, monospace';
         g.fillText(team.code || '', x, 300);
-        g.font = '500 24px Menlo, monospace';
+        g.font = '500 32px Menlo, monospace';
         g.fillStyle = '#b9bcd6';
         g.fillText((team.name || '').slice(0, 20), x, 350);
       }
       g.fillStyle = '#e9edf6';
-      g.font = '900 140px Menlo, monospace';
-      g.fillText(`${sc.a} – ${sc.b}`, W / 2, 320);
+      g.font = '900 118px Menlo, monospace';
+      g.fillText(`${sc.a} – ${sc.b}`, W / 2, 316);
       g.fillStyle = '#47f2ff';
       g.font = '700 64px Menlo, monospace';
       g.fillText(st.clock || '', W / 2, 460);
       g.fillStyle = '#8a86a0';
-      g.font = '500 22px Menlo, monospace';
+      g.font = '500 30px Menlo, monospace';
       g.fillText(state.match?.title || '', W / 2, 520);
       text = `${a?.code || ''} ${sc.a}-${sc.b} ${b?.code || ''} ${st.clock || ''}`;
     } else if (state.sdk === 'failed') {
@@ -148,7 +150,7 @@ export function create(ctx) {
       g.fillStyle = '#8a86a0';
       g.font = '900 96px Menlo, monospace';
       g.fillText('NO SIGNAL', W / 2, 300);
-      g.font = '500 28px Menlo, monospace';
+      g.font = '500 34px Menlo, monospace';
       g.fillText('4dgsx.com is not answering — the pitch waits', W / 2, 380);
       text = 'NO SIGNAL';
     } else {
@@ -166,25 +168,25 @@ export function create(ctx) {
         g.font = '700 40px Menlo, monospace';
         g.fillText(`${nx.home?.code || '?'}  v  ${nx.away?.code || '?'}`, W / 2, 372);
         g.fillStyle = '#b9bcd6';
-        g.font = '500 24px Menlo, monospace';
+        g.font = '500 32px Menlo, monospace';
         g.fillText(`${nx.home?.name || ''} v ${nx.away?.name || ''} · ${londonTime(nx.startsAt)} London`, W / 2, 416);
         text = `next ${nx.home?.code}-${nx.away?.code} in ${countdown(ms)}`;
       } else {
         g.fillStyle = '#8a86a0';
-        g.font = '500 28px Menlo, monospace';
+        g.font = '500 34px Menlo, monospace';
         g.fillText(state.sdk === 'loading' ? 'reading the programme…' : 'the programme is empty', W / 2, 300);
         text = 'idle';
       }
       const r = state.recent[0];
       if (r) {
         g.fillStyle = '#8a86a0';
-        g.font = '500 24px Menlo, monospace';
+        g.font = '500 32px Menlo, monospace';
         g.fillText(`LAST RESULT  ${r.home?.code} ${r.score?.[0] ?? '–'} – ${r.score?.[1] ?? '–'} ${r.away?.code}`, W / 2, 500);
       }
     }
     if (coarse && !st) {
       g.fillStyle = '#8a86a0';
-      g.font = '500 20px Menlo, monospace';
+      g.font = '500 28px Menlo, monospace';
       g.textAlign = 'center';
       g.fillText('matches play on desktop browsers', W / 2, 540);
     }

@@ -1,6 +1,6 @@
 # otra.city Stadium — state
 
-_Last update: 2026-09-03 (milestone 1 committed and rebased onto main after #28/#29; PR open)_
+_Last update: 2026-09-03 (M1 MERGED as PR #30 and live on otra.city; critic pass 1 done, its blocking findings fixed on `claude/stadium-critique-fixes`)_
 
 ## Milestone
 **M1 — foundations + stadium + match integration.** In progress on branch
@@ -19,6 +19,38 @@ _Last update: 2026-09-03 (milestone 1 committed and rebased onto main after #28/
 | Impostor from spawn | Verified (seen) | city spawn screenshot: four flood heads over the boulevard's end |
 | Presence M2 (zone peers, instanced avatars) | Not started | — |
 | Visual-regression pixel diff (PROJECT §7) | Not implemented | shots exist; no diff script (no PNG decoder in the repo) |
+
+## Critic pass 1 (docs/stadium/CRITIQUE-1.md) and what it changed
+The critic scored the merged build against §9 and found all six blocking
+criteria passing, but named three usability defects it judged release-blocking
+for the main use case. It was right about all of them, and about five more.
+Verified each against the source before acting; fixed on
+`claude/stadium-critique-fixes`:
+
+| # | Finding | Fix | Evidence |
+|---|---|---|---|
+| 1 | The seated chase camera ends up inside the stand — no camera occlusion anywhere in the city | `player.js` casts three rays from the visitor to the lens (one ray threads the gaps between treads and reports a clear view from inside a terrace), pulls in at once, eases back out, and remembers the distance the visitor chose | in a row-4 seat the camera went from 4.6 m buried in the terrace to 2.09 m clear, 1 of 6 probe directions blocked (the floor); the boulevard is untouched (`pulled: false`, camera distance unchanged) |
+| 2 | `/stadium` spawned the visitor inside a lamp post; 150 frames of walking moved them nowhere | a roundabout arc wider than 1.2 rad gets two lamps at thirds instead of one at its midpoint, which is exactly the line people walk; spawn moved 1 m east | lamps now at (70.8, ±2.8), none within 2.5 m of the gate axis; a real `PlayerController` walks 72 → 78 and through the gate |
+| 3 | The first frame at `/stadium` was a wall | spawn on the gate axis at (72, 0) with the camera clear of the roundabout totem | `shots-city/spawn-stadium` |
+| 4 | `panel_right`'s idle plate was overwritten by hoarding strips and gate signs | media plates are no longer atlas regions at all — each is its own image, which is what a full-UV media node needs; the atlas was relaid with an overlap assertion | `poc/stadium/plate_panel_right.png` reads LINE-UP; a script asserts no two atlas regions overlap |
+| 5 | No artifact showed the broadcast or the dock panels rendering | the `screen_main` camera was aimed at the scoreboard (the big screen is at +z, not −z); fixed, and a `scoreboard` camera added | `shots/stadium-screen_main.png` shows the screen with LINE-UP and GAME STATS legible either side |
+| 6 | The stair balustrade was a 3.75 m solid slab hiding the stair and the block letter | a 1.05 m rail that steps with the stair, with a lit cap; the collision proxy stays a full slab so nobody walks off | `shots/stadium-gate.png` now shows the stair through the gate |
+| 7 | A failed SDK import was cached forever, contradicting ARCHITECTURE §6 | the rejected promise clears itself | `match-4dgsx.js` |
+| 8 | The east gate was neither door nor wall and read WEST GATE | declared in `venue.json`, so it opens and collides; one sign region per gate | check: `gates passable — west:ok, east:ok`, 2 gates registered |
+
+Also from the improvements list: the outer wall grew pilasters and a dim band
+(it read as a black slab from the road), the impostor carries its lit top edge
+so the far read is a stadium silhouette rather than four dots, and the
+scoreboard's type no longer collides at two digits.
+
+**New regression guard**: `venue-check` now asserts the spawn has an avatar
+radius of clearance. A flood fill works on cell centres and cannot see a 0.14 m
+post, which is exactly how the lamp-post spawn survived a green check.
+
+Not fixed, and why: the roads' ~85 unmerged boxes (measured 299 draw calls at
+the boulevard spawn against a 400 budget — real but not pressing), the bowl's
+brightness against the city's darker look (a taste call for Robin), and the
+soak, mocked-feed and visual-diff gaps in verification.
 
 ## Rebase onto main (#28 street growth, #29 one static host)
 Both landed while this branch was in flight and both overlapped it:
@@ -91,4 +123,4 @@ _none yet_
 - None.
 
 ## Next action
-- Triage CRITIQUE-1; fix the cheap high-impact items; then Robin: commit/push/PR, watch `venues.yml`, merge, and observe a live kick-off at 16:01 London.
+- Robin: review and merge `claude/stadium-critique-fixes`. Then observe a live kick-off (RFL slots 12:00 / 16:00 / 20:00 London) — no live match has been watched end to end yet, only replays.

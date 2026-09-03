@@ -138,12 +138,19 @@ def frame(draw, box, color, width=6, inset=0):
     draw.rectangle((x0 + inset, y0 + inset, x1 - inset, y1 - inset), outline=color, width=width)
 
 
-def plate(name, x, y, w, h, fill=(9, 8, 18), edge=CYAN, ew=6):
-    region(name, x, y, w, h)
-    d = ImageDraw.Draw(atlas)
-    d.rectangle((x, y, x + w - 1, y + h - 1), fill=fill)
+# Media plates are NOT atlas regions. The client replaces a dock or scoreboard
+# node's material and maps the picture through the node's own FULL 0..1 UVs, so
+# each plate has to be a whole image of its own. Drawing them into the atlas as
+# well is how the line-up plate came to be overwritten by the hoarding strips.
+PLATES = {}
+
+
+def plate(name, w, h, fill=(9, 8, 18), edge=CYAN, ew=6):
+    img = Image.new("RGB", (w, h), fill)
+    d = ImageDraw.Draw(img)
     if edge:
-        frame(d, (x, y, x + w - 1, y + h - 1), edge, ew, 8)
+        frame(d, (0, 0, w - 1, h - 1), edge, ew, 8)
+    PLATES[name] = img
     return d
 
 
@@ -156,85 +163,82 @@ d = ImageDraw.Draw(atlas)
 draw_tracked(d, (x + w / 2 - tracked_width(font("black", 74), "STADIUM", 30) / 2, y + 176), "STADIUM",
              font("black", 74), WHITE, tracking=30)
 
-# 16:9 screen plate: what the big screen shows before a broadcast is docked
-d = plate("screen_main", 0, 192, 512, 288)
-d.rectangle((512 - 512 + 30, 192 + 30, 30 + 22, 192 + 52), fill=(255, 59, 48))
-d.text((66, 192 + 52), "STADIUM TV", font=font("mono", 26), fill=WHITE, anchor="ls")
-glow_text(atlas, (256, 192 + 168), "NO SIGNAL", font("black", 72), DIM, tracking=8, blur=10, glow_k=0.3)
-d = ImageDraw.Draw(atlas)
-d.text((256, 192 + 224), "matchday 12:00 · 16:00 · 20:00 London", font=font("mono", 22), fill=CYAN, anchor="mm")
-d.text((256, 192 + 258), "broadcast docks here when the RFL is live", font=font("mono", 18), fill=DIM, anchor="mm")
-
-# scoreboard plate (the client repaints this from hud truth)
-d = plate("screen_score", 512, 192, 512, 288, edge=GOLD)
-d.text((512 + 30, 192 + 52), "OTRA CITY STADIUM", font=font("mono", 26), fill=WHITE, anchor="ls")
-d.text((512 + 256, 192 + 150), "— : —", font=font("mono", 96), fill=WHITE, anchor="mm")
-d.text((512 + 256, 192 + 214), "NEXT KICK-OFF · loading programme", font=font("mono", 22), fill=GOLD, anchor="mm")
-d.text((512 + 256, 192 + 256), "RFL · ROBOT FOOTBALL LEAGUE", font=font("mono", 18), fill=DIM, anchor="mm")
-
-# tall dock panels (stats / line-up), aspect 0.68 -> 348 x 512
-for i, (name, title, sub) in enumerate((("panel_left", "GAME STATS", "possession · shots · passes"),
-                                         ("panel_right", "LINE-UP", "two-a-side · four robots"))):
-    px = 0 + i * 348
-    d = plate(name, px, 480, 348, 512, edge=(70, 68, 108), ew=4)
-    d.text((px + 174, 480 + 80), title, font=font("bold", 40), fill=WHITE, anchor="mm")
-    d.text((px + 174, 480 + 130), sub, font=font("mono", 18), fill=DIM, anchor="mm")
-    for k in range(6):
-        d.rectangle((px + 40, 480 + 200 + k * 44, px + 40 + 40 + k * 38, 480 + 226 + k * 44), fill=(28, 24, 48))
-    d.text((px + 174, 480 + 480), "docks when a match is live", font=font("mono", 16), fill=CYAN, anchor="mm")
-
-# stand block letters: N E S W on a coloured plate
-for i, (letter, hx) in enumerate((("N", "#2d7fd6"), ("E", "#d63a6e"), ("S", "#e0b43a"), ("W", "#3fb37a"))):
-    bx, by = 696, 480 + i * 128
-    d = plate("block_" + letter, bx, by, 128, 128, fill=scale(hex2rgb(hx), 0.35), edge=hex2rgb(hx), ew=5)
-    d.text((bx + 64, by + 66), letter, font=font("black", 92), fill=WHITE, anchor="mm")
-
-# pitch-side boards (repeat around the bowl), a strip each 1024 x 64
-boards = [("board_1", "THE CITY AGENTS BUILT", CYAN), ("board_2", "otra.city/claim  ·  your project could stand here", WHITE),
-          ("board_3", "4DGSX  ·  volumetric sport, free camera", GOLD), ("board_4", "RFL  ·  robot football league  ·  rfl.football", MAG)]
+# pitch-side boards: four 1024 x 56 strips, full atlas width so the type is big
+boards = [("board_1", "THE CITY AGENTS BUILT", CYAN),
+          ("board_2", "otra.city/claim  ·  your project could stand here", WHITE),
+          ("board_3", "4DGSX  ·  volumetric sport, free camera", GOLD),
+          ("board_4", "RFL  ·  robot football league  ·  rfl.football", MAG)]
 for i, (name, text, colr) in enumerate(boards):
-    bx, by = 824, 480 + i * 64
-    region(name, bx, by, 200, 64)   # placeholder region, overwritten below by the wide strips
-for i, (name, text, colr) in enumerate(boards):
-    bx, by = 0, 992 - 64 * 3 + i * 0  # (strips live on their own rows below)
-strip_y0 = 1024 - 4 * 8 - 4 * 56
-for i, (name, text, colr) in enumerate(boards):
-    bx, by, bw, bh = 348 * 0, 992, 0, 0
-# real strip layout: four 1024 x 56 strips at the bottom of the panel columns' free width is too narrow,
-# so put them in the 348..696 column instead (348 px wide, 4 rows of 64)
-for i, (name, text, colr) in enumerate(boards):
-    bx, by, bw, bh = 348, 480 + i * 64, 348, 64
-    region(name, bx, by, bw, bh)
+    bx, by, bw, bh = region(name, 0, 192 + i * 56, 1024, 56)
     d = ImageDraw.Draw(atlas)
     d.rectangle((bx, by, bx + bw - 1, by + bh - 1), fill=(10, 8, 20))
     frame(d, (bx, by, bx + bw - 1, by + bh - 1), scale(colr, 0.5), 3, 4)
-    f = font("bold", 22)
-    while f.getlength(text) > bw - 24:
+    f = font("bold", 34)
+    while f.getlength(text) > bw - 40 and f.size > 12:
         f = font("bold", f.size - 1)
     d.text((bx + bw / 2, by + bh / 2 + 1), text, font=f, fill=colr, anchor="mm")
 
-# gate sign and a safety line
-d = plate("sign_gate", 348, 736, 348, 128, edge=CYAN, ew=4)
-d.text((348 + 174, 736 + 44), "WEST GATE", font=font("black", 40), fill=CYAN, anchor="mm")
-d.text((348 + 174, 736 + 86), "no ticket needed · walk in", font=font("mono", 20), fill=WHITE, anchor="mm")
-d = plate("sign_steps", 348, 864, 348, 128, edge=GOLD, ew=4)
-d.text((348 + 174, 864 + 44), "STANDS  ↑", font=font("black", 40), fill=GOLD, anchor="mm")
-d.text((348 + 174, 864 + 86), "mind the step · 0.25 m risers", font=font("mono", 20), fill=WHITE, anchor="mm")
+# gate signs — one per gate, because a gate that reads WEST on the east wall is
+# worse than no sign at all — and the stair sign
+for name, title, sub, colr in (("sign_gate_w", "WEST GATE", "no ticket needed · walk in", CYAN),
+                               ("sign_gate_e", "EAST GATE", "no ticket needed · walk in", CYAN),
+                               ("sign_steps", "STANDS  ↑", "mind the step · 0.25 m risers", GOLD)):
+    i = ("sign_gate_w", "sign_gate_e", "sign_steps").index(name)
+    bx, by, bw, bh = region(name, (i % 2) * 512, 416 + (i // 2) * 160, 512, 160)
+    d = ImageDraw.Draw(atlas)
+    d.rectangle((bx, by, bx + bw - 1, by + bh - 1), fill=(10, 8, 20))
+    frame(d, (bx, by, bx + bw - 1, by + bh - 1), colr, 4, 8)
+    d.text((bx + bw / 2, by + 58), title, font=font("black", 52), fill=colr, anchor="mm")
+    d.text((bx + bw / 2, by + 112), sub, font=font("mono", 24), fill=WHITE, anchor="mm")
+
+# stand block letters: N E S W on a coloured plate
+for i, (letter, hx) in enumerate((("N", "#2d7fd6"), ("E", "#d63a6e"), ("S", "#e0b43a"), ("W", "#3fb37a"))):
+    bx, by, bw, bh = region("block_" + letter, 768 + (i % 2) * 128, 576 + (i // 2) * 128, 128, 128)
+    d = ImageDraw.Draw(atlas)
+    d.rectangle((bx, by, bx + bw - 1, by + bh - 1), fill=scale(hex2rgb(hx), 0.35))
+    frame(d, (bx, by, bx + bw - 1, by + bh - 1), hex2rgb(hx), 5, 6)
+    d.text((bx + 64, by + 66), letter, font=font("black", 92), fill=WHITE, anchor="mm")
 
 # RFL crest for the mast bases
-bx, by = 824, 736
-d = plate("crest", bx, by, 200, 200, fill=(12, 10, 22), edge=GOLD, ew=4)
-d.ellipse((bx + 26, by + 26, bx + 174, by + 174), outline=CYAN, width=4)
-d.text((bx + 100, by + 86), "RFL", font=font("black", 56), fill=WHITE, anchor="mm")
-d.text((bx + 100, by + 134), "EST. 2026", font=font("mono", 18), fill=GOLD, anchor="mm")
+bx, by, bw, bh = region("crest", 512, 576, 256, 256)
+d = ImageDraw.Draw(atlas)
+d.rectangle((bx, by, bx + bw - 1, by + bh - 1), fill=(12, 10, 22))
+frame(d, (bx, by, bx + bw - 1, by + bh - 1), GOLD, 4, 8)
+d.ellipse((bx + 34, by + 34, bx + 222, by + 222), outline=CYAN, width=5)
+d.text((bx + 128, by + 110), "RFL", font=font("black", 72), fill=WHITE, anchor="mm")
+d.text((bx + 128, by + 172), "EST. 2026", font=font("mono", 22), fill=GOLD, anchor="mm")
 
-# Media plates: the client REPLACES a dock/scoreboard node's material and maps
-# the picture through the node's FULL 0..1 UVs, so each plate ships as its own
-# image (the authored fallback is the whole texture, not an atlas cell).
-for name in ("screen_main", "screen_score", "panel_left", "panel_right"):
-    rx, ry, rw, rh = amap["regions"][name]
-    atlas.crop((rx, ry, rx + rw, ry + rh)).save(HERE / ("plate_%s.png" % name))
-print("plates written")
+# ------------------------------------------------------------------- plates
+# 16:9 screen plate: what the big screen shows before a broadcast is docked
+d = plate("screen_main", 1024, 576)
+d.rectangle((60, 60, 104, 104), fill=(255, 59, 48))
+d.text((132, 104), "STADIUM TV", font=font("mono", 52), fill=WHITE, anchor="ls")
+glow_text(PLATES["screen_main"], (512, 336), "NO SIGNAL", font("black", 144), DIM, tracking=16, blur=14, glow_k=0.3)
+d = ImageDraw.Draw(PLATES["screen_main"])
+d.text((512, 448), "matchday 12:00 · 16:00 · 20:00 London", font=font("mono", 44), fill=CYAN, anchor="mm")
+d.text((512, 516), "the broadcast docks here when the RFL is live", font=font("mono", 34), fill=DIM, anchor="mm")
+
+# scoreboard plate (the client repaints this from hud truth)
+d = plate("screen_score", 1024, 576, edge=GOLD)
+d.text((60, 104), "OTRA CITY STADIUM", font=font("mono", 52), fill=WHITE, anchor="ls")
+d.text((512, 300), "— : —", font=font("mono", 168), fill=WHITE, anchor="mm")
+d.text((512, 428), "NEXT KICK-OFF · loading programme", font=font("mono", 44), fill=GOLD, anchor="mm")
+d.text((512, 500), "RFL · ROBOT FOOTBALL LEAGUE", font=font("mono", 34), fill=DIM, anchor="mm")
+
+# tall dock panels (stats / line-up), aspect 0.68 -> 696 x 1024
+for name, title, sub in (("panel_left", "GAME STATS", "possession · shots · passes"),
+                         ("panel_right", "LINE-UP", "two-a-side · four robots")):
+    d = plate(name, 696, 1024, edge=(70, 68, 108), ew=8)
+    d.text((348, 160), title, font=font("bold", 80), fill=WHITE, anchor="mm")
+    d.text((348, 260), sub, font=font("mono", 36), fill=DIM, anchor="mm")
+    for k in range(6):
+        d.rectangle((80, 400 + k * 88, 80 + 80 + k * 76, 452 + k * 88), fill=(28, 24, 48))
+    d.text((348, 960), "docks when a match is live", font=font("mono", 32), fill=CYAN, anchor="mm")
+
+for name, img in PLATES.items():
+    img.save(HERE / ("plate_%s.png" % name))
+print("plates:", ", ".join(sorted(PLATES)))
+
 atlas.save(HERE / "atlas.png")
 json.dump(amap, open(HERE / "atlas_map.json", "w"), indent=1)
 print("atlas regions:", list(amap["regions"]))

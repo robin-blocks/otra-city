@@ -437,7 +437,16 @@ def stand(side):
     B(STAND_DEPTH, STAND_DEPTH + 1.5, a_start + s_len, a_start + s_len + 1.5, DECK_H, TOP_H, "step", mesh=cmesh)
     B(STAND_DEPTH - 0.06, STAND_DEPTH, a_start + s_len - 0.12, a_start + s_len, TOP_H, TOP_H + 2.3, "e_cyan_dim")   # doorway jamb lights
     B(STAND_DEPTH - 0.06, STAND_DEPTH, a_start + s_len + 1.5, a_start + s_len + 1.62, TOP_H, TOP_H + 2.3, "e_cyan_dim")
-    B(STAND_DEPTH + 1.5, STAND_DEPTH + 1.7, a_start, a_start + s_len + 1.5, DECK_H, TOP_H + 1.0, "rail")   # stair balustrade
+    # A balustrade, not a wall: 1.05 m above each tread, stepping with the
+    # stair. As a solid slab it hid the stair and the block letter behind it
+    # from anyone walking in through the gate.
+    for k in range(n_steps):
+        z = DECK_H + (k + 1) * 0.25
+        a0 = a_start + k * run
+        B(STAND_DEPTH + 1.5, STAND_DEPTH + 1.7, a0, a0 + run, z, z + 1.05, "rail")
+        B(STAND_DEPTH + 1.5, STAND_DEPTH + 1.7, a0, a0 + run, z + 1.05, z + 1.11, "e_cyan_dim")
+    B(STAND_DEPTH + 1.5, STAND_DEPTH + 1.7, a_start + s_len, a_start + s_len + 1.5, TOP_H, TOP_H + 1.05, "rail")
+    B(STAND_DEPTH + 1.5, STAND_DEPTH + 1.7, a_start + s_len, a_start + s_len + 1.5, TOP_H + 1.05, TOP_H + 1.11, "e_cyan_dim")
     # ---- collision proxy: treads, half steps, seat-back walls with aisle gaps, walls
     B(0, 0.5, -half, half, 0.0, BASE_H, "ink", mesh=cmesh)
     for r in range(ROWS):
@@ -491,6 +500,18 @@ for m in (opaque, wall_col):
     m.box((-FOOT_X, -FOOT_Y, 0.0), (FOOT_X, -FOOT_Y + 0.5, WALL_H), sw)
     m.box((-FOOT_X, FOOT_Y - 0.5, 0.0), (FOOT_X, FOOT_Y, WALL_H), sw)
 wall_col.finish()
+# The wall is 4 m of unlit dark box seen from 60 m away, which read as a black
+# slab from the roundabout. Pilasters on the lot pitch and a dim band give it
+# a rhythm and a silhouette at night.
+for wx in [v * 6.0 for v in range(-4, 5)]:
+    for y0, face in ((-FOOT_Y, -0.02), (FOOT_Y - 0.5, 0.52)):
+        opaque.box((wx - 0.35, y0 + face, 0.0), (wx + 0.35, y0 + face + 0.02, WALL_H - 0.6), "wall_lt")
+        opaque.box((wx - 0.12, y0 + face - 0.01, 0.6), (wx + 0.12, y0 + face + 0.03, WALL_H - 1.0), "e_cyan_dim")
+for wy in [v * 6.0 for v in range(-3, 4)]:
+    for x0, face in ((-FOOT_X, -0.02), (FOOT_X - 0.5, 0.52)):
+        opaque.box((x0 + face, wy - 0.35, 0.0), (x0 + face + 0.02, wy + 0.35, WALL_H - 0.6), "wall_lt")
+        opaque.box((x0 + face - 0.01, wy - 0.12, 0.6), (x0 + face + 0.03, wy + 0.12, WALL_H - 1.0), "e_cyan_dim")
+
 # wall trims and corner pylons
 for x0, x1 in ((-FOOT_X, -FOOT_X + 0.5), (FOOT_X - 0.5, FOOT_X)):
     opaque.box((x0 + 0.2, -FOOT_Y, WALL_H), (x0 + 0.3, FOOT_Y, WALL_H + 0.1), "e_cyan_dim")
@@ -503,17 +524,17 @@ for sx in (-1, 1):
         opaque.box((cx - 0.3, cy - 0.3, WALL_H + 1.5), (cx + 0.3, cy + 0.3, WALL_H + 1.7), "e_cyan_soft")
 
 # gate signs above each gate, and the main sign over the west gate
-for x_face, facing in ((-FOOT_X - 0.002, '-x'), (FOOT_X + 0.002, '+x')):
-    art.quad(facing, x_face, -2.0, 2.0, GATE_H + 0.1, GATE_H + 0.1 + 1.47, region_uvs("sign_gate"))
+for x_face, facing, sign_r in ((-FOOT_X - 0.002, '-x', "sign_gate_w"), (FOOT_X + 0.002, '+x', "sign_gate_e")):
+    art.quad(facing, x_face, -2.0, 2.0, GATE_H + 0.1, GATE_H + 0.1 + 1.25, region_uvs(sign_r))
 opaque.box((-FOOT_X + 0.1, -6.2, WALL_H), (-FOOT_X + 0.4, -5.9, WALL_H + 3.2), "steel")
 opaque.box((-FOOT_X + 0.1, 5.9, WALL_H), (-FOOT_X + 0.4, 6.2, WALL_H + 3.2), "steel")
 opaque.box((-FOOT_X + 0.05, -6.1, WALL_H + 0.5), (-FOOT_X + 0.45, 6.1, WALL_H + 2.75), "board")
 art.quad('-x', -FOOT_X + 0.048, -6.0, 6.0, WALL_H + 0.6, WALL_H + 0.6 + 2.25, region_uvs("sign_main"))
-# stairs signs on the concourse near each stand's stair
-for (x, y, facing) in ((-FOOT_X + 3.0, -12.0, '+y'), (FOOT_X - 3.0, 12.0, '-y')):
-    opaque.box((x - 0.06, y - 0.06, DECK_H), (x + 0.06, y + 0.06, DECK_H + 2.4), "steel_dk")
-    at = y + 0.06 if facing == '+y' else y - 0.06
-    art.quad(facing, at, x - 0.9, x + 0.9, DECK_H + 1.5, DECK_H + 2.16, region_uvs("sign_steps"))
+# The stair sign belongs at the stair, on the wall a visitor walks toward:
+# each side stand's back wall, clear of the balustrade, facing its gate.
+for (wall_x, facing, sgn) in ((-(FRONT_X + STAND_DEPTH) - 0.01, '-x', -1), ((FRONT_X + STAND_DEPTH) + 0.01, '+x', 1)):
+    a0, a1 = sorted((sgn * 6.0, sgn * 8.5))
+    art.quad(facing, wall_x, a0, a1, DECK_H + 1.5, DECK_H + 1.5 + 0.78, region_uvs("sign_steps"))
 
 # gate panels: sliding glass on a pivot rotated so the panel's local X runs
 # along the wall (the door system slides panels in local X)
@@ -582,6 +603,11 @@ for side in ("W", "E", "N", "S"):
         far.box((min(sign * lo, sign * hi), -half, 0.0), (max(sign * lo, sign * hi), half, TOP_H + 1.1), "ink")
     else:
         far.box((-half, min(sign * lo, sign * hi), 0.0), (half, max(sign * lo, sign * hi), TOP_H + 1.1), "ink")
+# The impostor is what the boulevard sees: four glowing heads alone read as
+# dots, so the wall carries its lit top edge too — a stadium's shape.
+for (mn, mx) in (((-FOOT_X, -FOOT_Y), (FOOT_X, -FOOT_Y + 0.5)), ((-FOOT_X, FOOT_Y - 0.5), (FOOT_X, FOOT_Y)),
+                 ((-FOOT_X, -FOOT_Y), (-FOOT_X + 0.5, FOOT_Y)), ((FOOT_X - 0.5, -FOOT_Y), (FOOT_X, FOOT_Y))):
+    far_glow.box((mn[0], mn[1], WALL_H - 0.12), (mx[0], mx[1], WALL_H), "ink")
 far.box((-FOOT_X, -FOOT_Y, 0.0), (FOOT_X, -FOOT_Y + 0.5, WALL_H), "ink")
 far.box((-FOOT_X, FOOT_Y - 0.5, 0.0), (FOOT_X, FOOT_Y, WALL_H), "ink")
 far.box((-FOOT_X, -FOOT_Y, 0.0), (-FOOT_X + 0.5, FOOT_Y, WALL_H), "ink")
