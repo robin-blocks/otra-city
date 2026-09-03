@@ -71,6 +71,8 @@ import { loadWorld } from '/js/world.js';
 import { buildRoads } from '/js/roads.js';
 import { createVenues } from '/js/venues.js';
 import { createDoorSystem } from '/js/doors.js';
+import { createCrowd } from '/js/crowd.js';
+import { CAMERAS, createTrack } from '/js/broadcast-cameras.js';
 
 const FPS = 50;                 // the brief's timebase; one step is 20 ms
 const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
@@ -124,14 +126,16 @@ const liveParam = params.get('live');
 const live = liveParam !== null && liveParam !== '0';
 const liveCap = Math.max(1, Math.min(256, Number(liveParam) > 1 ? Number(liveParam) : 32));
 
-// Parameters the brief names that this bare page does not honour yet. They
-// are reported rather than ignored — a capture that silently got an empty
-// crowd would be discovered a week of footage later.
+const crowdDensity = params.has('crowd') ? Math.max(0, Math.min(1, num('crowd', 0))) : 0;
+const timeofday = params.has('timeofday') ? Math.max(0, Math.min(24, num('timeofday', 0))) : null;
+const camtrackUrl = params.get('camtrack') ? httpsOnly(params.get('camtrack')) : null;
+if (params.get('camtrack') && !camtrackUrl) fail('camtrack', 'must be an https URL; ignored');
+
+// Anything the brief names that this build still does not honour is reported
+// rather than ignored — a capture that silently got an empty crowd would be
+// discovered a week of footage later. The list is empty when everything asked
+// for is real, which is the point of keeping it.
 const unimplemented = [];
-if (params.has('camtrack')) unimplemented.push('camtrack (§4) — no camera track file is read; the camera is static');
-if (params.has('crowd')) unimplemented.push('crowd (§6) — the stands are empty geometry; nobody is seated');
-if (params.has('timeofday')) unimplemented.push('timeofday (§4) — lighting is fixed at the stadium’s night preset');
-if (params.has('seed')) unimplemented.push('seed (§4) — accepted and reported, but nothing random is drawn yet');
 
 // ---- renderer: the client's pipeline, with the capture's constraints -------
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -151,7 +155,8 @@ const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300),
 ground.rotation.x = -Math.PI / 2;
 ground.position.y = -0.01;
 scene.add(ground);
-scene.add(new THREE.HemisphereLight(0x8899ff, 0x080610, 0.25));
+const hemi = new THREE.HemisphereLight(0x8899ff, 0x080610, 0.25);
+scene.add(hemi);
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 composer.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.12, 0.3, 1.0));
@@ -173,6 +178,7 @@ const viewer = {
 };
 
 let def = null, venues = null, V = null, world = null, frame = 0, presence = null;
+let crowd = null, track = null, lastTrackCam = null;
 
 async function boot() {
   const street = withStreet ? await loadStreet(scene) : null;
@@ -216,6 +222,30 @@ async function boot() {
   viewer.pos.set(centre.x, 0, centre.z);
   V.force = 2;
 
+  if (timeofday !== null) applyTimeOfDay(timeofday);
+
+  // The camera track is loaded before anything is filmed: a segment naming a
+  // camera that does not exist should stop the run now, not at frame 90,000.
+  if (camtrackUrl) {
+    try {
+      const doc = await (await fetch(camtrackUrl, { credentials: 'omit' })).json();
+      track = await createTrack(doc, { fetchJson: async (u) => {
+        const abs = httpsOnly(u);
+        if (!abs) throw new Error(`explicit frames must be an https URL: ${u}`);
+        return (await fetch(abs, { credentials: 'omit' })).json();
+      } }).resolve();
+    } catch (e) { track = null; fail('camtrack', e); }
+  }
+
+  if (crowdDensity > 0) {
+    const centre = world.toWorld(def, { x: 0, z: 0 });
+    crowd = createCrowd(scene, {
+      seats: (def.seats || []).map(([x, y, z]) => { const w = world.toWorld(def, { x, z }); return [w.x, y, w.z]; }),
+      density: crowdDensity, seed, facing: [centre.x, centre.z],
+    });
+    if (!crowd.count) unimplemented.push('crowd — this venue declares no seats, so nobody could be seated');
+  }
+
   useCamera(wantCam);
   advance(1 / FPS);
   await venues.whenLoaded(wantVenue);
@@ -227,6 +257,7 @@ async function boot() {
   // started stepping at Tier 2 would film an empty pitch until it landed —
   // the failure that is only visible once there is footage.
   if (bundle) await matchMounted();
+  await networkQuiet();
   // Let the venue settle: gates, anims and the module's first board. The
   // count is fixed on purpose. Waiting for the mount above happens on the
   // wall clock without advancing anything, because a settle loop that ran
@@ -289,17 +320,102 @@ async function matchMounted({ timeoutMs = 120000 } = {}) {
   }
 }
 
-function useCamera(name) {
+/**
+ * Shift the lighting toward a time of day.
+ *
+ * This is a lighting change, not an art pass: otra.city is authored for night,
+ * and its emissive signs, floodlights and bloom are the look. Daylight raises
+ * the ambient, lifts the sky and pushes fog back, so a match reads as an
+ * afternoon fixture — but the neon is still on, because it is painted in.
+ */
+function applyTimeOfDay(hour) {
+  // 0 at midnight, 1 at midday, with dawn and dusk taking about three hours
+  const day = Math.max(0, Math.min(1, (Math.cos((hour - 12) / 12 * Math.PI) + 1) / 2));
+  const eased = day * day * (3 - 2 * day);
+  const night = new THREE.Color(0x0a0817), noon = new THREE.Color(0x9fb2d8);
+  const sky = night.clone().lerp(noon, eased * 0.82);
+  scene.background = sky;
+  if (scene.fog) {
+    scene.fog.color = sky;
+    scene.fog.far = world.presets.fog[1] * (1 + eased * 0.7);
+  }
+  hemi.intensity = 0.25 + eased * 1.15;
+  renderer.toneMappingExposure = 1.15 - eased * 0.25;
+}
+
+/**
+ * Point the camera, in venue-local metres. Everything the director produces —
+ * built-in shots and RFL's own track files alike — is expressed from the pitch
+ * centre with +z toward the north stand, and converted here exactly once.
+ */
+function aim({ pos, lookAt, fov }) {
+  const p = world.toWorld(def, { x: pos[0], z: pos[2] });
+  const t = world.toWorld(def, { x: lookAt[0], z: lookAt[2] });
+  camera.position.set(p.x, pos[1], p.z);
+  camera.lookAt(t.x, lookAt[1], t.z);
+  if (fov && fov !== camera.fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
+  camera.updateMatrixWorld();
+}
+
+// The three §5 shots are motion by definition, so they come from the director
+// even though `pitchside` also exists as a static view in venue.json. Every
+// other name resolves to the authored camera, `gantry` included: that one is
+// RFL's contracted position and the check verifies the authored value.
+const ANIMATED = new Set(['heli', 'stands', 'pitchside']);
+
+function cameraAt(name, frameNo) {
+  const key = String(name).toLowerCase();
+  const t = frameNo / FPS;
+  if (track) {
+    const c = track.at(frameNo);
+    // Past the end of the track the last segment's final framing is held,
+    // rather than snapping somewhere arbitrary mid-capture.
+    if (c) { lastTrackCam = c; return c; }
+    if (lastTrackCam) return lastTrackCam;
+  }
+  if (ANIMATED.has(key)) return CAMERAS[key](t, seed, {});
   const c = def?.cameras?.[name];
+  if (c) return { pos: c[0], lookAt: c[1], fov: null };
+  if (CAMERAS[key]) return CAMERAS[key](t, seed, {});
+  return null;
+}
+
+/**
+ * Hold `ready` until the page has stopped fetching things.
+ *
+ * Mounting a match is not the end of its loading: the 4DGSX SDK pulls its dock
+ * panels (`ui/lineup.html` and friends) after `mount()` resolves, on the wall
+ * clock. Both are one-off, but a slow network can land one on either side of
+ * frame 0 — so two runs of the same capture would differ by a panel that is
+ * blank in one and populated in the other. Waiting for quiet removes the whole
+ * class rather than the one instance we found.
+ *
+ * Wall-clock, and advances nothing: boot is not part of the deterministic
+ * timeline, and every run still reaches frame 0 in the same state.
+ */
+async function networkQuiet({ stableMs = 1500, timeoutMs = 30000 } = {}) {
+  const until = Date.now() + timeoutMs;
+  let count = performance.getEntriesByType('resource').length;
+  let steadySince = Date.now();
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 250));
+    const now = performance.getEntriesByType('resource').length;
+    if (now !== count) { count = now; steadySince = Date.now(); }
+    else if (Date.now() - steadySince >= stableMs) return count;
+    if (Date.now() > until) {
+      fail('network', `still fetching after ${timeoutMs / 1000}s (${count} resources); frames may differ between runs`);
+      return count;
+    }
+  }
+}
+
+function useCamera(name) {
+  const c = cameraAt(name, frame);
   if (!c) {
-    fail('camera', `unknown camera "${name}" — one of ${Object.keys(def?.cameras || {}).join(', ')}`);
+    fail('camera', `unknown camera "${name}" — one of ${[...new Set([...Object.keys(def?.cameras || {}), ...Object.keys(CAMERAS)])].join(', ')}`);
     return false;
   }
-  const p = world.toWorld(def, { x: c[0][0], z: c[0][2] });
-  const t = world.toWorld(def, { x: c[1][0], z: c[1][2] });
-  camera.position.set(p.x, c[0][1], p.z);
-  camera.lookAt(t.x, c[1][1], t.z);
-  camera.updateMatrixWorld();
+  aim(c);
   return true;
 }
 
@@ -314,6 +430,11 @@ function advance(dt) {
 }
 
 function draw() {
+  // Both of these are pure in (frame, seed): re-drawing frame N gives frame N,
+  // and seeking to it gives the same thing as stepping to it.
+  const c = cameraAt(wantCam, frame);
+  if (c) aim(c);
+  if (crowd) crowd.update(frame / FPS);
   renderer.info.reset();
   composer.render();
   // finish() blocks until the driver has actually drawn: without it `frame()`
@@ -323,6 +444,8 @@ function draw() {
     const r = renderer.info.render;
     note.textContent = `otra.city broadcast · ${wantVenue} · camera ${wantCam} · frame ${frame} `
       + `(${(frame / FPS).toFixed(2)}s @ ${FPS}fps) · ${W}×${H} · ${r.calls} calls · ${r.triangles} tris`
+      + (crowd ? ` · ${crowd.count} fans (${crowd.state.standing} up)` : '')
+      + (track && lastTrackCam ? ` · track seg ${lastTrackCam.segment} (${lastTrackCam.camera})` : '')
       + (live ? ` · LIVE ${presence?.count ?? 0}/${liveCap} peers${presence?.connected ? '' : ' (connecting…)'} — not reproducible` : '')
       + (unimplemented.length ? `\nnot in this build: ${unimplemented.join(' · ')}` : '');
   }
@@ -373,6 +496,11 @@ window.rflBroadcast = {
       bundle, seed, street: withStreet,
       live: live ? { cap: liveCap, peers: presence?.count ?? 0, connected: !!presence?.connected,
                      deterministic: false } : null,
+      crowd: crowd ? { density: crowdDensity, fans: crowd.count, standing: crowd.state.standing,
+                       seatsOffered: crowd.state.seatsOffered, cap: crowd.state.cap } : null,
+      camtrack: track ? { segments: track.segments.length, lastFrame: track.lastFrame,
+                          shot: lastTrackCam ? { camera: lastTrackCam.camera, segment: lastTrackCam.segment } : null } : null,
+      timeofday,
       match: (() => { const m = matchState(); return m ? { phase: m.phase, errors: m.errors ?? [] } : null; })(),
       calls: r.calls, tris: r.triangles,
       unimplemented, errors: errors.slice(),

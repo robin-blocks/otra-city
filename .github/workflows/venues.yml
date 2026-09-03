@@ -14,6 +14,7 @@ on:
       - 'public/index.html'
       - 'public/venue.html'
       - 'public/broadcast.html'
+      - 'public/broadcast/**'
       - 'scripts/venue-*.mjs'
       - 'scripts/broadcast-check.mjs'
       - 'scripts/build-venues.mjs'
@@ -29,6 +30,7 @@ on:
       - 'public/index.html'
       - 'public/venue.html'
       - 'public/broadcast.html'
+      - 'public/broadcast/**'
       - 'scripts/venue-*.mjs'
       - 'scripts/broadcast-check.mjs'
       - 'scripts/build-venues.mjs'
@@ -46,6 +48,8 @@ jobs:
       - run: node scripts/venue-check.mjs --all --out poc/out/venue-check.json
       - run: node scripts/venue-shot.mjs --all --out poc/out/shots
       - run: node scripts/broadcast-check.mjs --out poc/out/broadcast-check.json --shots poc/out/shots
+      # the crowd and the cut-list have their own determinism to lose
+      - run: node scripts/broadcast-check.mjs --frames 900 --crowd 0.7 --camtrack /broadcast/camtrack-example.json --out poc/out/broadcast-crowd.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -53,5 +57,6 @@ jobs:
           path: |
             poc/out/venue-check.json
             poc/out/broadcast-check.json
+            poc/out/broadcast-crowd.json
             poc/out/shots/*.png
           if-no-files-found: warn
