@@ -83,13 +83,31 @@ are pre-existing and noted.
 Also found by the fixes: bay lamps stand on the bays' 1.5 m kerbs, which the
 fence did not include (the plat did) — bays now fence their kerbs.
 
+## Critic pass 2 (docs/map/CRITIQUE-2.md, 2026-09-03)
+All five blocking criteria pass again on fresh evidence; the round-1 top item
+is closed "the right way" (the critic repeated its T3 experiment: a map edit
+that moves the boulevard's origin now fails the plain run with ten "was placed
+at … and this map puts it at …" lines and fails `--check`; only rewriting
+`placed` too gets through, and that diff is the reviewable tell). Ten of
+twelve items closed, two partial, four new nice-to-haves — all four closed the
+same hour: map-check compares a plate's parts only against OTHER plates; the
+bay's open side and its label are decided once in `city-map.mjs`
+(`bayOpensSouth`, `baySigns`) for the renderer and the check; the plan page's
+tables scroll inside themselves on a phone; `plot-spec.json`'s copyable
+example no longer names a real lot. The fifth — repeater plates stand across
+the pavement mid-block — is accepted: it is what makes the plate face the
+spawn, and every standing point keeps ≥ 5.9 m of clearance.
+
 ## Scores
-- Critic pass 1: correctness PASS, walkability PASS, reliability PASS, performance PASS, integration PASS; visual 7, usability 6, maintainability 8, accessibility 7. Round 2 pending on the fixes above.
+- Critic pass 1: correctness PASS, walkability PASS, reliability PASS, performance PASS, integration PASS; visual 7, usability 6, maintainability 8, accessibility 7.
+- Critic pass 2: all five PASS; **visual 8, usability 7, maintainability 8, accessibility 7** — every category clears the rubric's 7.
 
 ## Open issues (ranked)
-1. Critic round 2 (re-score usability after the repeater plates and the larger address).
-2. The two closes carry a subreddit each but no lots — a name with nothing to claim on it.
-3. The road name is not in the HUD; a visitor reads it off plates and boards only.
+1. The two closes carry a subreddit each but no lots — a name with nothing to claim on it.
+2. The road name is not in the HUD; a visitor reads it off plates and boards only.
+3. A CI assertion that no existing `placed` entry changes against `origin/main` would close the last path to moving a held lot (rewriting the record by hand); today that diff is the reviewer's tell.
+4. The City Hall authoring scripts compile against the new manifest but have not been run in Blender.
+5. The correct `map:check` count is 18 checks (the second commit message says 20).
 
 ## Deferred
 - Automatic expansion (a script editing `map.json`); side streets; walking-distance allocation; parking.
@@ -98,4 +116,4 @@ fence did not include (the plat did) — bays now fence their kerbs.
 - None.
 
 ## Next action
-- Re-run qa on the fixes, push, critic round 2, then Robin reviews PR #37.
+- Robin reviews and merges PR #37; after the deploy, verify `/map`, `/lot/boulevard-13`, `/api/lots` and a dry run with `"lot"` on production.

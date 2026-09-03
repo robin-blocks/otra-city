@@ -17,7 +17,7 @@
 // with the city's light pool (js/lights.js) rather than owning a PointLight;
 // the pool lights whichever sources the visitor is nearest.
 import * as THREE from 'three';
-import { roadSegments, roadLamps, roundaboutArcs, roundaboutLamps, bayLamps, namePlates, deadEnds } from '/js/city-map.mjs';
+import { roadSegments, roadLamps, roundaboutArcs, roundaboutLamps, bayLamps, baySigns, bayOpensSouth, namePlates, deadEnds } from '/js/city-map.mjs';
 import { createInstancer, mergedQuads } from '/js/geom.js';
 
 const mat = (color, opts = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.92, ...opts });
@@ -277,14 +277,15 @@ export function buildRoads(scene, world) {
     const cz = (b.min[1] + b.max[1]) / 2;
     box('asphalt', cx, -0.05, cz, 0, w, 0.12, d);
     // kerb on three sides (the side facing the road stays open)
-    const openSouth = cz > 0;   // a bay north of the road opens to the south
+    const openSouth = bayOpensSouth(b);
     box('paving', b.min[0] - 0.75, PAVE_H / 2, cz, 0, 1.5, PAVE_H, d);
     box('paving', b.max[0] + 0.75, PAVE_H / 2, cz, 0, 1.5, PAVE_H, d);
     box('paving', cx, PAVE_H / 2, openSouth ? b.max[1] + 0.75 : b.min[1] - 0.75, 0, w + 3, PAVE_H, 1.5);
     for (let x = b.min[0] + 1; x < b.max[0]; x += 2) box('stripe', x, 0.02, cz, 0, 1.2, 0.03, 0.16);
-    if (b.label) sign([b.min[0] - 0.75, openSouth ? b.max[1] + 0.75 : b.min[1] - 0.75], openSouth ? Math.PI : 0, [b.label, ''], '#ffbf80');
   }
-  for (const l of bayLamps(map)) lamp(l);   // placed by the shared module, so the map check sees them
+  // the label and the lamp are placed by the shared module, so the map check sees them
+  for (const s of baySigns(map)) sign(s.at, s.yaw, [s.label, ''], '#ffbf80');
+  for (const l of bayLamps(map)) lamp(l);
 
   // ---- crossings, directional signs, bollards ----------------------------
   for (const c of map.crossings || []) {

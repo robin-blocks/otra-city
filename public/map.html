@@ -19,6 +19,8 @@
   .legend { display: flex; flex-wrap: wrap; gap: 14px; color: #8a86a0; font-size: 12px; margin: 10px 0 0; }
   .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  /* on a phone the tables scroll inside themselves; the page never scrolls sideways */
+  @media (max-width: 640px) { table { display: block; overflow-x: auto; white-space: nowrap; } }
   td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid #241f38; vertical-align: top; }
   th { color: #8a86a0; font-weight: 400; }
   td.id { color: #e9edf6; white-space: nowrap; }

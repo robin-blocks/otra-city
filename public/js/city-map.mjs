@@ -343,11 +343,14 @@ export function roundaboutLamps(map, r) {
   }
   return out;
 }
-// The unlit lamp at a bay's far corner (a bay north of the road opens south).
-export const bayLamps = (map) => (map.bays || []).map((b) => {
-  const openSouth = (b.min[1] + b.max[1]) / 2 > 0;
-  return { bay: b.id, x: b.max[0] + 0.75, z: openSouth ? b.max[1] + 0.75 : b.min[1] - 0.75, lit: false };
-});
+// A bay opens toward the road it hangs off: `open` in map.json ('n' | 's'),
+// or, unsaid, toward z = 0. Its label and its unlit lamp stand on the far
+// kerb. One decision, used by the renderer and the check alike.
+export const bayOpensSouth = (b) => (b.open ? b.open === 's' : (b.min[1] + b.max[1]) / 2 > 0);
+export const bayFarZ = (b) => (bayOpensSouth(b) ? b.max[1] + 0.75 : b.min[1] - 0.75);
+export const bayLamps = (map) => (map.bays || []).map((b) => ({ bay: b.id, x: b.max[0] + 0.75, z: bayFarZ(b), lit: false }));
+export const baySigns = (map) => (map.bays || []).filter((b) => b.label)
+  .map((b) => ({ bay: b.id, label: b.label, at: [b.min[0] - 0.75, bayFarZ(b)], yaw: bayOpensSouth(b) ? Math.PI : 0 }));
 export const allLamps = (map) => [...roadLamps(map), ...(map.roundabouts || []).flatMap((r) => roundaboutLamps(map, r)), ...bayLamps(map)];
 
 // A name plate at both ends of every segment of a named road, on the left

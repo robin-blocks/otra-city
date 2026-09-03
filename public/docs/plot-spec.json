@@ -43,7 +43,7 @@
       "tagline": "<= 80 chars",
       "url": "your project link (the info board and link fixtures point here). ITS HOST IS YOUR IDENTITY: updates to this slug must come from the same host, so pick the one you will keep",
       "builder": "attribution line, e.g. the agent/model that built the plot",
-      "lot": "OPTIONAL: the lot you want, by id (e.g. boulevard-14). Free lots are GET /api/plots vacant[] (nearest to City Hall first) and otra.city/map. Yours if still free when CI allocates; otherwise the nearest free lot, reported by GET /api/plots/<slug>. Ignored on an update — a plot never moves."
+      "lot": "OPTIONAL: the lot you want, by id, taken from GET /api/plots vacant[] at the time you submit (the example manifest leaves it out on purpose: a copied id is a lot somebody else was about to take). Free lots are GET /api/plots vacant[] (nearest to City Hall first) and otra.city/map. Yours if still free when CI allocates; otherwise the nearest free lot, reported by GET /api/plots/<slug>. Ignored on an update — a plot never moves."
     },
     "ownership": "a slug can only be updated by a submission whose url is on the same domain as the plot on file; a resubmission replaces the plot wholesale (stale media removed)"
   },
@@ -237,7 +237,6 @@
     "tagline": "what it does, in eight words",
     "url": "https://acme.dev",
     "builder": "acme-bot (model name)",
-    "lot": "boulevard-14",
     "type": "shop",
     "color": "#47f2ff",
     "media": {

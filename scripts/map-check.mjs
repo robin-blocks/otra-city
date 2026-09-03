@@ -22,7 +22,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import {
   LOT_HALF, BOARD_LOCAL, lotToWorld, lotRect, rectsOverlap, rectContains, roadSegments, fenceShapes, fenceContains,
-  standingPoint, allLamps, namePlates, platLots, rankFree,
+  standingPoint, allLamps, namePlates, baySigns, platLots, rankFree,
 } from '../public/js/city-map.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
@@ -240,16 +240,17 @@ const fmtGaps = (g) => g.slice(0, 3).map((q) => `[${q.from}]..[${q.to}]`).join('
   // a plate is two posts 0.62 m either side of its centre plus the plate
   // between them; a directional sign and a bay lamp are posts the renderer
   // places from map.json (js/roads.js), so they are counted here too
-  const plateParts = (p) => {
+  const plateParts = (p, i) => {
     const yaw = Math.atan2(p.face[0], p.face[1]);
     const wx = Math.cos(yaw);
     const wz = -Math.sin(yaw);
-    return [-0.62, 0, 0.62].map((s) => ({ what: `plate ${p.road}`, x: p.at[0] + wx * s, z: p.at[1] + wz * s, r: s ? 0.05 : 0.8 }));
+    return [-0.62, 0, 0.62].map((s) => ({ what: `plate ${p.road}`, plate: i, x: p.at[0] + wx * s, z: p.at[1] + wz * s, r: s ? 0.05 : 0.8 }));
   };
   const posts = [
     ...allLamps(map).map((l) => ({ what: `lamp ${l.road || l.roundabout || l.bay}`, x: l.x, z: l.z, r: 0.1 })),
     ...namePlates(map).flatMap(plateParts),
     ...(map.signs || []).map((s) => ({ what: `sign "${(s.lines || [])[0]}"`, x: s.at[0], z: s.at[1], r: 0.1 })),
+    ...baySigns(map).map((s) => ({ what: `sign "${s.label}"`, x: s.at[0], z: s.at[1], r: 0.1 })),
     ...(map.bollards || []).map(([x, z]) => ({ what: 'bollard', x, z, r: 0.12 })),
     ...lots.map((l) => { const b = lotToWorld(l, ...BOARD_LOCAL); return { what: `board ${l.id}`, x: b.x, z: b.z, r: 0.1 }; }),
   ];
@@ -275,7 +276,7 @@ const fmtGaps = (g) => g.slice(0, 3).map((q) => `[${q.from}]..[${q.to}]`).join('
   const clash = [];
   for (let i = 0; i < posts.length; i++) {
     for (let j = i + 1; j < posts.length; j++) {
-      if (posts[i].what === posts[j].what && posts[i].what.startsWith('plate')) continue;   // a plate's own parts
+      if (posts[i].plate !== undefined && posts[i].plate === posts[j].plate) continue;   // a plate's own parts
       const d = Math.hypot(posts[i].x - posts[j].x, posts[i].z - posts[j].z);
       if (d < posts[i].r + posts[j].r + 0.5) clash.push(`${posts[i].what} / ${posts[j].what} ${f1(d)} m`);
     }
