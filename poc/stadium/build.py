@@ -543,12 +543,19 @@ for s in ("W", "E", "N", "S"):
 # ---- gates + outer wall ----------------------------------------------------------
 GATE_W, GATE_H = 4.0, 3.2
 wall_col = MB("col_walls", [mat_voxel])
+# The four sides BUTT at the corners rather than run through each other. Four
+# strips laid corner to corner overlap in eight little volumes and put three
+# faces in each corner plane — a defect the depth probe found at 1.99% of the
+# mast_night camera. The north and south walls keep the full width; the west
+# and east ones stop short of them. Collision is unaffected: the corner square
+# is inside the north/south proxy either way.
+WALL_END = FOOT_Y - 0.5
 for m in (opaque, wall_col):
     sw = "wall" if m is opaque else "ink"
     # west and east walls with the gate openings
     for x0, x1 in ((-FOOT_X, -FOOT_X + 0.5), (FOOT_X - 0.5, FOOT_X)):
-        m.box((x0, -FOOT_Y, 0.0), (x1, -GATE_W / 2, WALL_H), sw)
-        m.box((x0, GATE_W / 2, 0.0), (x1, FOOT_Y, WALL_H), sw)
+        m.box((x0, -WALL_END, 0.0), (x1, -GATE_W / 2, WALL_H), sw)
+        m.box((x0, GATE_W / 2, 0.0), (x1, WALL_END, WALL_H), sw)
         m.box((x0, -GATE_W / 2, GATE_H), (x1, GATE_W / 2, WALL_H), sw)     # lintel
     m.box((-FOOT_X, -FOOT_Y, 0.0), (FOOT_X, -FOOT_Y + 0.5, WALL_H), sw)
     m.box((-FOOT_X, FOOT_Y - 0.5, 0.0), (FOOT_X, FOOT_Y, WALL_H), sw)
@@ -573,13 +580,15 @@ for wy in [v * 6.0 for v in range(-3, 4)]:
 
 # wall trims and corner pylons
 for x0, x1 in ((-FOOT_X, -FOOT_X + 0.5), (FOOT_X - 0.5, FOOT_X)):
-    opaque.box((x0 + 0.2, -FOOT_Y, WALL_H), (x0 + 0.3, FOOT_Y, WALL_H + 0.1), "e_cyan_dim")
+    opaque.box((x0 + 0.2, -WALL_END, WALL_H), (x0 + 0.3, WALL_END, WALL_H + 0.1), "e_cyan_dim")
 for y0 in (-FOOT_Y, FOOT_Y - 0.5):
     opaque.box((-FOOT_X, y0 + 0.2, WALL_H), (FOOT_X, y0 + 0.3, WALL_H + 0.1), "e_cyan_dim")
 for sx in (-1, 1):
     for sy in (-1, 1):
         cx, cy = sx * (FOOT_X - 0.5), sy * (FOOT_Y - 0.5)
-        opaque.box((cx - 0.5, cy - 0.5, 0.0), (cx + 0.5, cy + 0.5, WALL_H + 1.5), "pier")
+        # proud of the wall it caps, so its faces are not in the wall's planes
+        opaque.box((cx - 0.5 - PROUD, cy - 0.5 - PROUD, 0.0),
+                   (cx + 0.5 + PROUD, cy + 0.5 + PROUD, WALL_H + 1.5), "pier")
         opaque.box((cx - 0.3, cy - 0.3, WALL_H + 1.5), (cx + 0.3, cy + 0.3, WALL_H + 1.7), "e_cyan_soft")
 
 # gate signs above each gate, and the main sign over the west gate
@@ -622,8 +631,14 @@ for sx in (-1, 1):
         opaque.box((mx - 0.6, my - 0.6, DECK_H), (mx + 0.6, my + 0.6, 1.2), "mast_dk")
         for (ox, oy) in ((-0.35, -0.35), (0.35, -0.35), (0.35, 0.35), (-0.35, 0.35)):
             opaque.box((mx + ox - 0.1, my + oy - 0.1, 1.2), (mx + ox + 0.1, my + oy + 0.1, MAST_H), "mast")
+        # A collar RINGS the four legs, so it has to stand proud of them: the
+        # legs' outer faces are at 0.45 and a collar flush with them put four
+        # more faces in each of those planes, five collars up every mast.
+        # 2.06% of the mast_night camera, and invisible from the street, which
+        # is exactly the kind of thing a measure is for.
         for z in range(3, int(MAST_H), 3):
-            opaque.box((mx - 0.45, my - 0.45, z), (mx + 0.45, my + 0.45, z + 0.12), "steel_dk")
+            r = 0.45 + PROUD
+            opaque.box((mx - r, my - r, z), (mx + r, my + r, z + 0.12), "steel_dk")
         # head: a bank of lamps on a bracket leaning toward the pitch
         hx, hy = mx - sx * 0.9, my - sy * 0.9
         opaque.box((hx - 1.6, hy - 0.35, MAST_H - 0.2), (hx + 1.6, hy + 0.35, MAST_H + 0.15), "steel")
@@ -664,13 +679,22 @@ for side in ("W", "E", "N", "S"):
         far.box((-half, min(sign * lo, sign * hi), 0.0), (half, max(sign * lo, sign * hi), TOP_H + 1.1), "ink")
 # The impostor is what the boulevard sees: four glowing heads alone read as
 # dots, so the wall carries its lit top edge too — a stadium's shape.
-for (mn, mx) in (((-FOOT_X, -FOOT_Y), (FOOT_X, -FOOT_Y + 0.5)), ((-FOOT_X, FOOT_Y - 0.5), (FOOT_X, FOOT_Y)),
-                 ((-FOOT_X, -FOOT_Y), (-FOOT_X + 0.5, FOOT_Y)), ((FOOT_X - 0.5, -FOOT_Y), (FOOT_X, FOOT_Y))):
-    far_glow.box((mn[0], mn[1], WALL_H - 0.12), (mx[0], mx[1], WALL_H), "ink")
-far.box((-FOOT_X, -FOOT_Y, 0.0), (FOOT_X, -FOOT_Y + 0.5, WALL_H), "ink")
-far.box((-FOOT_X, FOOT_Y - 0.5, 0.0), (FOOT_X, FOOT_Y, WALL_H), "ink")
-far.box((-FOOT_X, -FOOT_Y, 0.0), (-FOOT_X + 0.5, FOOT_Y, WALL_H), "ink")
-far.box((FOOT_X - 0.5, -FOOT_Y, 0.0), (FOOT_X, FOOT_Y, WALL_H), "ink")
+#
+# The four sides BUTT rather than overlap, and the lit edge is a collar PROUD
+# of the wall it rides rather than flush with it. Both matter for the same
+# reason the bowl's bottom terrace row did: strips that run corner to corner
+# double up their faces where they cross, and a band flush with a wall puts
+# its outward face in the wall's plane. The city's depth probe caught this one
+# from Frontier Mews, 68 m away — the impostor is small and far, and it still
+# had the defect (js/depth-probe.mjs).
+WALL_RING = (((-FOOT_X, -FOOT_Y), (FOOT_X, -FOOT_Y + 0.5)),
+             ((-FOOT_X, FOOT_Y - 0.5), (FOOT_X, FOOT_Y)),
+             ((-FOOT_X, -FOOT_Y + 0.5), (-FOOT_X + 0.5, FOOT_Y - 0.5)),
+             ((FOOT_X - 0.5, -FOOT_Y + 0.5), (FOOT_X, FOOT_Y - 0.5)))
+for (mn, mx) in WALL_RING:
+    far.box((mn[0], mn[1], 0.0), (mx[0], mx[1], WALL_H), "ink")
+    far_glow.box((mn[0] - PROUD, mn[1] - PROUD, WALL_H - 0.12),
+                 (mx[0] + PROUD, mx[1] + PROUD, WALL_H + PROUD), "ink")
 far.finish()
 far_glow.finish()
 

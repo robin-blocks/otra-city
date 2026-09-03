@@ -25,26 +25,33 @@ export const CAM = {
                     // not a line — half an avatar, the same scale as the body
                     // that would otherwise be inside the wall
   pad: 0.3,         // stand-off from whatever the probe hit
-  hold: 0.28,       // seconds a pull-in survives after the view looks clear
-  release: 5,       // and how fast the distance is given back once it is
+  hold: 0.5,        // seconds a pull-in survives after the view looks clear
+  tighten: 20,      // how fast the camera closes on a goal inside the stand-off
+  release: 5,       // and eases back out
+  out: 2.0,         // metres a second: the cap on coming back out
   // First person is the bottom of the zoom range rather than a mode with
   // controls of its own: the rig keeps orbiting, and at or below fpEnter the
   // camera is simply drawn from the visitor's eyes instead of from the rig.
   //
-  // The three numbers are one arrangement, and it is the zoom STEP that fixes
-  // them. minZoom is controls.minDistance — the rig's floor, and also the
-  // floor a wall may push the camera to. Scrolling in walks the distance down
-  // by about 6% a notch (much less on a trackpad) until the floor clamps it,
-  // so putting fpEnter comfortably ABOVE the floor is what guarantees the mode
-  // arrives however coarse the visitor's wheel is; sitting it exactly ON the
-  // floor made entry a question of which way a float rounded. fpExit is then
-  // inside one notch of the floor, so a single scroll out is unmistakably a
-  // request to come back and the visitor is never left wondering why nothing
-  // is happening. Widen the band and one notch stops working; narrow it and
-  // the boundary flutters.
+  // Going IN is a distance: minZoom is controls.minDistance, the rig's floor
+  // and also the floor a wall may push the camera to, and fpEnter sits
+  // comfortably above it so the mode arrives however coarse the visitor's
+  // wheel is — sitting the trigger exactly ON the floor made entry a question
+  // of which way a float rounded.
+  //
+  // Coming OUT is a DIRECTION, not a distance, and the difference is the whole
+  // bug. A threshold a little above the floor sounds equivalent: it is not.
+  // A trackpad moves the distance a fraction of a percent per event, so
+  // leaving took up to 28 of them (measured: 1 on a mouse notch, 3 on a firm
+  // swipe, 28 on a gentle one) — and what it handed back was a camera 0.74 m
+  // behind the visitor's eyes, which is the inside of their own head and reads
+  // as nothing having happened. So ANY growth in the rig since the last frame
+  // is the visitor asking to come out, whatever their device sends, and they
+  // land at fpBack: far enough to see themselves, near enough that it reads as
+  // a step backwards rather than a jump.
   minZoom: 0.7,
   fpEnter: 0.72,
-  fpExit: 0.74,
+  fpBack: 2.2,
   eye: 0.06,        // first-person eye above the follow target (the visor)
   // In first person the orbit angle IS the pitch, and it runs the other way —
   // a rig above the head looks DOWN. The third-person limits keep the rig out
@@ -83,6 +90,7 @@ export class PlayerController {
     this.camDist = 4.6;
     this.camHold = 0;          // seconds left on the current pull-in
     this.camClear = Infinity;  // the closest thing the probe has seen lately
+    this.camRigLast = 4.6;     // the rig distance as of the last frame's end
     this.camWrote = new THREE.Vector3(NaN, NaN, NaN);  // where we last put it
     this.firstPerson = false;
     this.orbitPolar = null;    // the third-person polar limits, while in first
@@ -162,6 +170,10 @@ export class PlayerController {
     this.camDist = this.camWant;
     this.camClear = Infinity;
     this.camHold = 0;
+    // a hand-placed shot is the rig, not a scroll: it must not read as the
+    // visitor asking to leave first person, and it decides the mode itself
+    this.camRigLast = this.camWant;
+    this.setFirstPerson(this.camWant <= CAM.fpEnter);
   }
 
   // First person is the bottom of the zoom range, not a mode with controls of
@@ -269,9 +281,14 @@ export class PlayerController {
       this.camDir.copy(eye).divideScalar(d);
       this.camWant = d;
     }
-    this.setFirstPerson(this.firstPerson
-      ? this.camWant < CAM.fpExit
-      : this.camWant <= CAM.fpEnter);
+    if (this.firstPerson) {
+      if (this.camWant > this.camRigLast + 1e-4) {   // scrolled OUT, any amount
+        this.setFirstPerson(false);
+        this.camWant = CAM.fpBack;
+      }
+    } else if (this.camWant <= CAM.fpEnter) {
+      this.setFirstPerson(true);
+    }
     if (this.firstPerson) {
       this.camDist = 0;
       this.eyeRig();
@@ -290,13 +307,30 @@ export class PlayerController {
       } else if ((this.camHold -= dt) <= 0) {
         this.camClear = allowed;
       }
-      // In immediately (a snap inward is invisible; a frame of wall interior
-      // is not), back out gently.
-      this.camDist = this.camClear < this.camDist
-        ? this.camClear
-        : THREE.MathUtils.lerp(this.camDist, this.camClear, 1 - Math.exp(-CAM.release * dt));
+      // Coming out is capped at a WALKING PACE. It used to be a plain
+      // proportional ease, which means the further out the camera wants to
+      // be the faster it goes — so walking along a colonnade, where a column
+      // crosses the lens about twice a second, the camera slammed in 3.3 m,
+      // glided back out 1.2 m and was slammed in again, over and over. That
+      // sawtooth is what a visitor calls shudder. A cap plus a longer hold
+      // turns the same geometry into a breath of about 20 cm.
+      //
+      // Going in stays immediate when a wall arrives all at once, because a
+      // frame of wall interior is worse than any jump. Only that: the probe
+      // keeps CAM.pad of stand-off from whatever it hit, so a goal inside
+      // that margin is still short of the surface and can be eased to.
+      const goal = this.camClear;
+      if (goal < this.camDist) {
+        this.camDist = goal < this.camDist - CAM.pad
+          ? goal
+          : THREE.MathUtils.lerp(this.camDist, goal, 1 - Math.exp(-CAM.tighten * dt));
+      } else {
+        const eased = THREE.MathUtils.lerp(this.camDist, goal, 1 - Math.exp(-CAM.release * dt));
+        this.camDist = Math.min(eased, this.camDist + CAM.out * dt);
+      }
       this.camera.position.copy(target).addScaledVector(this.camDir, this.camDist);
     }
+    this.camRigLast = this.camWant;
     this.camWrote.copy(this.camera.position);
   }
 

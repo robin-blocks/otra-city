@@ -34,6 +34,7 @@
 | subsystem | file | responsibility |
 |---|---|---|
 | Map geometry | `public/js/city-map.mjs` | The one implementation of: segments and trims, the plat, lamp positions (road, roundabout, bay), roundabout arcs, name-plate positions (both ends of every segment, one on a short close, repeaters on long segments where a right-kerb lamp stands), dead ends, the walkable fence and its point test. Imports nothing. Node and the browser import the same file. |
+| Walkable fence | `fenceShapes` + `fenceInfill` | Road corridors, roundabouts, plazas, bays, lots (with a `LOT_YARD` alley behind), venues — and then the CLOSING of all of it. A gap between two built things narrower than `2 * FENCE_FILL` fills in and becomes walkable; a straight edge with nothing beyond it does not move. That is what makes a gap between two buildings a route to the next street, and it is why the city is not a union of strips with the ground between them out of bounds. The infill is one more shape (`kind: 'mask'`), so every caller of `fenceContains` gets it without knowing. |
 | Plat | `scripts/build-map.mjs` | `map.json` → `lots.json`. `--check` fails on a stale plat, and on any edit that moves (against the registry's `placed` record) or removes a lot the registry holds. |
 | Manifest | `scripts/build-manifest.mjs` | Plat + registry + every `plot.json` → `index.json`; allocates lots (requested if free, else the first lot `rankFree` offers); writes the registry back. |
 | Map check | `scripts/map-check.mjs` | Deterministic invariants (plat, registry incl. `placed`, manifest, fence continuity along roads / around roundabouts / spawn→every lot, the yard behind every lot and that rows backing onto each other meet, clearance of every spawn point from every lamp, plate post, sign, bollard and board, no post on a post, nothing the city puts up standing on a lot). |
@@ -113,10 +114,11 @@ is the registry's word; a `lot` in plot.json that disagrees is ignored.
 roadSegments(map) → [{ road, index, id, from, to, a, b, L, ux, uz, lx, lz, t0, width, pavement, half, trimA, trimB, endA, endB, lotsFrom }]
 platLots(map, venues, trace?) → { roads: { id: { id, name, lots, byRequest? } }, lots: { id: lot } }
 rankFree(plat, takenIds, centre) → [lot]            // default allocation order (set-aside roads last)
-fenceShapes(map, plat, venues) → shapes; fenceContains(shapes, x, z); fenceReach(shapes)
+fenceShapes(map, plat, venues) → shapes; fenceContains(shapes, x, z); fenceReach(shapes); shapeBounds(s)
+fenceInfill(shapes, radius, cell) → { kind: 'mask', ... }   // the closing, as a shape
 lotToWorld(lot, lx, lz); lotFront(lot, d); standingPoint(lot, d = 6.7) → { x, z, yaw }
 roadLamps(map); roundaboutArcs(map, r); roundaboutLamps(map, r); allLamps(map); namePlates(map); deadEnds(map)
-LOT_SIZE, LOT_HALF, LOT_PITCH, LOT_YARD, BOARD_LOCAL
+LOT_SIZE, LOT_HALF, LOT_PITCH, LOT_YARD, FENCE_FILL, BOARD_LOCAL
 
 // public/js/world.js
 loadWorld({ base }) → { map, plat, lots, venues, shapes, presets, reach, spawn, contains, lotById, toWorld, venueForPath, ... }

@@ -21,7 +21,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import {
-  LOT_HALF, LOT_SIZE, LOT_YARD, BOARD_LOCAL, lotToWorld, lotRect, rectsOverlap, rectContains, roadSegments,
+  LOT_HALF, LOT_SIZE, LOT_YARD, FENCE_FILL, BOARD_LOCAL, lotToWorld, lotRect, rectsOverlap, rectContains, roadSegments,
   fenceShapes, fenceContains, standingPoint, allLamps, namePlates, baySigns, platLots, rankFree,
   PLATE, SIGN, postsOf, plateYaw,
 } from '../public/js/city-map.mjs';
@@ -249,10 +249,13 @@ const fmtGaps = (g) => g.slice(0, 3).map((q) => `[${q.from}]..[${q.to}]`).join('
   // edges is walkable the whole way. A pair further apart than two yards is
   // not expected to meet and is not tested — how far the rows are is the map's
   // business; whether the ones that should meet do is this file's.
-  // LOT_YARD, not `map.lot_yard`: this is the city's promise, and a map that
-  // set its own yard shorter would otherwise mark its own homework — the pair
+  // Two promises, and both are read off the CONSTANTS rather than off
+  // `map.lot_yard` / `map.fence_fill`: a map that shortened its own yard or
+  // turned the infill off would otherwise mark its own homework — the pair
   // test would find no rows close enough to be expected to meet, and both
-  // checks would go quiet rather than red. A map may make its yards DEEPER.
+  // checks would go quiet rather than red. A map may be MORE generous.
+  //
+  // The reach is the yard behind a lot plus the closing radius, on each side.
   const backOf = (l) => lotToWorld(l, 0, -LOT_HALF);
   {
     const shallow = lots.filter((l) => {
@@ -274,7 +277,7 @@ const fmtGaps = (g) => g.slice(0, 3).map((q) => `[${q.from}]..[${q.to}]`).join('
     const dx = pb.x - pa.x;
     const dz = pb.z - pa.z;
     const d = Math.hypot(dx, dz);
-    if (d > 2 * LOT_YARD || d < 1e-6) continue;
+    if (d > 2 * (LOT_YARD + FENCE_FILL) || d < 1e-6) continue;
     const na = awayOf(A);
     const nb = awayOf(B);
     if (na[0] * dx + na[1] * dz <= 0) continue;      // B is not behind A
@@ -285,7 +288,7 @@ const fmtGaps = (g) => g.slice(0, 3).map((q) => `[${q.from}]..[${q.to}]`).join('
     const g = gapsAlong([[pa.x, pa.z], [pb.x, pb.z]]);
     if (g.length) bad.push(`${A.id} <-> ${B.id}: ${fmtGaps(g)}`);
   }
-  check(`fence: rows that back onto each other can be walked between (${pairs} pairs within ${2 * LOT_YARD} m)`,
+  check(`fence: rows that back onto each other can be walked between (${pairs} pairs within ${2 * (LOT_YARD + FENCE_FILL)} m)`,
     bad.length === 0, bad.slice(0, 3).join('; '));
 }
 

@@ -179,6 +179,7 @@ import { createVenues } from '/js/venues.js';
 import { createDoorSystem } from '/js/doors.js';
 import { createLightPool } from '/js/lights.js';
 import { attachPerfGuard } from '/js/perfguard.js';
+import { probeCoplanar, describeCoplanar } from '/js/depth-probe.mjs';
 import { PRESETS } from '/js/quality.js';
 
 const params = new URLSearchParams(location.search);
@@ -608,6 +609,12 @@ window.__city = {
   },
   door: (id) => { const d = doors.state().find((x) => x.id === id); return d ? +d.open.toFixed(2) : null; },
   setQuality: (name) => perf.setPreset(name),
+  // Does anything in this frame fizz? Two surfaces at one depth, measured by
+  // raycast from where the camera is standing — see js/depth-probe.mjs.
+  coplanar(opts = {}) {
+    const r = probeCoplanar(scene, camera, { width: innerWidth, height: innerHeight, ...opts });
+    return { ...r, text: describeCoplanar(r) };
+  },
   stats() {
     const info = renderer.info;
     let point = 0;
