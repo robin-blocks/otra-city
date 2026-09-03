@@ -8,6 +8,7 @@
     "glow-garden": "boulevard-11",
     "halberd": "boulevard-5",
     "lattice": "boulevard-10",
+    "mews-1": "northwest-1",
     "museverse": "boulevard-9",
     "promptfrenzy": "boulevard-7",
     "signal": "boulevard-3"
@@ -61,6 +62,11 @@
     "boulevard-9": {
       "x": -12,
       "z": -11.5,
+      "yaw": 0
+    },
+    "northwest-1": {
+      "x": 36,
+      "z": 34.5,
       "yaw": 0
     }
   }
