@@ -12,7 +12,17 @@ const LERP_MS = 130;
 
 const ACCENTS = [0x47f2ff, 0xff2d95, 0xffd23e, 0x7dffa8, 0xa78bff, 0xff8c5a, 0x9fd8ff, 0xff5d8f];
 
-export function createPresence(scene, player, urlOverride) {
+/**
+ * `opts.maxRendered` caps how many peers this client draws (default 32 — the
+ * same number the server sends). `opts.observe` marks this client as a camera
+ * rather than a citizen: it still reports a position, because that is how the
+ * server decides which peers are near enough to matter, but it asks not to be
+ * shown to anyone else. A server that predates the flag simply ignores it and
+ * the observer appears as an ordinary visitor.
+ */
+export function createPresence(scene, player, urlOverride, opts = {}) {
+  const maxRendered = opts.maxRendered ?? MAX_RENDERED;
+  const observe = !!opts.observe;
   const peers = new Map(); // id -> {avatar, from, to, t0, speed, yaw}
   let ws = null;
   let connected = false;
@@ -61,7 +71,7 @@ export function createPresence(scene, player, urlOverride) {
       try { msg = JSON.parse(ev.data); } catch { return; }
       if (msg.t === 'peers') {
         const seen = new Set();
-        for (const [id, p] of msg.peers.slice(0, MAX_RENDERED)) {
+        for (const [id, p] of msg.peers.slice(0, maxRendered)) {
           seen.add(id);
           const peer = addPeer(id, p);
           peer.from = [
@@ -85,7 +95,8 @@ export function createPresence(scene, player, urlOverride) {
     if (connected && ws.readyState === 1 && now - lastSend > 1000 / SEND_HZ) {
       const p = player.pos;
       const yaw = player.avatar.group.rotation.y;
-      const buf = JSON.stringify({ t: 'pos', p: [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +yaw.toFixed(2)] });
+      const buf = JSON.stringify({ t: 'pos', p: [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +yaw.toFixed(2)],
+        ...(observe ? { observe: true } : {}) });
       if (buf !== sendBuf) {
         ws.send(buf);
         sendBuf = buf;
@@ -110,6 +121,7 @@ export function createPresence(scene, player, urlOverride) {
   return {
     update,
     get count() { return peers.size; },
+    get maxRendered() { return maxRendered; },
     get connected() { return connected; },
     // Live peer positions, for the systems that should react to any visitor
     // rather than only to the one at this keyboard (doors, today).

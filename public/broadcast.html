@@ -40,16 +40,23 @@
 // itself proposes so both sides iterate from footage instead of specs.
 //
 // It runs the client's real pipeline (world, venues, doors, anims, media), so
-// what is filmed is the city visitors walk. Three things are deliberately
-// left out, and each one is a determinism bug if it comes back:
+// what is filmed is the city visitors walk.
 //
-//   presence.js   other visitors arrive over a socket on their own schedule
-//   perfguard.js  quality that steps down mid-capture changes the pixels
-//   rAF stepping  a render loop advances the scene off the wall clock
+// The page has TWO modes, and they want opposite things:
 //
-// That last one is why nothing here renders on its own. The page draws one
-// frame when `ready` resolves so a human sees the pitch, and after that only
-// `step()` moves time.
+//   default    deterministic capture. Nothing renders on its own: one frame
+//              when `ready` resolves so a human sees the pitch, and after that
+//              only `step()` moves time. Three things are left out because
+//              each is a determinism bug — presence (visitors arrive over a
+//              socket on their own schedule), perfguard (quality that steps
+//              down mid-capture changes the pixels), and rAF stepping (a
+//              render loop advances the scene off the wall clock).
+//   ?live=1    a live stream from the stadium with real visitors in the
+//              stands. Paced by the wall clock, presence on, `step()` refused.
+//              Not reproducible, and it does not pretend to be.
+//
+// The modes are kept far apart on purpose. Footage from the wrong one is
+// indistinguishable until the day someone tries to re-film it.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
@@ -105,6 +112,18 @@ const t0 = Math.max(0, num('t0', 0));
 // between filming otra.city and filming a stadium that happens to sit in it.
 const withStreet = params.get('street') !== '0';
 
+// ---- live mode ------------------------------------------------------------
+// `?live=1` (or `?live=<cap>`) is the other half of this page, and it wants
+// the opposite of everything above. A live stream from the stadium shows real
+// visitors, who arrive over a socket at their own pace: it is paced by the
+// wall clock, it cannot be stepped, and it is not reproducible. That is fine —
+// nobody re-films a live stream. What matters is that the two modes never get
+// confused for each other, so live mode refuses `step()` outright and says so
+// in `state()` rather than quietly producing footage that will not repeat.
+const liveParam = params.get('live');
+const live = liveParam !== null && liveParam !== '0';
+const liveCap = Math.max(1, Math.min(256, Number(liveParam) > 1 ? Number(liveParam) : 32));
+
 // Parameters the brief names that this bare page does not honour yet. They
 // are reported rather than ignored — a capture that silently got an empty
 // crowd would be discovered a week of footage later.
@@ -153,7 +172,7 @@ const viewer = {
   removeColliders(list) { const drop = new Set(list); this.extra = this.extra.filter((c) => !drop.has(c)); this.all = [...this.colliders, ...this.extra]; },
 };
 
-let def = null, venues = null, V = null, world = null, frame = 0;
+let def = null, venues = null, V = null, world = null, frame = 0, presence = null;
 
 async function boot() {
   const street = withStreet ? await loadStreet(scene) : null;
@@ -217,7 +236,35 @@ async function boot() {
   // `t0` is a warm-up, not a seek — the scene is stepped to it.
   const start = Math.round(t0 * FPS);
   while (frame < start) { advance(1 / FPS); frame += 1; }
+  if (live) await startLive();
   draw();
+}
+
+/**
+ * Join the city as a camera and render in realtime.
+ *
+ * The reported position is the venue centre, not the camera's: the presence
+ * server picks each client's peers by distance from where it says it is, so
+ * standing at the centre spot is what makes "the people in this stadium" the
+ * ones who appear. `observe` asks the server not to show us to them in return.
+ */
+async function startLive() {
+  const { createPresence } = await import('/js/presence.js');
+  // presence reports its own facing from the player's avatar; a camera has no
+  // body, so it offers the one field that is read and nothing else.
+  const asCitizen = { pos: viewer.pos, avatar: { group: { rotation: { y: 0 } } } };
+  presence = createPresence(scene, asCitizen, params.get('ws') || undefined,
+    { maxRendered: liveCap, observe: true });
+  let last = performance.now();
+  renderer.setAnimationLoop(() => {
+    const now = performance.now();
+    const dt = Math.min((now - last) / 1000, 0.05);
+    last = now;
+    advance(dt);
+    presence.update(dt, simT);
+    frame += 1;
+    draw();
+  });
 }
 
 /** The match module's own view of itself, or null if the venue has no match. */
@@ -276,6 +323,7 @@ function draw() {
     const r = renderer.info.render;
     note.textContent = `otra.city broadcast · ${wantVenue} · camera ${wantCam} · frame ${frame} `
       + `(${(frame / FPS).toFixed(2)}s @ ${FPS}fps) · ${W}×${H} · ${r.calls} calls · ${r.triangles} tris`
+      + (live ? ` · LIVE ${presence?.count ?? 0}/${liveCap} peers${presence?.connected ? '' : ' (connecting…)'} — not reproducible` : '')
       + (unimplemented.length ? `\nnot in this build: ${unimplemented.join(' · ')}` : '');
   }
 }
@@ -294,6 +342,7 @@ window.rflBroadcast = {
    */
   async step(n) {
     await ready;
+    if (live) throw new Error('live mode paces itself from the wall clock; step() is for deterministic capture (drop ?live= to use it)');
     const target = n === undefined ? frame + 1 : Math.round(n);
     if (target < frame) throw new Error(`step(${target}) is behind the current frame ${frame}; reload with ?t0= to rewind`);
     while (frame < target) { advance(1 / FPS); frame += 1; }
@@ -322,6 +371,8 @@ window.rflBroadcast = {
       width: W, height: H, pixelRatio: renderer.getPixelRatio(),
       tier: V?.tier ?? null, loaded: !!V?.near,
       bundle, seed, street: withStreet,
+      live: live ? { cap: liveCap, peers: presence?.count ?? 0, connected: !!presence?.connected,
+                     deterministic: false } : null,
       match: (() => { const m = matchState(); return m ? { phase: m.phase, errors: m.errors ?? [] } : null; })(),
       calls: r.calls, tris: r.triangles,
       unimplemented, errors: errors.slice(),
