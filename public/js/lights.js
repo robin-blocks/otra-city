@@ -26,6 +26,9 @@ import * as THREE from 'three';
 
 const RETARGET_S = 0.4;   // how often the nearest-N set is recomputed
 const FADE_S = 0.35;      // a slot fades in and out instead of popping
+const LOT_HALF = 5;       // plots are a 10 x 10 m envelope (plot-spec size_m)
+const LOT_MARGIN = 0.6;   // the hysteresis band the soundtrack duck already uses
+const RESERVED = 3;       // the per-plot light cap: one whole lot fits
 
 export function createLightPool(scene, size) {
   const sources = [];
@@ -39,8 +42,11 @@ export function createLightPool(scene, size) {
   let budget = size;
   let timer = RETARGET_S;   // first update assigns immediately
   let dirty = true;
+  let onLot = null;
 
-  // { position: Vector3 (world), color, intensity, distance?, decay? }
+  // { position: Vector3 (world), color, intensity, distance?, decay?, lot? }
+  // `lot` is the centre of the plot the fixture belongs to; the city's own
+  // lamps have none, so they are never reserved.
   function add(src) {
     const s = {
       position: src.position.clone(),
@@ -48,6 +54,7 @@ export function createLightPool(scene, size) {
       intensity: src.intensity,
       distance: src.distance ?? 14,
       decay: src.decay ?? 2,
+      lot: src.lot ? { x: src.lot.x, z: src.lot.z } : null,
     };
     sources.push(s);
     dirty = true;
@@ -66,11 +73,29 @@ export function createLightPool(scene, size) {
   }
 
   function retarget(p) {
-    const wanted = new Set(sources
+    // Standing on a lot, that lot's own fixtures are RESERVED — up to the
+    // per-plot cap. Inside someone's build their lighting IS the lighting, and
+    // a bright lamp out on the street can never take a slot from the room you
+    // are standing in. Same rule the soundtrack follows when it ducks, and the
+    // same hysteresis band, so a doorway cannot flip it every frame.
+    const half = LOT_HALF + (onLot ? LOT_MARGIN : -LOT_MARGIN);
+    onLot = sources.find((s) => s.lot
+      && Math.abs(p.x - s.lot.x) <= half && Math.abs(p.z - s.lot.z) <= half)?.lot ?? null;
+
+    const ranked = sources
       .map((s) => ({ s, d: Math.hypot(s.position.x - p.x, s.position.z - p.z) }))
-      .sort((a, b) => a.d - b.d)
-      .slice(0, budget)
-      .map((x) => x.s));
+      .sort((a, b) => a.d - b.d);
+    const wanted = new Set();
+    if (onLot) {
+      for (const { s } of ranked) {
+        if (wanted.size >= Math.min(RESERVED, budget)) break;
+        if (s.lot && s.lot.x === onLot.x && s.lot.z === onLot.z) wanted.add(s);
+      }
+    }
+    for (const { s } of ranked) {
+      if (wanted.size >= budget) break;
+      wanted.add(s);
+    }
     // slots whose source is still wanted keep it; everything else fades out
     for (const slot of slots) {
       if (slot.source && wanted.has(slot.source)) { wanted.delete(slot.source); slot.target = 1; }
@@ -120,6 +145,9 @@ export function createLightPool(scene, size) {
         budget,
         sources: sources.length,
         lit: slots.filter((s) => s.light.intensity > 0).length,
+        onLot: onLot ? [+onLot.x.toFixed(1), +onLot.z.toFixed(1)] : null,
+        reserved: onLot ? slots.filter((s) => s.source && s.source.lot
+          && s.source.lot.x === onLot.x && s.source.lot.z === onLot.z).length : 0,
       };
     },
   };

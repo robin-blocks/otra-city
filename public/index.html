@@ -439,7 +439,7 @@ Promise.all(street.manifest.lots.map((p) => new Promise((resolve) => {
     // street grows. Spot and directional lights (rare) stay where authored.
     for (const l of plotLights) {
       if (!l.isPointLight) continue;
-      lights.add({ position: l.getWorldPosition(new THREE.Vector3()), color: l.color, intensity: l.intensity, distance: l.distance, decay: l.decay });
+      lights.add({ position: l.getWorldPosition(new THREE.Vector3()), color: l.color, intensity: l.intensity, distance: l.distance, decay: l.decay, lot: { x: container.position.x, z: container.position.z } });
       l.removeFromParent();
     }
     scene.add(container);
@@ -547,7 +547,7 @@ renderer.setAnimationLoop(frame);
 
 // The automation surface, on the same terms preview.html offers
 // window.__preview: a supported handle, not an accident. The client check
-// (scripts/check-client.mjs) drives this page through it in CI, and it is
+// (scripts/qa-walkthrough.mjs) drives this page through it in CI, and it is
 // what to poke from a console when the picture is wrong. The first row is
 // the objects the render loop already holds; pause() exists because __step
 // and the animation loop are two clocks, and anything measuring draw calls

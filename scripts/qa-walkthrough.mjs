@@ -26,9 +26,14 @@ const argv = process.argv.slice(2);
 const arg = (k, d) => (argv.find((a) => a.startsWith(`--${k}=`)) || `--${k}=${d}`).slice(k.length + 3);
 const OUT = arg('out', 'qa-out');
 const ROOT = join(new URL('..', import.meta.url).pathname, 'public');
-// Presence is pointed at a dead port on purpose: a peer wandering into shot
-// would change the draw-call count, and the budget has to mean one thing.
-const SOLO = 'ws=ws://127.0.0.1:1';
+// Two knobs, both so a measurement means one thing.
+//   * presence points at a dead port: a peer wandering into shot changes the
+//     draw-call count.
+//   * ?headless=1 pins the graphics preset to high and freezes the frame-rate
+//     guard. Without it the guard reads a software renderer's fps, steps the
+//     preset down mid-run, and the budget becomes a fact about the machine
+//     rather than about the city.
+const SOLO = 'ws=ws://127.0.0.1:1&headless=1';
 
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
@@ -175,6 +180,12 @@ console.log(`\ncity: ${lots.length} lots (${shops.length} shops), ${vacant.lengt
 await check(`every plot loads (${lots.length} in the manifest)`, () =>
   ({ ok: new RegExp(`^${lots.length}/${lots.length} plots`).test(load || ''), load }), { picture: true });
 
+await check('graphics pinned, guard frozen — so the numbers mean something', async () => {
+  const p = await call(() => window.__city.stats());
+  const g = await call(() => ({ quality: window.__city.perf.quality, pinned: window.__city.perf.pinned, enabled: window.__city.perf.enabled }));
+  return { ok: p.quality === 'high' && g.enabled === false, quality: p.quality, guardEnabled: g.enabled, pixelRatio: p.pixelRatio };
+});
+
 await check('analytics never reached the network', async () =>
   ({ ok: (await evx('typeof window.google_tag_manager')) === 'undefined', gtm: await evx('typeof window.google_tag_manager') }));
 
@@ -310,6 +321,89 @@ for (const [name, pose] of Object.entries(BUDGETS.poses)) {
   }, { picture: true });
 }
 
+// --- the light pool --------------------------------------------------------
+// The pool exists so the number of visible lights never changes, because that
+// number is a shader define: a light switched off mid-street recompiles every
+// material under the visitor's feet. Both halves of that promise are testable
+// without a GPU, so they are tested.
+await check('walking the street never changes the light count or recompiles', async () => {
+  await teleport(-east.x, 0, Math.PI / 2);
+  await walk(20);                                  // warm pass: everything compiles once
+  await teleport(east.x, 0, -Math.PI / 2);
+  return call(() => {
+    const c = window.__city, p = window.__player;
+    c.pause();
+    c.step(30, 1 / 60);
+    const programs = new Set([c.renderer.info.programs.length]);
+    const totals = new Set();
+    const points = new Set();
+    p.setStick(0, 1);
+    for (let i = 0; i < 80; i++) {
+      c.step(15, 1 / 60);
+      let all = 0, pt = 0;
+      c.scene.traverse((o) => { if (o.isLight && o.visible) { all += 1; if (o.isPointLight) pt += 1; } });
+      totals.add(all); points.add(pt);
+      programs.add(c.renderer.info.programs.length);
+    }
+    p.setStick(0, 0);
+    c.resume();
+    return {
+      // The scene total also carries the avatar's fill and anything a venue is
+      // streaming; what the pool promises is that the number never MOVES.
+      ok: totals.size === 1 && points.size === 1 && programs.size === 1,
+      lightCounts: [...totals], pointLights: [...points], pool: c.lights.stats().pool, programs: [...programs],
+    };
+  });
+});
+
+await check('standing on a lot, its own fixtures hold their slots', async () => {
+  const lot = lots.find((l) => l.type === 'shop') || lots[0];
+  await teleport(lot.x, lot.side * 11.5, lot.side > 0 ? 0 : Math.PI);
+  return call(() => {
+    const c = window.__city;
+    c.pause();
+    c.step(90, 1 / 60);
+    const st = c.lights.stats();
+    c.resume();
+    return { ok: st.onLot !== null && st.reserved > 0, ...st };
+  });
+}, { picture: true });
+
+// --- the HUD, on the three surfaces it ships to -----------------------------
+// Invariants the HUD has broken before: the movement hint must survive every
+// trim (an embed with no hint is a city nobody can walk), the stick exists
+// only for a coarse pointer, and nothing may scroll sideways.
+await open();
+await check('desktop HUD: keys shown, no stick, nothing sideways', async () => {
+  const a = await call(() => window.__city.audit());
+  return {
+    ok: a.hud && a.controls && a.kbd && !a.touch && !a.stick && !a.overflowX && /walk/i.test(a.controlsText),
+    viewport: a.viewport, controls: a.controlsText.slice(0, 60), stick: a.stick, overflowX: a.overflowX,
+  };
+});
+
+await check('phone HUD: the stick is there, in view, and the hint says so', async () => {
+  // Metrics AND touch AND the coarse-pointer media query — the last is what
+  // actually gates the stick, so it is asserted rather than assumed.
+  await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 3, mobile: true, screenWidth: 390, screenHeight: 844 });
+  await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'pointer', value: 'coarse' }, { name: 'hover', value: 'none' }] }).catch(() => {});
+  await open('phone=1');
+  const a = await call(() => { window.__city.step(30, 1 / 60); return window.__city.audit(); });
+  const inView = (r) => !!r && r.x >= 0 && r.y >= 0 && r.x + r.w <= a.viewport[0] + 1 && r.y + r.h <= a.viewport[1] + 1;
+  return {
+    ok: a.coarse && a.hud && a.controls && a.touch && !a.kbd && a.stick
+      && inView(a.stickRect) && inView(a.topbar) && !a.overflowX && /stick/i.test(a.controlsText),
+    coarse: a.coarse, viewport: a.viewport, stick: a.stickRect, topbar: a.topbar,
+    controls: a.controlsText.slice(0, 60), overflowX: a.overflowX,
+  };
+}, { picture: true });
+
+// back to the desk before anything else measures
+await page.send('Emulation.setEmulatedMedia', { features: [] }).catch(() => {});
+await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
+
 // --- arrival modes ---------------------------------------------------------
 const perma = lots[0];
 await check(`a permalink lands you outside its plot (?plot=${perma.slug})`, async () => {
@@ -327,16 +421,17 @@ await check(`a permalink lands you outside its plot (?plot=${perma.slug})`, asyn
   };
 }, { picture: true });
 
-await check('embed mode keeps the title and the controls, drops the housekeeping', async () => {
+await check('embed keeps the title and the movement hint, drops the housekeeping', async () => {
   await open(`plot=${perma.slug}&embed=1`);
-  return call(() => {
-    const vis = (sel) => { const e = document.querySelector(sel); return e ? getComputedStyle(e).display !== 'none' : null; };
-    const r = {
-      embedClass: document.body.classList.contains('embed'),
-      stats: vis('#stats'), meta: vis('.meta'), controls: vis('.controls'), outlink: vis('#outlink'),
-    };
-    return { ok: r.embedClass && r.stats === false && r.meta === false && r.controls === true && r.outlink === true, ...r };
-  });
+  const r = await call(() => { window.__city.step(30, 1 / 60); return { a: window.__city.audit(), pos: window.__player.pos.toArray() }; });
+  const a = r.a;
+  const outside = Math.abs(r.pos[0] - perma.x) < 0.6 && Math.abs(r.pos[2] - perma.side * 4.8) < 0.6;
+  return {
+    ok: a.embed && a.hud && a.controls && /walk/i.test(a.controlsText) && !a.stats && !a.meta && !a.overflowX
+      && !!a.outlink && a.outlink.href === `https://otra.city/s/${perma.slug}` && a.tagline.startsWith(perma.name) && outside,
+    badge: a.outlink && a.outlink.href, tagline: a.tagline, stats: a.stats, meta: a.meta,
+    overflowX: a.overflowX, spawnedOutsideTheLot: outside,
+  };
 }, { picture: true });
 
 // --- media (also proves the runner's Chrome decodes H.264) -----------------
