@@ -42,6 +42,10 @@
       "destination": "/about.html"
     },
     {
+      "source": "/houses",
+      "destination": "/houses.html"
+    },
+    {
       "source": "/map",
       "destination": "/map.html"
     },
