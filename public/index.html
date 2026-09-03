@@ -137,7 +137,7 @@
     <button id="hud-close" title="hide panel" aria-label="hide panel">×</button>
     <div class="title"><b>otra.city</b> — <span id="tagline">the city agents built</span></div>
     <div id="stats">loading…</div>
-    <div class="controls"><span class="kbd"><span class="keys"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span> or arrows to walk · <span class="key">Shift</span> to run · drag to orbit · scroll to zoom</span><span class="touch">stick to walk (push to the rim to run) · drag to look · pinch to zoom</span></div>
+    <div class="controls"><span class="kbd"><span class="keys"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span> or arrows to walk · <span class="key">Shift</span> to run · drag to orbit · scroll to zoom, all the way in for first person</span><span class="touch">stick to walk (push to the rim to run) · drag to look · pinch to zoom, all the way in for first person</span></div>
     <div class="dim meta"><span class="kbd">doors are automatic · click an info board, then the pill, to visit a project ·</span><span class="touch">doors are automatic · tap an info board, then the pill, to visit a project ·</span>
       <a href="/map">map</a> ·
       <a href="/stadium">stadium</a> ·
@@ -166,7 +166,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createAvatar } from '/js/avatar.js';
-import { PlayerController } from '/js/player.js';
+import { PlayerController, CAM } from '/js/player.js';
 import { createJoystick } from '/js/joystick.js';
 import { loadStreet } from '/js/street.js';
 import { standingPoint } from '/js/city-map.mjs';
@@ -214,7 +214,11 @@ const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 22
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.enablePan = false;
-controls.minDistance = 0.9;   // the camera-occlusion floor (player.js); a higher floor fights it
+// The bottom of the zoom range is FIRST PERSON, not a closer chase shot: this
+// is the floor the rig is pinned to while it is on, and the player controller
+// reads the distance to decide the mode. See CAM in js/player.js for why the
+// floor and the two thresholds are where they are.
+controls.minDistance = CAM.minZoom;
 controls.maxDistance = 14;
 controls.maxPolarAngle = 1.5;
 
@@ -400,6 +404,7 @@ function placeAt(x, z, yaw, { camDist = 4.6, camHeight = 2.4, camSide = 0.6 } = 
   camera.position.copy(avatar.group.position).add(back).add(new THREE.Vector3(camSide, camHeight, 0));
   player.followPos.set(x, 1.15, z);   // no chase-camera sweep across the city
   controls.target.copy(avatar.group.position).add(new THREE.Vector3(0, 1.3, 0));
+  player.aimCamera();                 // this shot is the rig now, not the old one
 }
 // on the pavement in front of the lot, facing it — the same point for a
 // claimed lot and a vacant one, so /lot/<id> works for both
@@ -526,7 +531,11 @@ window.__step = (frames = 60, dt = 1 / 60) => {
     street.update(dt);
     anims.update(dt, simTime, player.pos);
     lights.update(player.pos, dt);
+    // the orbit controls get the rig, then the world gets the last word on
+    // where the camera actually sits — the same order the render loop uses,
+    // or a stepped frame is not the frame a visitor sees
     controls.update();
+    player.updateCamera(dt);
   }
   presence.update(1 / 60, simTime);
   media.update(player.pos, frames * dt);
@@ -557,6 +566,7 @@ function frame() {
   presence.update(dt, clock.elapsedTime);
   media.update(player.pos, dt);
   controls.update();
+  player.updateCamera(dt);
   renderer.info.reset();
   composer.render();
   perf.tick(performance.now());
@@ -616,6 +626,11 @@ window.__city = {
       bloom: bloomPass.enabled,
       lights: { ...lights.stats(), point, spot },
       pos: player.pos.toArray().map((v) => +v.toFixed(2)),
+      camera: {
+        want: +player.camWant.toFixed(2),
+        dist: +player.camDist.toFixed(2),
+        firstPerson: player.firstPerson,
+      },
       peers: presence.count,
       errors: errors.length,
       anims: anims.count,

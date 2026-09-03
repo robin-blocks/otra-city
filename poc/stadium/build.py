@@ -283,6 +283,24 @@ STAND_DEPTH = ROWS * ROW_D + REAR_GANG + 0.5   # rows + rear gangway + back wall
 SEATS = []                           # exported for the walkability check
 SEAT_COL = {"W": "seat_d", "E": "seat_b", "N": "seat_a", "S": "seat_c"}
 
+# How far a sign, an advert or a trim strip stands off the surface it is
+# mounted on. Not a taste decision — a depth-buffer one, and it has to clear
+# TWO limits at once:
+#
+#   * Draco. The exporter quantizes positions over each mesh's own bounding
+#     box, and the bowl is 52 m across; every offset in this file is rounded
+#     to that grid on the way out. At the 14 bits this used to ship that grid
+#     was 3.2 mm, so the 2 mm the hoardings, the block letters, the gate signs
+#     and the crests were authored at rounded to ZERO about half the time —
+#     an exactly coplanar pair the GPU has no way to order, which is what the
+#     pitch-side boards were doing when they fizzed. The export below is 16
+#     bits, a 0.8 mm grid, so this survives with room to spare.
+#   * The depth buffer. A stadium is looked at from across itself: at 40 m,
+#     with the city's 0.1 m near plane, one depth step is about a millimetre.
+#     2 mm was two steps even when it did survive the encoder. 10 mm is ten,
+#     and is still invisible on a 300 mm hoarding.
+PROUD = 0.01
+
 opaque = MB("stadium_bowl", [mat_voxel, mat_tile])
 art = MB("stadium_signs", [mat_art])
 glass = MB("stadium_glass", [mat_glass])
@@ -332,7 +350,7 @@ def hoarding(facing, at, a0, a1, name_i):
         else:
             mn, mx = ((s0, at - 0.15, 0.0), (s0 + step, at + 0.15, BOARD_H))
         opaque.box(mn, mx, "board")
-        inner = at - 0.152 if facing == '-x' or facing == '-y' else at + 0.152
+        inner = at - (0.15 + PROUD) if facing == '-x' or facing == '-y' else at + (0.15 + PROUD)
         art.quad(facing, inner, s0 + 0.05, s0 + step - 0.05, 0.08, BOARD_H - 0.08,
                  region_uvs(boards[(name_i + k) % 4]))
 hoarding('-x', HOARD_X, -HOARD_Y, HOARD_Y, 0)      # east boards face the pitch (-x)
@@ -391,8 +409,16 @@ def stand(side):
     B(0, 0.5, -half, half, 0.0, BASE_H, "wall")
     for r in range(ROWS):
         z = BASE_H + r * ROW_H
+        # The bottom row starts BEHIND the front wall, not on top of it. Run it
+        # from depth 0 and its front face lands in the wall's front plane and
+        # its top in the wall's top plane, same side out — two pairs of exactly
+        # coplanar faces, the full 16 m length of all four stands, and no way
+        # for the GPU to order them. That was the fizz along the stand fronts
+        # and the base kerb, and it is the whole of what a visitor could see
+        # of this defect: everything else the bowl doubles up is buried inside
+        # another box. Every other row meets its neighbours edge to edge.
         d0 = r * ROW_D
-        B(d0, d0 + TREAD, -half, half, z - 0.5 if r == 0 else z - ROW_H, z, "terrace")
+        B(0.5 if r == 0 else d0, d0 + TREAD, -half, half, z - 0.5 if r == 0 else z - ROW_H, z, "terrace")
         B(d0 + TREAD, d0 + ROW_D, -half, half, z - ROW_H, z + 0.25, "riser")          # the half step
         # The half step is 0.25 m DEEP, and an avatar has a 0.28 m radius: it
         # could never stand on one, so the next row's face always blocked it
@@ -446,7 +472,7 @@ def stand(side):
             mx = (end if end < 0 else end + 0.25, max(sign * front, sign * (front + STAND_DEPTH)), TOP_H + 1.1)
         opaque.box(mn, mx, "wall")
     # block letter facing the concourse on the back wall
-    letter_at = sign * (front + STAND_DEPTH) + sign * 0.002
+    letter_at = sign * (front + STAND_DEPTH) + sign * PROUD
     back_facing = {'W': '-x', 'E': '+x', 'N': '-y', 'S': '+y'}[side]
     art.quad(back_facing, letter_at, -1.5, 1.5, 1.2, 4.2, region_uvs("block_" + side))
     # rear stair along the back wall: from the concourse up to the rear gangway
@@ -557,12 +583,12 @@ for sx in (-1, 1):
         opaque.box((cx - 0.3, cy - 0.3, WALL_H + 1.5), (cx + 0.3, cy + 0.3, WALL_H + 1.7), "e_cyan_soft")
 
 # gate signs above each gate, and the main sign over the west gate
-for x_face, facing, sign_r in ((-FOOT_X - 0.002, '-x', "sign_gate_w"), (FOOT_X + 0.002, '+x', "sign_gate_e")):
+for x_face, facing, sign_r in ((-FOOT_X - PROUD, '-x', "sign_gate_w"), (FOOT_X + PROUD, '+x', "sign_gate_e")):
     art.quad(facing, x_face, -2.0, 2.0, GATE_H + 0.1, GATE_H + 0.1 + 1.25, region_uvs(sign_r))
 opaque.box((-FOOT_X + 0.1, -6.2, WALL_H), (-FOOT_X + 0.4, -5.9, WALL_H + 3.2), "steel")
 opaque.box((-FOOT_X + 0.1, 5.9, WALL_H), (-FOOT_X + 0.4, 6.2, WALL_H + 3.2), "steel")
 opaque.box((-FOOT_X + 0.05, -6.1, WALL_H + 0.5), (-FOOT_X + 0.45, 6.1, WALL_H + 2.75), "board")
-art.quad('-x', -FOOT_X + 0.048, -6.0, 6.0, WALL_H + 0.6, WALL_H + 0.6 + 2.25, region_uvs("sign_main"))
+art.quad('-x', -FOOT_X + 0.05 - PROUD, -6.0, 6.0, WALL_H + 0.6, WALL_H + 0.6 + 2.25, region_uvs("sign_main"))
 # The stair sign belongs at the stair, on the wall a visitor walks toward:
 # each side stand's back wall, clear of the balustrade, facing its gate.
 for (wall_x, facing, sgn) in ((-(FRONT_X + STAND_DEPTH) - 0.01, '-x', -1), ((FRONT_X + STAND_DEPTH) + 0.01, '+x', 1)):
@@ -662,7 +688,7 @@ def screen_frame(y_back, facing_sign, cx, w, h, z0):
         opaque.box((lx - 0.15, yb - 0.15, TOP_H - 0.5), (lx + 0.15, yb + 0.15, z0 + h + 0.3), "steel")
     opaque.box((cx - w / 2 - 0.2, yb - 0.25, z0 - 0.2), (cx + w / 2 + 0.2, yb + 0.25, z0 + h + 0.2), "board")
     opaque.box((cx - w / 2 - 0.25, yb - 0.3, z0 + h + 0.2), (cx + w / 2 + 0.25, yb + 0.3, z0 + h + 0.32), "e_cyan_dim")
-    return yb + facing_sign * 0.252
+    return yb + facing_sign * (0.25 + PROUD)
 
 z_scr = TOP_H + 1.6
 y_face = screen_frame(north_back, 1, 0.0, SCR_W, SCR_H, z_scr)
@@ -689,7 +715,7 @@ for sx in (-1, 1):
     for sy in (-1, 1):
         mx, my = sx * 22.0, sy * 19.0
         facing = '-x' if sx > 0 else '+x'
-        at = mx - sx * 0.602
+        at = mx - sx * (0.6 + PROUD)
         art.quad(facing, at, my - 0.5, my + 0.5, DECK_H + 0.1, DECK_H + 1.1, region_uvs("crest"))
 
 # ---- concourse lighting: two warm points at the gates ----------------------------------
@@ -789,7 +815,7 @@ def export(collection, path, lights):
         "export_cameras": False, "export_extras": False, "export_animations": False,
         "export_skins": False, "export_morph": False, "export_image_format": 'AUTO',
         "export_draco_mesh_compression_enable": True, "export_draco_mesh_compression_level": 6,
-        "export_draco_position_quantization": 14, "export_draco_texcoord_quantization": 12,
+        "export_draco_position_quantization": 16, "export_draco_texcoord_quantization": 12,
         "export_unused_images": False, "export_unused_textures": False,
     }
     for k, v in optional.items():

@@ -43,6 +43,20 @@ export const plateYaw = (p) => Math.atan2(p.face[0], p.face[1]);
 export const LOT_SIZE = 10;
 export const LOT_HALF = LOT_SIZE / 2;
 export const LOT_PITCH = 12;
+// Walkable ground BEHIND a lot — the back yard, and the reason a gap between
+// two buildings is a way through rather than a dead end. The lot fence used to
+// be a metre wider than the lot on all four sides, so a visitor who walked off
+// the pavement between two shops got one metre of alley and then an invisible
+// wall, and two rows of buildings that back onto each other could only be
+// walked between by going round by the roundabout.
+//
+// Eight metres is not a look: it is what makes the rows on THIS map meet. The
+// boulevard's north lots end at z = 16.5 and Frontier Mews' south lots end at
+// z = 29.5, thirteen metres apart, so eight from each side overlaps by three —
+// wide enough to walk through rather than a seam to find. A road with nothing
+// behind it still ends somewhere, and that somewhere is the edge of the city.
+// `lot_yard` in map.json overrides it if a future block needs more.
+export const LOT_YARD = 8;
 export const BOARD_LOCAL = [3.4, 5.45];   // the info board, in lot metres: beside the frontage, on the pavement
 
 const round = (v) => Math.round(v * 1e4) / 1e4;
@@ -263,10 +277,16 @@ export function fenceShapes(map, plat, venues = []) {
   for (const b of map.bays || []) {
     shapes.push({ kind: 'box', id: b.id, min: [b.min[0] - 2, b.min[1] - 2], max: [b.max[0] + 2, b.max[1] + 2] });
   }
+  // A lot and the ground around it: a metre proud at the sides and the front
+  // (which puts the front edge on the pavement), and LOT_YARD behind. An obb
+  // is symmetric about its own line, so an asymmetric band is the line pushed
+  // back by half the difference and the half-extent grown by the same.
+  const yard = map.lot_yard ?? LOT_YARD;
+  const off = (1 - yard) / 2;
   for (const lot of Object.values(plat?.lots || {})) {
-    const A = lotToWorld(lot, -LOT_HALF, 0);
-    const B = lotToWorld(lot, LOT_HALF, 0);
-    shapes.push({ kind: 'obb', id: `lot:${lot.id}`, a: [A.x, A.z], b: [B.x, B.z], half: LOT_HALF + 1, ja: 1, jb: 1 });
+    const A = lotToWorld(lot, -LOT_HALF, off);
+    const B = lotToWorld(lot, LOT_HALF, off);
+    shapes.push({ kind: 'obb', id: `lot:${lot.id}`, a: [A.x, A.z], b: [B.x, B.z], half: LOT_HALF + (yard + 1) / 2, ja: 1, jb: 1 });
   }
   for (const v of venues) shapes.push({ kind: 'box', id: `venue:${v.id}`, min: v.bounds.min, max: v.bounds.max });
   return shapes;

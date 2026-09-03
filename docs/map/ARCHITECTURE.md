@@ -36,7 +36,7 @@
 | Map geometry | `public/js/city-map.mjs` | The one implementation of: segments and trims, the plat, lamp positions (road, roundabout, bay), roundabout arcs, name-plate positions (both ends of every segment, one on a short close, repeaters on long segments where a right-kerb lamp stands), dead ends, the walkable fence and its point test. Imports nothing. Node and the browser import the same file. |
 | Plat | `scripts/build-map.mjs` | `map.json` → `lots.json`. `--check` fails on a stale plat, and on any edit that moves (against the registry's `placed` record) or removes a lot the registry holds. |
 | Manifest | `scripts/build-manifest.mjs` | Plat + registry + every `plot.json` → `index.json`; allocates lots (requested if free, else the first lot `rankFree` offers); writes the registry back. |
-| Map check | `scripts/map-check.mjs` | Deterministic invariants (plat, registry incl. `placed`, manifest, fence continuity along roads / around roundabouts / spawn→every lot, clearance of every spawn point from every lamp, plate post, sign, bollard and board, no post on a post, nothing the city puts up standing on a lot). |
+| Map check | `scripts/map-check.mjs` | Deterministic invariants (plat, registry incl. `placed`, manifest, fence continuity along roads / around roundabouts / spawn→every lot, the yard behind every lot and that rows backing onto each other meet, clearance of every spawn point from every lamp, plate post, sign, bollard and board, no post on a post, nothing the city puts up standing on a lot). |
 | World | `public/js/world.js` | Loads map, plat, venues; builds the fence via `fenceShapes`; `contains(x,z)`, `reach`, fog/far presets, spawn, `lotById`. |
 | Roads | `public/js/roads.js` | Renders every road from the map (asphalt, pavements, instanced dashes/lamps/bollards/stripes, roundabouts with bands and totems, plazas, bays, crossings, directional signs, **name plates**, dead-end kerbs). Registers lamp light sources with the pool. |
 | Street | `public/js/street.js` | Lot furniture only: an info board per claimed lot; instanced pads/markers/posts and atlas-textured boards for every vacant lot. |
@@ -116,7 +116,7 @@ rankFree(plat, takenIds, centre) → [lot]            // default allocation orde
 fenceShapes(map, plat, venues) → shapes; fenceContains(shapes, x, z); fenceReach(shapes)
 lotToWorld(lot, lx, lz); lotFront(lot, d); standingPoint(lot, d = 6.7) → { x, z, yaw }
 roadLamps(map); roundaboutArcs(map, r); roundaboutLamps(map, r); allLamps(map); namePlates(map); deadEnds(map)
-LOT_SIZE, LOT_HALF, LOT_PITCH, BOARD_LOCAL
+LOT_SIZE, LOT_HALF, LOT_PITCH, LOT_YARD, BOARD_LOCAL
 
 // public/js/world.js
 loadWorld({ base }) → { map, plat, lots, venues, shapes, presets, reach, spawn, contains, lotById, toWorld, venueForPath, ... }
