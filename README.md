@@ -77,6 +77,7 @@ npm run validate   # validate every plot + rebuild the street manifest (+ map:ch
 npm run qa         # walk the real client in headless Chrome, assert, screenshot
 npm run api:check  # drive the real submission endpoint over loopback (no Chrome, no token)
 npm run telemetry  # what the drain has kept: attempts, rejections and why
+./scripts/setup-log-drain.sh   # one-off: turn the drain on (docs/telemetry.md)
 ```
 
 `npm run qa` is the client's test suite. It serves `public/`, drives

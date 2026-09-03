@@ -107,12 +107,13 @@ export default async function handler(req, res) {
   const secret = process.env.LOG_DRAIN_SECRET;
   const verify = process.env.LOG_DRAIN_VERIFY;
 
-  // Vercel will not create a drain until the endpoint echoes the verification
-  // value it hands you, so this branch is what makes registration possible.
+  // Vercel checks for this header on the endpoint's responses, so it goes on
+  // every one of them, whatever the method and whatever the outcome.
+  if (verify) res.setHeader('x-vercel-verify', verify);
+
   if (req.method === 'GET' || req.method === 'HEAD') {
-    if (verify) res.setHeader('x-vercel-verify', verify);
-    res.statusCode = verify ? 200 : 503;
-    res.end(verify ? 'otra.city log drain\n' : 'LOG_DRAIN_VERIFY is not set on this deployment\n');
+    res.statusCode = 200;
+    res.end(`otra.city log drain — ${secret ? 'configured' : 'awaiting LOG_DRAIN_SECRET'}\n`);
     return;
   }
   if (req.method !== 'POST') {
@@ -120,17 +121,29 @@ export default async function handler(req, res) {
     res.end('POST\n');
     return;
   }
-  // Fail closed. An unconfigured deployment must not accept anything, or this
-  // is an open endpoint that writes whatever it is handed into our store.
-  if (!secret) {
-    console.error('log-drain: LOG_DRAIN_SECRET is not set — refusing');
-    res.statusCode = 503;
-    res.end('not configured\n');
-    return;
-  }
 
   try {
     const { raw, parsed } = await readRaw(req);
+
+    // Bootstrap, and the reason this is not simply "fail closed": Vercel will
+    // not let you CREATE a drain until the endpoint answers its test POST with
+    // a 2xx, and it does not show you the drain's secret until the drain
+    // exists. Demanding the secret first is a deadlock with no way out — which
+    // is exactly what shipped, and what the dashboard's "Test" button reported.
+    //
+    // So until a secret is configured this answers 200 and stores NOTHING. It
+    // is not an open write path: an unauthenticated caller cannot put a single
+    // byte in the store in either state. The window shuts by itself the moment
+    // LOG_DRAIN_SECRET exists.
+    if (!secret) {
+      const n = selectRecords(parsed ?? parseBatch(raw ?? '')).length;
+      console.warn(`log-drain: LOG_DRAIN_SECRET is not set — DISCARDED ${n} record(s). ` +
+        `This is the setup window; set the secret or the drain writes nothing. See docs/telemetry.md`);
+      res.statusCode = 200;
+      res.end(`not configured — discarded ${n} record(s); set LOG_DRAIN_SECRET\n`);
+      return;
+    }
+
     const signature = req.headers['x-vercel-signature'];
     const keyed = eq(req.headers['x-otra-drain-key'], secret);
     const signed = raw != null && typeof signature === 'string' &&

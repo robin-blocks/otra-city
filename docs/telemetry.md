@@ -39,51 +39,54 @@ adding it there in the same commit, or the published contract becomes a lie.
 
 ## Setting it up
 
-Three environment variables and one dashboard entry. The order matters: Vercel
-will not create a drain until the endpoint already echoes its verification
-value, and it does not show you the secret until the drain exists.
+`scripts/setup-log-drain.sh` walks the whole thing and verifies each step. What
+it is doing, and why the order is what it is:
+
+**Vercel will not create a drain until the endpoint answers its test POST with
+a 2xx — and it does not show you the drain's secret until the drain exists.**
+Demanding the secret before accepting anything is therefore a deadlock with no
+way out, and that is exactly what the first version shipped: the dashboard's
+Test button reported `Your endpoint sent a 503 status instead of 2xx` and there
+was no order of operations that got past it.
+
+So the endpoint has a **bootstrap window**. Until `LOG_DRAIN_SECRET` is set it
+answers 200 and stores **nothing** — it is not an open write path in either
+state, an unauthenticated caller cannot put a byte in the store — and it logs
+loudly that it is discarding what it was sent. The window shuts by itself the
+moment the secret exists.
+
+The one thing that window costs: between creating the drain and setting the
+secret, deliveries are accepted and dropped. That gap is minutes, and it is
+visible — the response body says `discarded N record(s)`, the function log says
+the same, and `npm run telemetry` shows nothing arriving.
 
 1. **Blob store** — done once, already provisioned as `otra-city-telemetry`
-   (private). It set `BLOB_READ_WRITE_TOKEN` on the project. To recreate it:
+   (private). It set `BLOB_READ_WRITE_TOKEN` on the project. To recreate:
 
    ```
    vercel blob create-store otra-city-telemetry --access private --yes
    ```
 
-2. **Start the drain in the dashboard**: Vercel → the team → Observability →
-   Log Drains → Add. Sources: **Functions** (that is where the telemetry is
-   printed; adding Static or Edge only adds noise the filter throws away).
-   Delivery format: **NDJSON** — see the footgun below. Endpoint:
+2. **Start adding the drain**: Vercel → the team → Observability → Log Drains →
+   Add. Sources **Functions** (where the telemetry is printed; Static and Edge
+   only add noise the filter throws away), Encoding **NDJSON**, endpoint
+   `https://otra.city/api/log-drain`. Copy the **verification value** it shows.
 
-   ```
-   https://otra.city/api/log-drain
-   ```
+3. **Set `LOG_DRAIN_VERIFY` to that value and redeploy.** Vercel checks for it
+   as an `x-vercel-verify` header on the endpoint's responses.
 
-3. Vercel shows a **verification value**. Set it and redeploy, or the endpoint
-   cannot prove it is ours and the drain will not save:
+4. **Test, then create the drain.** The Test button now passes. Vercel then
+   shows the drain's **secret**.
 
-   ```
-   vercel env add LOG_DRAIN_VERIFY production
-   ```
+5. **Set `LOG_DRAIN_SECRET` to it and redeploy.** From that moment every
+   delivery must carry a valid `x-vercel-signature` (HMAC-SHA1 over the raw
+   body) or the header `x-otra-drain-key`, and anything else gets a 403.
 
-4. Finish creating the drain. Vercel then shows the drain's **secret**. Set it
-   and redeploy:
-
-   ```
-   vercel env add LOG_DRAIN_SECRET production
-   ```
-
-   Every delivery is signed with it (`x-vercel-signature`, HMAC-SHA1 over the
-   raw body) and the endpoint refuses anything that does not verify. Until
-   `LOG_DRAIN_SECRET` is set the endpoint answers **503 to everything** — an
-   unconfigured deployment must never be an open endpoint that writes whatever
-   it is handed into our store.
-
-**The footgun**: choose NDJSON. With JSON delivery the platform parses the body
-before the handler sees it, and a signature over bytes we no longer have cannot
-be checked. The endpoint says so explicitly rather than returning a bare 403,
-and the escape hatch is a custom header `x-otra-drain-key` set to the same
-value as `LOG_DRAIN_SECRET`.
+**Choose NDJSON.** With JSON delivery the platform parses the body before the
+handler sees it, and a signature over bytes we no longer have cannot be
+checked. The endpoint says exactly that instead of returning a bare 403, and
+the escape hatch is the `x-otra-drain-key` header set to the same value as
+`LOG_DRAIN_SECRET`.
 
 ## Reading it
 
