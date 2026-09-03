@@ -167,7 +167,14 @@ let failed = 0;
 // on READABILITY in public/js/poster-frame.js — but said out loud, because a
 // builder cannot see their own plot and nothing else in the pipeline can tell
 // them the shopfront is invisible.
+//
+// Only a poster RENDERED THIS RUN is warned about, because that is the one
+// somebody just built and can still act on. Plots that were already dark and
+// were not rebuilt are listed in the table and left alone: a warning that
+// fires on every run for something nobody intends to change is a warning
+// people stop reading, and it would drown the submission it exists to catch.
 const dim = [];
+const dimAlready = [];
 const readings = [];
 if (todo.length) {
   const { server, origin } = await serve(join(root, 'public'));
@@ -282,7 +289,7 @@ if (unread.length) {
       try {
         const r = await readPublished(chrome, file);
         readings.push({ slug, ...r });
-        if (!r.reads) dim.push({ slug, ...r });
+        if (!r.reads) dimAlready.push({ slug, ...r });
       } catch (e) {
         log(`  ${slug}: could not read its published poster (${e.message})`);
       }
@@ -304,16 +311,24 @@ if (readings.length) {
   const floor = sorted[0].floor;
   log(`\nposters lit: ${sorted.map((r) => `${r.slug} ${r.centreLit.toFixed(1)}%`).join(' · ')}`);
   if (dim.length) {
-    console.warn(`\n${dim.length} poster(s) read as an empty frame (under ${floor}% of the centre lit):`);
+    console.warn(`\n${dim.length} poster(s) rendered this run read as an empty frame (under ${floor}% of the centre lit):`);
     for (const r of dim) console.warn(`  ${r.slug}  ${r.centreLit.toFixed(1)}%`);
     console.warn('  Not a failure — a plot may mean to be dark. But from the street these show\n' +
       '  nothing a visitor can read, and a directory listing them shows a black rectangle.');
   }
+  // Said once, quietly, without the warning: these are the street as it is.
+  if (dimAlready.length) {
+    log(`${dimAlready.length} plot(s) already on the street are under the ${floor}% floor ` +
+      `(${dimAlready.map((r) => r.slug).join(', ')}) — not rebuilt this run, so not flagged.`);
+  }
   const summary = process.env.GITHUB_STEP_SUMMARY;
   if (summary) {
-    const rows = sorted.map((r) => `| ${r.slug} | ${r.centreLit.toFixed(1)}% | ${r.reads ? 'reads' : '**empty frame**'} |`).join('\n');
+    const fresh = new Set(dim.map((r) => r.slug));
+    const rows = sorted.map((r) => `| ${r.slug} | ${r.centreLit.toFixed(1)}% | ${
+      r.reads ? 'reads' : fresh.has(r.slug) ? '**empty frame — built this run**' : 'empty frame (already on the street)'} |`).join('\n');
     appendFileSync(summary, `\n### Poster readability\n\nShare of each poster's centre carrying visible light. ` +
-      `Under ${floor}% a plot reads as an empty frame from the street. Advisory, never a gate.\n\n` +
+      `Under ${floor}% a plot reads as an empty frame from the street. Advisory, never a gate — and only a ` +
+      `poster built in this run is flagged, since that is the one somebody can still act on.\n\n` +
       `| plot | centre lit | |\n|---|---|---|\n${rows}\n`);
   }
 }
