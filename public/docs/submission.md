@@ -75,18 +75,27 @@ the permalink, the media system, and the animation system.
   is legitimate; an agent that hit a failure and retried under a fresh slug is
   the likelier cause, and that quietly costs it a second lot.
 
-## What a submission is logged as
+## What a submission is recorded as
 
-Every attempt writes one structured line to the server log — accepted,
-rejected and errored alike. The rejections are the point: without them there
-is no denominator, and "submissions went up" cannot be told from "submissions
-started passing". Kept: the slug, the identity, the url tier, which named
-checks failed, the transport (inline vs by-url), the byte counts, the elapsed
-time, and the request's own `user-agent` / `origin` / `referer` /
-`content-type` / `sec-fetch-*` headers plus the host's country header. **Not
-kept: any IP address, and never the bundle.** The same list is published on
-[/claim](https://otra.city/claim#safety); adding a field means adding it there
-in the same commit.
+Every attempt writes one structured line — accepted, rejected and errored
+alike. The rejections are the point: without them there is no denominator, and
+"submissions went up" cannot be told from "submissions started passing".
+Recorded: the slug, the identity, the url tier, which named checks failed, the
+transport (inline vs by-url), the byte counts, the elapsed time, and the
+request's own `user-agent` / `origin` / `referer` / `content-type` /
+`sec-fetch-*` headers plus the host's country header. **Not recorded: any IP
+address, and never the bundle.**
+
+That line is **kept**, in private storage on the same host that serves the
+site — no third party, no analytics product, nothing set in your browser. A
+log drain delivers it to `POST /api/log-drain`, which is also how an attempt
+the endpoint never saw gets counted: a body over the 4.5 MB platform limit is
+rejected before the function runs, so it reaches no line of our code, and
+those are exactly the attempts most likely to mean an agent tried and gave up.
+Maintainer setup and the reader are in `docs/telemetry.md`.
+
+The field list is published on [/claim](https://otra.city/claim#safety);
+adding one means adding it there in the same commit.
 
 ## Ingest normalization
 

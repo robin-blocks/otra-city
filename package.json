@@ -11,6 +11,7 @@
     "presence": "node server/presence.mjs",
     "api": "node scripts/dev-api.mjs",
     "api:check": "node scripts/api-check.mjs",
+    "telemetry": "node scripts/telemetry.mjs",
     "manifest": "node scripts/build-manifest.mjs",
     "map": "node scripts/build-map.mjs",
     "map:check": "node scripts/map-check.mjs",
@@ -30,6 +31,7 @@
     "@gltf-transform/core": "^4.4.2",
     "@gltf-transform/extensions": "^4.4.2",
     "@gltf-transform/functions": "^4.4.2",
+    "@vercel/blob": "^2.8.0",
     "draco3dgltf": "^1.5.7",
     "three": "^0.185.1",
     "ws": "^8.21.3"

@@ -20,6 +20,7 @@ import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import handler from '../api/submit.mjs';
+import drain, { selectRecords, parseBatch } from '../api/log-drain.mjs';
 import { apexHost, sameSite, ownerKey, classifyUrl } from '../lib/submitter-host.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
@@ -146,6 +147,53 @@ check('a real domain passes', classifyUrl('https://4dgsx.com').ok);
 {
   const r = await fetch(`${api.origin}/api/plots/submit`);
   check('GET is refused with a pointer to the docs', r.status === 405);
+}
+
+// --- the log drain ---------------------------------------------------------
+// Everything here except the Blob write itself, which needs a real store and a
+// real token and so is verified by hand against the store, not in CI.
+{
+  const BATCH = [
+    { id: '1', timestamp: 1756900000000, path: '/api/plots', statusCode: 200, message: 'GET /api/plots' },
+    { id: '2', timestamp: 1756900001000, path: '/api/plots/submit', statusCode: 422, requestId: 'req-a',
+      message: 'SUBMIT {"outcome":"rejected","slug":"x","failed":["backlink"]}' },
+    { id: '3', timestamp: 1756900002000, path: '/api/plots/submit', statusCode: 413, requestId: 'req-b',
+      message: 'Request Entity Too Large' },
+  ];
+  const picked = selectRecords(BATCH);
+  check('the drain drops everything it was not asked to keep', picked.length === 2, `kept ${picked.length}/3`);
+  check('a telemetry line is kept as structured data',
+    picked[0].kind === 'attempt' && picked[0].failed[0] === 'backlink' && picked[0].request.request_id === 'req-a');
+  check('an attempt the code never saw is kept too',
+    picked[1].kind === 'platform' && picked[1].request.status === 413,
+    'the 4.5 MB body the platform rejects before the function runs');
+  check('ndjson and json arrays both parse',
+    parseBatch(BATCH.map((e) => JSON.stringify(e)).join('\n')).length === 3 &&
+    parseBatch(JSON.stringify(BATCH)).length === 3);
+  check('one unreadable line does not lose the batch',
+    parseBatch('{"a":1}\nnot json\n{"b":2}').length === 2);
+
+  process.env.LOG_DRAIN_VERIFY = 'verify-token-abc';
+  process.env.LOG_DRAIN_SECRET = 'shhh';
+  const d = await listen('localhost', (req, res) => drain(req, res));
+  const post = (body, headers) => fetch(`${d.origin}/api/log-drain`,
+    { method: 'POST', headers: { 'content-type': 'application/x-ndjson', ...headers }, body });
+
+  const v = await fetch(`${d.origin}/api/log-drain`);
+  check('GET echoes the value Vercel needs to register the drain',
+    v.headers.get('x-vercel-verify') === 'verify-token-abc');
+  check('a wrong key is refused', (await post('{}', { 'x-otra-drain-key': 'nope' })).status === 403);
+  check('an unsigned, unkeyed post is refused', (await post('{}')).status === 403);
+  const empty = await post(JSON.stringify([BATCH[0]]), { 'x-otra-drain-key': 'shhh' });
+  check('a batch with nothing to keep writes nothing',
+    empty.status === 200 && (await empty.text()).trim() === '0');
+
+  delete process.env.LOG_DRAIN_SECRET;
+  check('an unconfigured deployment refuses everything',
+    (await post('{}', { 'x-otra-drain-key': 'shhh' })).status === 503,
+    'never an open endpoint that writes what it is handed');
+  process.env.LOG_DRAIN_SECRET = 'shhh';
+  d.server.close();
 }
 
 for (const s of [away.server, site.server, api.server]) s.close();
