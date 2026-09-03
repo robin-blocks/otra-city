@@ -120,6 +120,13 @@ const open = async (query = '', path = '/') => {
     // drifts with test order. The poster renderer turns it off for the same
     // reason: a measurement must not depend on the journey to it.
     window.__city.controls.enableDamping = false;
+    // Venues stay impostors for the whole walk. This is the city's check, not
+    // the stadium's (that is `npm run venue:check`): a lot on the ring stands
+    // inside the stadium's load radius, and on a software renderer mounting
+    // it — 1.3 MB, six new lights, every material recompiled — inside a
+    // 60 s evaluate is how the 34-lot check died on a runner with "Internal
+    // error" while passing on a laptop.
+    for (const v of window.__city.venues.state()) window.__city.venues.forceTier(v.id, 0);
   });
   return load;
 };
