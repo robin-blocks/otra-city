@@ -8,12 +8,12 @@ export default async function handler(req, res) {
   const host = req.headers['x-forwarded-host'] || req.headers.host;
   try {
     const index = await (await fetch(`https://${host}/plots/index.json`)).json();
-    const lots = (index.lots || []).slice().sort((a, b) => a.x - b.x || a.side - b.side);
+    const lots = (index.lots || []).slice().sort((a, b) => (a.road || '').localeCompare(b.road || '') || a.n - b.n);
     const hostOf = (u) => { try { return new URL(u).host; } catch { return ''; } };
     const civic = lots.filter((l) => /(^|\.)otra\.city$/.test(hostOf(l.url))).length;
     const projects = lots.length - civic;
     const vacant = (index.vacant || []).length;
-    // one bar per lot, west to east: how much each build declares
+    // one bar per lot, in address order: how much each build declares
     // (media bindings + animations), so the skyline of effort is visible
     const bars = lots.map((l) => {
       const m = l.media || {};

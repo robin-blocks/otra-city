@@ -34,7 +34,7 @@ stated and recorded in `docs/stadium/STATE.md`.
 | Subsystem | File | Responsibility |
 |---|---|---|
 | World layout | `public/js/world.js` | Layout truth: boulevard constants, road graph, venue placements, walkable bounds (`contains(x,z)`), fog/camera presets, tier geometry (`distanceToBox`, `insideBox`). Everything else reads it; it imports nothing but three. |
-| Roads | `public/js/roads.js` | Renders `public/city/roads.json` (segments, roundabouts, forecourts, crossings, bays, lamps, signs, bollards) in the street's box-and-emissive language; emits colliders; keeps within the light budget (emissive heads always, real PointLights only for the `lit` lamps). Static, always resident, small. |
+| Roads | `public/js/roads.js` | Renders every road in `public/city/map.json` (chains, roundabouts, plazas, crossings, bays, lamps, signs, name plates, bollards) in the street's box-and-emissive language, instanced; emits colliders; lit lamps register light-pool sources. Static, always resident, small. |
 | Venue streamer | `public/js/venues.js` | Reads `public/venues/index.json`; builds impostors; computes tiers per venue per frame with hysteresis and an unload grace; loads/normalises/disposes `venue.glb`; registers and removes colliders, gates, anims, quiet zones; activates/deactivates modules; emits `tier` events; exposes `state()` for tests. |
 | Modules | `public/js/venue-modules/<type>.js` | `create(ctx) → { activate(), deactivate(), update(dt, playerPos, time), dispose(), state }`. M1 ships `match-4dgsx`. |
 | Match module | `public/js/venue-modules/match-4dgsx.js` | Owns the 4DGSX SDK for one venue: dynamic import on first activation, `schedule(channel)`, countdown board on the pitch between matches, docks to named screens, our own scoreboard canvas from hud truth, audio placement, mute + quiet-zone integration, events, failure states, dispose. |
@@ -88,24 +88,24 @@ they cannot drift from the geometry. Media nodes (screens, panels) carry full
 `{ "venues": [ { ...venue.json, "base": "/venues/stadium/", "bounds": { "min": [x,z], "max": [x,z] } } ] }`
 — world-space bounds included so `world.js` needs no maths at load.
 
-### `public/city/roads.json` (authored)
+### `public/city/map.json` (authored; was `roads.json` until 2026-09-03 — see `docs/map/ARCHITECTURE.md`)
 
-Nodes (named 2-D points), segments (`from`, `to`, `width`, `pavement`, `kind`,
-`lamps_every`, `lit`), roundabouts (`at`, `island_r`, `outer_r`, `arms`),
-aprons (boxes: forecourts, bays), crossings, signs (canvas boards like the
-info boards), bollards. The boulevard itself stays in `street.js`; roads.json
-starts where it ends (x = 42).
+Nodes (named 2-D points), roads (named chains of nodes with `width`,
+`pavement`, `dashes`, `lamps_every`, `lit`, and which sides bear lots),
+roundabouts (`at`, `island_r`, `outer_r`), aprons (boxes: plazas), bays,
+crossings, signs (canvas boards like the info boards), bollards, the spawn.
+The boulevard is a road like any other; `street.js` draws only the lots.
 
 ### `public/plots/lots.json`
 
-Gains `"reserved": [ { "x_min": 48, "reason": "stadium precinct" } ]`. The
-allocator and the vacant-lot list skip any position a rule matches. Existing
-assignments are never moved.
+Since the map (2026-09-03) this is a registry of slug → lot id; the plat
+(`public/city/lots.json`) never places a lot inside a venue's bounds, so the
+old `reserved` rule is gone. Existing assignments are never moved.
 
 ## 4. Runtime flow
 
-1. `index.html` loads `world.js` (boulevard constants + roads.json +
-   venues/index.json), then `street`, `roads`, `venues` (impostors only).
+1. `index.html` loads `world.js` (map.json + the plat + venues/index.json),
+   then `street` (lot furniture), `roads`, `venues` (impostors only).
    Fog and camera far come from `world.presets`.
 2. Every frame: `venues.update(dt, playerPos)` computes each venue's tier
    from the distance to its world bounds box:
@@ -226,4 +226,4 @@ Learned while building the stadium (2026-09-03), true for every venue:
 - The SDK's `mountStage` exposes no download progress, so the screens show
   an indeterminate "LOADING MATCH" state.
 - Presence stays global in M1; venue-aware peers are milestone 2.
-- The boulevard stays in `street.js`; roads.json is additive.
+- The boulevard is a road in `map.json` like any other (since 2026-09-03); `street.js` draws only the lots.

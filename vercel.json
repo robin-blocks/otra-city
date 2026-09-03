@@ -5,54 +5,173 @@
     }
   },
   "rewrites": [
-    { "source": "/s/:slug", "destination": "/index.html" },
-    { "source": "/embed", "destination": "/index.html" },
-    { "source": "/stadium", "destination": "/index.html" },
-    { "source": "/v/:id", "destination": "/index.html" },
-    { "source": "/venue", "destination": "/venue.html" },
-    { "source": "/claim", "destination": "/claim.html" },
-    { "source": "/preview", "destination": "/preview.html" },
-    { "source": "/about", "destination": "/about.html" },
-    { "source": "/api/plots", "destination": "/plots/index.json" },
-    { "source": "/api/plots/submit", "destination": "/api/submit" },
-    { "source": "/api/plots/:slug", "destination": "/api/plot-status?slug=:slug" },
-
-    { "source": "/api/passport", "destination": "/api/sunset" },
-    { "source": "/api/map", "destination": "/api/sunset" },
-    { "source": "/api/status", "destination": "/api/sunset" },
-    { "source": "/api/buildings", "destination": "/api/sunset" },
-    { "source": "/api/leaderboard", "destination": "/api/sunset" },
-    { "source": "/ws", "destination": "/api/sunset" }
+    {
+      "source": "/s/:slug",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/embed",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/stadium",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/v/:id",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/lot/:id",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/venue",
+      "destination": "/venue.html"
+    },
+    {
+      "source": "/claim",
+      "destination": "/claim.html"
+    },
+    {
+      "source": "/preview",
+      "destination": "/preview.html"
+    },
+    {
+      "source": "/about",
+      "destination": "/about.html"
+    },
+    {
+      "source": "/map",
+      "destination": "/map.html"
+    },
+    {
+      "source": "/api/plots",
+      "destination": "/plots/index.json"
+    },
+    {
+      "source": "/api/lots",
+      "destination": "/city/lots.json"
+    },
+    {
+      "source": "/api/plots/submit",
+      "destination": "/api/submit"
+    },
+    {
+      "source": "/api/plots/:slug",
+      "destination": "/api/plot-status?slug=:slug"
+    },
+    {
+      "source": "/api/passport",
+      "destination": "/api/sunset"
+    },
+    {
+      "source": "/api/map",
+      "destination": "/api/sunset"
+    },
+    {
+      "source": "/api/status",
+      "destination": "/api/sunset"
+    },
+    {
+      "source": "/api/buildings",
+      "destination": "/api/sunset"
+    },
+    {
+      "source": "/api/leaderboard",
+      "destination": "/api/sunset"
+    },
+    {
+      "source": "/ws",
+      "destination": "/api/sunset"
+    }
   ],
   "redirects": [
-    { "source": "/quick-start", "destination": "/docs/agent-context.md", "permanent": false },
-
-    { "source": "/agent-context.md", "destination": "/docs/agent-context.md", "permanent": false },
-    { "source": "/authoring.md", "destination": "/docs/authoring.md", "permanent": false },
-    { "source": "/submission.md", "destination": "/docs/submission.md", "permanent": false },
-    { "source": "/plot-spec.json", "destination": "/docs/plot-spec.json", "permanent": false },
-    { "source": "/feed-example.json", "destination": "/docs/feed-example.json", "permanent": false },
-    { "source": "/poc/plot-spec.json", "destination": "/docs/plot-spec.json", "permanent": false }
+    {
+      "source": "/quick-start",
+      "destination": "/docs/agent-context.md",
+      "permanent": false
+    },
+    {
+      "source": "/agent-context.md",
+      "destination": "/docs/agent-context.md",
+      "permanent": false
+    },
+    {
+      "source": "/authoring.md",
+      "destination": "/docs/authoring.md",
+      "permanent": false
+    },
+    {
+      "source": "/submission.md",
+      "destination": "/docs/submission.md",
+      "permanent": false
+    },
+    {
+      "source": "/plot-spec.json",
+      "destination": "/docs/plot-spec.json",
+      "permanent": false
+    },
+    {
+      "source": "/feed-example.json",
+      "destination": "/docs/feed-example.json",
+      "permanent": false
+    },
+    {
+      "source": "/poc/plot-spec.json",
+      "destination": "/docs/plot-spec.json",
+      "permanent": false
+    }
   ],
   "headers": [
     {
       "source": "/plots/(.*)",
-      "headers": [{ "key": "Access-Control-Allow-Origin", "value": "*" }]
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
     },
     {
       "source": "/docs/(.*)",
-      "headers": [{ "key": "Access-Control-Allow-Origin", "value": "*" }]
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
     },
     {
       "source": "/posters/(.*)",
       "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
       ]
     },
     {
       "source": "/venues/(.*)",
-      "headers": [{ "key": "Access-Control-Allow-Origin", "value": "*" }]
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
+    },
+    {
+      "source": "/city/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
     }
   ]
 }

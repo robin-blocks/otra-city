@@ -1,15 +1,12 @@
 // World layout — the one place that knows where the city is walkable and
-// where its large structures stand. Reads the road graph and the venue
-// index; everything else (player bounds, road renderer, venue streamer,
-// spawn routes, fog presets) asks this module rather than carrying its own
-// numbers. Imports nothing but three. See docs/venues/ARCHITECTURE.md.
+// where its large structures stand. Reads the map (city/map.json), the plat
+// (city/lots.json) and the venue index; everything else (player bounds, road
+// renderer, lot furniture, venue streamer, spawn routes, fog presets) asks
+// this module rather than carrying its own numbers. The geometry itself —
+// fence shapes, lot frames, lamp positions — lives in js/city-map.mjs so
+// node's checks and the browser cannot disagree. See docs/map/ARCHITECTURE.md.
 import * as THREE from 'three';
-
-// The boulevard's extent is the STREET's: street.js derives it from the land
-// registry (which hands out lots from an endless ring), so anything here that
-// re-derived it would be a second opinion waiting to disagree. This is only
-// the fallback for a caller with no street — the fixture with ?street=0.
-export const BOULEVARD_FALLBACK = { x: 40, z: 40 };
+import { fenceShapes, fenceContains, fenceReach, standingPoint, lotToWorld } from '/js/city-map.mjs';
 
 const fetchJson = async (url) => {
   const r = await fetch(url, { cache: 'no-cache' });
@@ -27,74 +24,27 @@ export function insideBox(b, x, z, margin = 0) {
          z >= b.min[1] - margin && z <= b.max[1] + margin;
 }
 
-export async function loadWorld({ street = null, base = '' } = {}) {
-  const [roads, venueIndex] = await Promise.all([
-    fetchJson(`${base}/city/roads.json`).catch(() => null),
+// `street` is accepted for callers that still pass it (the venue fixture);
+// the fence no longer depends on it — the map is the layout, the manifest
+// only says which lots are taken.
+export async function loadWorld({ base = '' } = {}) {
+  const [map, plat, venueIndex] = await Promise.all([
+    fetchJson(`${base}/city/map.json`).catch((e) => { console.warn('otra.city: no map —', e.message); return null; }),
+    fetchJson(`${base}/city/lots.json`).catch(() => null),
     fetchJson(`${base}/venues/index.json`).catch(() => ({ venues: [] })),
   ]);
   const venues = venueIndex.venues || [];
 
-  // Walkable ground is a union of simple shapes; the player rejects any
-  // axis move that would leave it. Geometry inside a venue is handled by the
-  // venue's own colliders — this is only the outer fence.
-  const shapes = [];
-  const b = street?.bounds || BOULEVARD_FALLBACK;
-  shapes.push({ kind: 'box', id: 'boulevard', min: [-b.x, -b.z], max: [b.x, b.z] });
-  // A road that joins another walkable area has to OVERLAP it, not merely reach
-  // the same point. The street's own fence deliberately stops 2 m inside the
-  // end of its asphalt (a kerb you cannot step off), so a segment beginning at
-  // that asphalt's end left a 1 m band belonging to neither — an invisible wall
-  // exactly where the boulevard becomes the road to the stadium. Corridors
-  // therefore run JOIN metres past each end: the 2 m kerb plus a margin.
-  const JOIN = 3;
-  if (roads) {
-    const nodes = roads.nodes || {};
-    for (const s of roads.segments || []) {
-      const a = nodes[s.from];
-      const b = nodes[s.to];
-      if (!a || !b) continue;
-      shapes.push({ kind: 'obb', id: s.id, a, b, half: (s.width ?? 8) / 2 + (s.pavement ?? 2.5) + 0.5, join: JOIN });
-    }
-    for (const r of roads.roundabouts || []) {
-      const c = nodes[r.at];
-      if (c) shapes.push({ kind: 'disc', id: r.id, c, r: r.outer_r + (r.pavement ?? 2.5) + 0.5 });
-    }
-    for (const a of [...(roads.aprons || []), ...(roads.bays || [])]) {
-      shapes.push({ kind: 'box', id: a.id, min: [a.min[0] - 0.5, a.min[1] - 0.5], max: [a.max[0] + 0.5, a.max[1] + 0.5] });
-    }
-  }
-  for (const v of venues) shapes.push({ kind: 'box', id: `venue:${v.id}`, min: v.bounds.min, max: v.bounds.max });
-
-  function contains(x, z) {
-    for (const s of shapes) {
-      if (s.kind === 'box') {
-        if (x >= s.min[0] && x <= s.max[0] && z >= s.min[1] && z <= s.max[1]) return true;
-      } else if (s.kind === 'disc') {
-        if (Math.hypot(x - s.c[0], z - s.c[1]) <= s.r) return true;
-      } else if (s.kind === 'obb') {
-        const dx = s.b[0] - s.a[0];
-        const dz = s.b[1] - s.a[1];
-        const L = Math.hypot(dx, dz) || 1;
-        const ux = dx / L;
-        const uz = dz / L;
-        const px = x - s.a[0];
-        const pz = z - s.a[1];
-        const t = px * ux + pz * uz;
-        const n = -px * uz + pz * ux;
-        const j = s.join ?? 0.5;
-        if (t >= -j && t <= L + j && Math.abs(n) <= s.half) return true;
-      }
-    }
-    return false;
-  }
-
-  // How far the world reaches from the spawn, over every shape: the ground
-  // plane and the far plane are sized from this, so neither the street's own
-  // growth nor a venue beyond its end can run off the edge of the world.
-  const reach = shapes.reduce((m, s) => Math.max(m,
-    s.kind === 'disc' ? Math.hypot(s.c[0], s.c[1]) + s.r
-      : s.kind === 'obb' ? Math.max(Math.hypot(...s.a), Math.hypot(...s.b)) + s.half + (s.join ?? 0)
-        : Math.max(Math.abs(s.min[0]), Math.abs(s.max[0]), Math.abs(s.min[1]), Math.abs(s.max[1]))), 0);
+  // Walkable ground is a union of simple shapes; the player rejects any axis
+  // move that would leave it. Geometry inside a venue is handled by the
+  // venue's own colliders — this is only the outer fence. Without a map the
+  // city keeps the street it launched with, so a broken fetch is a dark road
+  // rather than a visitor who cannot move.
+  const shapes = map
+    ? fenceShapes(map, plat, venues)
+    : [{ kind: 'box', id: 'fallback', min: [-40, -40], max: [40, 40] }];
+  const contains = (x, z) => fenceContains(shapes, x, z);
+  const reach = fenceReach(shapes);
 
   // Venues stand beyond the boulevard's fog line, so a city that has one sees
   // further; a city without keeps its original tighter atmosphere.
@@ -119,5 +69,11 @@ export async function loadWorld({ street = null, base = '' } = {}) {
     return venues.find((v) => v.route === p || `/v/${v.id}` === p) || null;
   }
 
-  return { roads, venues, shapes, presets, reach, contains, toWorld, venueForPath, distanceToBox, insideBox, THREE };
+  const lots = plat?.lots || {};
+  const spawn = map?.spawn || { x: -20, z: 0, yaw: Math.PI / 2 };
+  return {
+    map, plat, lots, venues, shapes, presets, reach, spawn, contains, toWorld, venueForPath,
+    lotById: (id) => lots[id] || null,
+    standingPoint, lotToWorld, distanceToBox, insideBox, THREE,
+  };
 }

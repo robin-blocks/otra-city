@@ -593,7 +593,7 @@ for lx in (-30, -18, -6, 6, 18, 30):
 for lot in INDEX["lots"]:
     if lot["slug"] == "city-hall":
         continue  # drawn below as the tiny dome
-    lx, ly = lot["x"] * MS, lot["side"] * 11.5 * MS
+    lx, ly = lot["x"] * MS, lot["z"] * MS   # the manifest carries the lot centre (x, z) since the map
     sw = "holo_" + lot["slug"]
     mbox((lx - 0.2, ly - 0.2, 0.0), (lx + 0.2, ly + 0.2, 0.02), sw, 1)
     hsh = sum(ord(ch) for ch in lot["slug"])
@@ -612,9 +612,9 @@ for lot in INDEX["lots"]:
             mbox((lx - 0.14, ly - 0.14, 0.02), (lx + 0.14, ly + 0.14, 0.1), sw, 1)
             mbox((lx - 0.05, ly - 0.05, 0.1), (lx + 0.05, ly + 0.05, 0.3), sw, 1)
 for v in INDEX.get("vacant", []):
-    lx, ly = v["x"] * MS, v["side"] * 11.5 * MS
-    if v["x"] == 0 and v["side"] == 1:
-        continue  # that's us
+    lx, ly = v["x"] * MS, v["z"] * MS
+    if abs(lx) > 1.6 or abs(ly) > 0.6:
+        continue  # the hologram shows the boulevard only; the district's other roads do not fit the slab
     t = 0.015
     for (a0, b0, a1, b1) in ((-0.2, -0.2, 0.2, -0.2 + t), (-0.2, 0.2 - t, 0.2, 0.2),
                              (-0.2, -0.2, -0.2 + t, 0.2), (0.2 - t, -0.2, 0.2, 0.2)):

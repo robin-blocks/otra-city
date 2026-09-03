@@ -96,7 +96,7 @@ export default async function handler(req, res) {
         exists: false,
         available: true,
         pending: false,
-        note: 'slug is free — submit at POST /api/plots/submit',
+        note: 'slug is free — submit at POST /api/plots/submit; free lots are in GET /api/plots vacant[] (ask for one with "lot" in plot.json)',
       }, null, 2));
       return;
     }
@@ -110,7 +110,10 @@ export default async function handler(req, res) {
       available: false,
       live: !!lot,
       pending: false,
-      position: lot ? { x: lot.x, side: lot.side } : null,
+      // where it stands: the lot id and address are the city's word, whatever
+      // the submission asked for (a taken lot falls back to the nearest free)
+      position: lot ? { lot: lot.lot, address: lot.address, road: lot.road, x: lot.x, z: lot.z, yaw: lot.yaw } : null,
+      lot_url: lot ? `https://otra.city/lot/${lot.lot}` : null,
       permalink: `https://otra.city/s/${slug}`,
       embed: `https://otra.city/embed?plot=${slug}`,
       // absolute here, unlike the root-relative path in the street manifest,

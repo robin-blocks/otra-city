@@ -1,80 +1,74 @@
-// Merge the land registry with every accepted plot.json into the street
-// manifest the client fetches, ASSIGNING A LOT to any plot that doesn't have
-// one yet. Without this a submitted plot would merge into the repo and never
-// appear in the city.
+// Merge the plat (city/lots.json), the land registry (plots/lots.json) and
+// every accepted plot.json into the street manifest the client fetches
+// (plots/index.json), ASSIGNING A LOT to any plot that does not have one.
+// Without this a submitted plot would merge into the repo and never appear
+// in the city.
 //
 // Allocation rules:
-//   * existing assignments in lots.json are never moved (a shop keeps its
-//     address forever)
-//   * new plots take the nearest free lot to the central spawn, so the street
-//     stays dense and distance-from-spawn keeps its meaning
-//   * assignments are written back to lots.json, so they are stable and
-//     reviewable in git rather than recomputed each build
-//   * the boulevard extends itself as it fills, always leaving vacant lots on
-//     show for the claim boards
+//   * an assignment in the registry is never moved — a plot keeps its address
+//     forever, whatever a later plot.json asks for
+//   * a new plot that asks for a lot (`lot` in plot.json) gets it when the map
+//     affords it and nobody holds it; otherwise it gets the default and the
+//     log says so — the dry run told the submitter this rule, and the status
+//     endpoint reports the lot it actually got
+//   * the default is the nearest free lot to the city centre (map.json
+//     `centre`), ties broken by address, so the district fills densely from
+//     the middle and distance from the centre keeps its meaning
+//   * assignments are written back to the registry, stable and reviewable in
+//     git rather than recomputed each build
+//   * EVERY unclaimed lot is published as vacant, in default-allocation order:
+//     vacant[0] is where the next unrequested claim lands
 import { readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { POSTER_DIR, posterUrl, findPoster } from '../lib/poster-paths.mjs';
+import { rankFree } from '../public/js/city-map.mjs';
 
 const base = join(new URL('..', import.meta.url).pathname, 'public');
 const root = join(base, 'plots');
 const registryPath = join(root, 'lots.json');
 const registry = JSON.parse(readFileSync(registryPath));
-const PITCH = registry.lot_pitch || 12;
-const KEEP_VACANT = registry.keep_vacant ?? 2;
-// Reserved positions are never allocated and never shown as vacant: a rule
-// matches a lot when its x is within [x_min, x_max] (either bound optional)
-// on the given side (optional). Venue precincts reserve the ground they and
-// their roads stand on — see docs/venues/ARCHITECTURE.md.
-const RESERVED = registry.reserved || [];
-const reserved = (p) => RESERVED.some((r) =>
-  (r.x_min === undefined || p.x >= r.x_min) &&
-  (r.x_max === undefined || p.x <= r.x_max) &&
-  (r.side === undefined || r.side === p.side));
-
-// every lot position, ordered by walking distance from the central spawn
-function* positions() {
-  for (let ring = 0; ; ring++) {
-    const xs = ring === 0 ? [0] : [-ring * PITCH, ring * PITCH];
-    for (const x of xs) {
-      for (const side of [-1, 1]) yield { x, side };
-    }
-  }
-}
-const key = (p) => `${p.x}:${p.side}`;
+const plat = JSON.parse(readFileSync(join(base, 'city', 'lots.json')));
+const centre = plat.centre || [0, 0];
 
 // plots present on disk, deterministic order
 const slugs = readdirSync(root)
   .filter((s) => existsSync(join(root, s, 'plot.json')) && existsSync(join(root, s, 'plot.glb')))
   .sort();
+const readPlot = (slug) => JSON.parse(readFileSync(join(root, slug, 'plot.json')));
 
-const assigned = { ...registry.lots };
+const assigned = { ...(registry.lots || {}) };
 for (const slug of Object.keys(assigned)) {
   if (!slugs.includes(slug)) delete assigned[slug]; // plot removed -> free the lot
 }
-const taken = new Set(Object.values(assigned).map(key));
-
-// hand out lots to anything unassigned, nearest-to-spawn first
-const unassigned = slugs.filter((s) => !assigned[s]);
-if (unassigned.length) {
-  const gen = positions();
-  for (const slug of unassigned) {
-    let spot;
-    do { spot = gen.next().value; } while (taken.has(key(spot)) || reserved(spot));
-    assigned[slug] = spot;
-    taken.add(key(spot));
+for (const [slug, id] of Object.entries(assigned)) {
+  if (!plat.lots[id]) {
+    throw new Error(`registry: ${slug} holds "${id}", which city/lots.json does not afford. ` +
+      'A claimed lot never leaves the map: fix map.json (or run `npm run map` if the plat is stale).');
   }
 }
+const holder = new Map(Object.entries(assigned).map(([s, id]) => [id, s]));
+const dup = [...holder.entries()].filter(([id]) => Object.values(assigned).filter((v) => v === id).length > 1);
+if (dup.length) throw new Error(`registry: lot ${dup[0][0]} is held by more than one plot`);
 
-// show the next few free lots as vacant, so the street always advertises space
-const vacant = [];
-const gen = positions();
-while (vacant.length < KEEP_VACANT) {
-  const spot = gen.next().value;
-  if (!taken.has(key(spot)) && !reserved(spot)) {
-    vacant.push(spot);
-    taken.add(key(spot));
+// hand out lots to anything unassigned: what it asked for if it can have it,
+// otherwise the nearest free lot to the centre
+const notes = [];
+for (const slug of slugs.filter((s) => !assigned[s])) {
+  const want = readPlot(slug).lot;
+  let id;
+  if (want && plat.lots[want] && !holder.has(want)) {
+    id = want;
+    notes.push(`${slug}: ${id} (${plat.lots[id].address}), as requested`);
+  } else {
+    id = rankFree(plat, holder.keys(), centre)[0]?.id;
+    if (!id) throw new Error('no free lot left — extend the map (public/city/map.json)');
+    const why = !want ? 'nearest free lot to the centre'
+      : !plat.lots[want] ? `requested "${want}" is not a lot this map affords; nearest free lot instead`
+        : `requested ${want} is held by ${holder.get(want)}; nearest free lot instead`;
+    notes.push(`${slug}: ${id} (${plat.lots[id].address}) — ${why}`);
   }
+  assigned[slug] = id;
+  holder.set(id, slug);
 }
 
 // Posters are rendered from the merged build by scripts/render-posters.mjs
@@ -83,28 +77,35 @@ while (vacant.length < KEEP_VACANT) {
 // consumer can tell apart from a manifest that predates posters entirely.
 const posters = existsSync(join(base, POSTER_DIR)) ? readdirSync(join(base, POSTER_DIR)) : [];
 
+const placed = (id) => {
+  const L = plat.lots[id];
+  return { lot: L.id, address: L.address, road: L.road, n: L.n, x: L.x, z: L.z, yaw: L.yaw };
+};
 const lots = slugs.map((slug) => {
-  const plot = JSON.parse(readFileSync(join(root, slug, 'plot.json')));
-  const pos = assigned[slug];
   const poster = findPoster(slug, posters);
   return {
-    ...plot,
-    x: pos.x,
-    side: pos.side,
+    ...readPlot(slug),
+    ...placed(assigned[slug]),          // the registry's word, whatever plot.json says
     glb: `/plots/${slug}/plot.glb`,
     base: `/plots/${slug}/`,
     poster: poster ? posterUrl(poster) : null,
   };
 });
+const vacant = rankFree(plat, holder.keys(), centre)
+  .map((l) => ({ ...placed(l.id), claim: `https://otra.city/claim?lot=${l.id}` }));
 
 // persist assignments (deterministic key order) so lots never shuffle
-const nextRegistry = {
-  ...registry,
+writeFileSync(registryPath, JSON.stringify({
+  comment: registry.comment,
   lots: Object.fromEntries(Object.keys(assigned).sort().map((s) => [s, assigned[s]])),
-  vacant,
-};
-writeFileSync(registryPath, JSON.stringify(nextRegistry, null, 2) + '\n');
+}, null, 2) + '\n');
 
-writeFileSync(join(root, 'index.json'),
-  JSON.stringify({ segment: registry.segment, lots, vacant }, null, 2) + '\n');
-console.log(`manifest: ${lots.length} lots (${unassigned.length} newly assigned), ${vacant.length} vacant`);
+writeFileSync(join(root, 'index.json'), JSON.stringify({
+  version: '0.6',
+  spawn: plat.spawn,
+  roads: Object.values(plat.roads).map((r) => ({ id: r.id, name: r.name, lots: r.lots })),
+  lots,
+  vacant,
+}, null, 2) + '\n');
+for (const n of notes) console.log(`lot: ${n}`);
+console.log(`manifest: ${lots.length} lots (${notes.length} newly assigned), ${vacant.length} vacant of ${Object.keys(plat.lots).length} on ${Object.keys(plat.roads).length} roads`);

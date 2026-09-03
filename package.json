@@ -11,6 +11,8 @@
     "presence": "node server/presence.mjs",
     "api": "node scripts/dev-api.mjs",
     "manifest": "node scripts/build-manifest.mjs",
+    "map": "node scripts/build-map.mjs",
+    "map:check": "node scripts/map-check.mjs",
     "posters": "node scripts/render-posters.mjs",
     "validate": "node scripts/validate-all.mjs",
     "qa": "node scripts/qa-walkthrough.mjs",
