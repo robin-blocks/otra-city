@@ -118,7 +118,7 @@ writeFileSync(registryPath, JSON.stringify({
 }, null, 2) + '\n');
 
 writeFileSync(join(root, 'index.json'), JSON.stringify({
-  version: '0.6',
+  version: '0.7',
   spawn: plat.spawn,
   roads: Object.values(plat.roads).map((r) => ({ id: r.id, name: r.name, lots: r.lots })),
   lots,

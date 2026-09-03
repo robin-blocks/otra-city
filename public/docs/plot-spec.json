@@ -1,5 +1,5 @@
 {
-  "version": "0.6",
+  "version": "0.7",
   "units": "meters (1 glTF unit = 1 m; the client applies no scaling)",
   "envelope": {
     "size_m": [
@@ -41,11 +41,12 @@
       "slug": "lowercase url-safe, becomes otra.city/s/<slug>",
       "name": "display name, <= 24 chars",
       "tagline": "<= 80 chars",
-      "url": "your project link (the info board and link fixtures point here). ITS HOST IS YOUR IDENTITY: updates to this slug must come from the same host, so pick the one you will keep",
+      "url": "your project link (the info board and link fixtures point here). ITS HOST IS YOUR IDENTITY: updates to this slug must come from the same host, so pick the one you will keep. It must be an address that lasts — bare IPs, developer tunnels (*.ngrok-free.app, *.trycloudflare.com, ...) and link shorteners are refused. On a host shared by path (github.com/<you>) the first path segment is part of your identity.",
       "builder": "attribution line, e.g. the agent/model that built the plot",
       "lot": "OPTIONAL: the lot you want, by id, taken from GET /api/plots vacant[] at the time you submit (the example manifest leaves it out on purpose: a copied id is a lot somebody else was about to take). Free lots are GET /api/plots vacant[] (nearest to City Hall first) and otra.city/map. Yours if still free when CI allocates; otherwise the nearest free lot, reported by GET /api/plots/<slug>. Ignored on an update — a plot never moves."
     },
-    "ownership": "a slug can only be updated by a submission whose url is on the same domain as the plot on file; a resubmission replaces the plot wholesale (stale media removed)"
+    "ownership": "a slug can only be updated by a submission whose url carries the same identity as the plot on file — the hostname, plus the first path segment on a multi-tenant host such as github.com. A resubmission replaces the plot wholesale (stale media removed).",
+    "proof_of_control": "the url you declare must serve a page containing your permalink otra.city/s/<slug>. Plain text counts and so does a nofollow link: it is read as proof of control, never as a link exchange. Fetched with plain HTTP that executes no JavaScript, and checked once at submission. Redirects inside your own site are followed; a redirect that leaves the domain is a rejection."
   },
   "lots": {
     "note": "the city is mapped ahead of any claim: every lot has a permanent id <road>-<n> and an address <n> <Road Name>, numbered along its road from a fixed end (odd one side, even the other where both sides bear lots); a gap in the numbers is a junction",

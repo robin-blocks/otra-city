@@ -11,6 +11,7 @@
 import { validateIdentity, validateGlb, probeWalkability, validateMediaDecl, probeSurfaces, probeMediaFiles, SPEC } from '../lib/validate-plot.mjs';
 import { fetchAsset } from '../lib/fetch-asset.mjs';
 import { rankFree } from '../public/js/city-map.mjs';
+import { hostOf, apexHost, sameSite, ownerKey, classifyUrl } from '../lib/submitter-host.mjs';
 import { readFileSync } from 'node:fs';
 
 const TRUSTED = JSON.parse(readFileSync(new URL('../trusted.json', import.meta.url)));
@@ -171,8 +172,18 @@ async function readBody(req) {
   return { body: JSON.parse(buf.toString('utf8')), bytes: buf.length };
 }
 
+// Proof that the submitter controls the domain they are claiming: plain HTTP,
+// no JavaScript executed, scanning the page they declared for their own
+// permalink. Refusing to run JS is the anti-spoof property, not a limitation.
+//
+// The load-bearing line is the same-site guard on the FINAL url. Without it,
+// declaring a domain with an open redirect — or a shortener, or any host that
+// forwards elsewhere — lets you satisfy the check with a page you control on
+// somebody else's domain, and the city then carries their name on your board
+// and hands you their identity for every future update. Redirects WITHIN the
+// site are fine; leaving it is the whole attack.
 async function checkBacklink(url, slug) {
-  const domain = new URL(url).hostname.replace(/^www\./, '');
+  const domain = hostOf(url);
   if (TRUSTED.domains.includes(domain)) {
     return { ok: true, mode: 'trusted', detail: `${domain} is pre-trusted (existing directory listing)` };
   }
@@ -182,6 +193,12 @@ async function checkBacklink(url, slug) {
     const r = await fetch(url, { signal: ctl.signal, redirect: 'follow', headers: { 'user-agent': 'otra-city-bot/1.0' } });
     clearTimeout(t);
     if (!r.ok) return { ok: false, mode: 'fetched', detail: `GET ${url} -> ${r.status}` };
+    if (r.url && !sameSite(url, r.url)) {
+      return { ok: false, mode: 'redirected', detail:
+        `${url} redirects to ${r.url}, which is ${apexHost(r.url)} and not ${apexHost(url)}. ` +
+        `The permalink has to be on the domain you are claiming — that redirect is what proving ownership ` +
+        `would otherwise let anyone skip. Declare the url visitors actually land on.` };
+    }
     const html = (await r.text()).slice(0, 512 * 1024);
     const needle = `otra.city/s/${slug}`;
     const found = html.includes(needle);
@@ -193,6 +210,33 @@ async function checkBacklink(url, slug) {
   } catch (e) {
     return { ok: false, mode: 'fetched', detail: `could not fetch ${url}: ${e.name}` };
   }
+}
+
+// Is anybody else already standing on this identity? Advisory only: one owner
+// with two genuine projects is legitimate, and the city's own lots all share
+// otra.city. It is here because the likeliest cause by far is an agent that
+// hit a failure and retried under a fresh slug, which quietly costs it a
+// second lot and leaves the first one dead. Read from the deployed manifest,
+// so it lags a merge by a minute — which is exactly why it never rejects.
+async function checkDuplicateOwner(slug, url, host) {
+  try {
+    let manifest;
+    if (/^(localhost|127\.0\.0\.1)/.test(host)) {
+      manifest = JSON.parse(readFileSync(new URL('../public/plots/index.json', import.meta.url), 'utf8'));
+    } else {
+      const r = await fetch(`https://${host}/plots/index.json`, { headers: { 'user-agent': 'otra-city-bot/1.0' } });
+      if (!r.ok) return null;
+      manifest = await r.json();
+    }
+    const mine = ownerKey(url);
+    const others = (manifest.lots || [])
+      .filter((l) => l.slug && l.slug !== slug && l.url && ownerKey(l.url) === mine);
+    if (!others.length) return null;
+    return { ok: true, warn: true, detail:
+      `${mine} already holds ${others.map((o) => `"${o.slug}" (${o.address || o.lot})`).join(', ')}. ` +
+      `If this is the same project under a new name, resubmit that slug instead — it updates in place and ` +
+      `keeps its address. A second lot is yours if you meant it; nobody will take the first one back.` };
+  } catch { return null; }
 }
 
 async function gh(path, method, body, token) {
@@ -249,9 +293,7 @@ async function listPlotFiles(repo, dir, ref, token) {
   return out;
 }
 
-const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
-
-// Ownership: a slug can only be UPDATED from the domain that owns it. Without
+// Ownership: a slug can only be UPDATED by the identity that owns it. Without
 // this, any trusted domain (which skips the backlink) could overwrite anyone.
 async function existingManifest(slug, host) {
   const token = process.env.GITHUB_TOKEN;
@@ -261,9 +303,15 @@ async function existingManifest(slug, host) {
     const f = await ghMaybe(`/repos/${repo}/contents/public/plots/${slug}/plot.json?ref=main`, token);
     return f ? JSON.parse(Buffer.from(f.content, 'base64').toString()) : null;
   }
-  // tokenless harnesses read the live registry instead
-  const origin = /^(localhost|127\.0\.0\.1)/.test(host) ? 'https://otra.city' : `https://${host}`;
-  const r = await fetch(`${origin}/plots/${slug}/plot.json`, { headers: { 'user-agent': 'otra-city-bot/1.0' } });
+  // A local harness (scripts/dev-api.mjs, scripts/api-check.mjs) answers from
+  // the checkout it runs in, exactly as registryOnFile does below — otherwise
+  // running the endpoint locally silently validates against production, and a
+  // test of who owns what depends on what happens to be deployed.
+  if (/^(localhost|127\.0\.0\.1)/.test(host)) {
+    const f = new URL(`../public/plots/${slug}/plot.json`, import.meta.url);
+    try { return JSON.parse(readFileSync(f, 'utf8')); } catch { return null; }
+  }
+  const r = await fetch(`https://${host}/plots/${slug}/plot.json`, { headers: { 'user-agent': 'otra-city-bot/1.0' } });
   if (r.status === 404) return null;
   if (!r.ok) throw new Error(`registry ${r.status}`);
   return r.json();
@@ -336,11 +384,13 @@ async function checkOwnership(slug, url, host) {
   try {
     const existing = await existingManifest(slug, host);
     if (!existing) return { ok: true, mode: 'create', detail: 'new slug' };
-    const owner = hostOf(existing.url);
-    const mine = hostOf(url);
+    // ownerKey, not the bare hostname: on a multi-tenant host it carries the
+    // tenant, so github.com/alice cannot overwrite github.com/bob.
+    const owner = ownerKey(existing.url);
+    const mine = ownerKey(url);
     return owner === mine
-      ? { ok: true, mode: 'update', detail: `updating your existing plot — the url host ${owner} is your identity; keep it or you lose write access to this slug` }
-      : { ok: false, mode: 'denied', detail: `slug "${slug}" belongs to ${owner}; updates must come from that host (the url host is the owner's identity)` };
+      ? { ok: true, mode: 'update', detail: `updating your existing plot — ${owner} is your identity; keep it or you lose write access to this slug` }
+      : { ok: false, mode: 'denied', detail: `slug "${slug}" belongs to ${owner}; updates must come from there (the url is the owner's identity)` };
   } catch (e) {
     return { ok: false, mode: 'unknown', detail: `ownership check failed: ${e.name || e}` };
   }
@@ -407,13 +457,64 @@ async function createPR({ plot, glb, media }, report) {
   }
 }
 
+// --- Submission telemetry -------------------------------------------------
+// Every attempt prints ONE structured line, accepted or not. The REJECTIONS
+// are the half that used to vanish entirely, and they are the denominator:
+// without them "submissions went up" cannot be told apart from "submissions
+// started passing", and the one genuinely interesting question about this city
+// — what an agent gets done end to end with no human in the loop — becomes
+// unanswerable a month after the fact. PromptFrenzy's directory shipped
+// without this, watched its submission rate go up 5x, and could not say why.
+//
+// Deliberately stdout and nothing else: no database, no third party, no
+// cookie, and nothing on this path that can fail in a way that costs an honest
+// agent its plot. Retention is therefore the platform's log retention; a log
+// drain is the upgrade when there is something worth keeping.
+//
+// Kept: the request's own metadata. NOT kept: the bundle, and no IP address —
+// Vercel's country header is as fine-grained as this gets. The published
+// contract at /claim lists these fields; adding one here means adding it there
+// in the same commit.
+const CALLER_HEADERS = ['user-agent', 'origin', 'referer', 'content-type',
+  'sec-fetch-mode', 'sec-fetch-site', 'x-vercel-ip-country'];
+
+function logAttempt(req, fields) {
+  try {
+    const caller = {};
+    for (const h of CALLER_HEADERS) {
+      const v = req.headers?.[h];
+      if (v) caller[h] = String(v).slice(0, 200);
+    }
+    console.log('SUBMIT ' + JSON.stringify({ at: new Date().toISOString(), ...fields, caller }));
+  } catch { /* telemetry must never be what fails a submission */ }
+}
+
+// The named checks that did not pass — what to fix, in one field, so a run of
+// rejections reads as a pattern rather than a pile of reports.
+const ADVISORY = new Set(['surfaces.coplanar faces', 'payload']); // reported, never blocking
+
+function failedChecks(result) {
+  const out = [];
+  for (const [section, value] of Object.entries(result)) {
+    if (!value || typeof value !== 'object') continue;
+    if (Array.isArray(value.checks)) {
+      for (const c of value.checks) if (c && c.ok === false) out.push(`${section}.${c.name}`);
+    } else if (value.ok === false) {
+      out.push(section);
+    }
+  }
+  return out.filter((n) => !ADVISORY.has(n));
+}
+
 export default async function handler(req, res) {
   res.setHeader('content-type', 'application/json');
   if (req.method !== 'POST') {
+    logAttempt(req, { outcome: 'wrong-method', method: req.method });
     res.statusCode = 405;
     res.end(JSON.stringify({ error: 'POST a submission bundle; see https://otra.city/docs/submission.md' }));
     return;
   }
+  const started = Date.now();
   try {
     const { body, bytes: requestBytes } = await readBody(req);
     const plot = body.plot || {};
@@ -503,16 +604,20 @@ export default async function handler(req, res) {
     if (plot.media?.feed) result.feed = await checkFeed(plot.media.feed, media);
     const host = req.headers['x-forwarded-host'] || req.headers.host || 'otra.city';
     if (result.identity.ok) {
+      // Derived live from the url and never stored, so the lists behind it
+      // re-classify every future submission with nothing to backfill.
+      result.url = classifyUrl(plot.url);
       result.backlink = await checkBacklink(plot.url, plot.slug);
       result.ownership = await checkOwnership(plot.slug, plot.url, host);
       result.github = await checkGithub(plot.slug);
       result.lot = await checkLot(plot, result.ownership, host);
+      result.duplicate = await checkDuplicateOwner(plot.slug, plot.url, host);
     }
 
     const uvCheck = result.surfaces.checks.find((c) => c.name === 'media uvs');
     const accepted = result.identity.ok && result.budgets.ok && result.walkability.ok &&
       mediaOk && uvCheck.ok && (result.feed ? result.feed.ok : true) && !!result.backlink?.ok &&
-      !!result.ownership?.ok && !!result.github?.ok && !!result.lot?.ok;
+      !!result.ownership?.ok && !!result.github?.ok && !!result.lot?.ok && !!result.url?.ok;
     const lines = [];
     for (const section of ['identity', 'budgets', 'walkability', 'media']) {
       for (const c of result[section].checks) lines.push(`${c.ok ? 'PASS' : 'FAIL'}  ${c.name.padEnd(14)} ${c.detail}`);
@@ -535,15 +640,36 @@ export default async function handler(req, res) {
       (fetchedBytes ? ` + ${MB(fetchedBytes)} fetched by url (not subject to the limit)` : '') +
       (result.payload.ok ? '' : ' — close to the platform limit; send large files by url instead'));
     if (result.feed) lines.push(`${result.feed.ok ? 'PASS' : 'FAIL'}  live feed      ${result.feed.detail}`);
+    if (result.url) lines.push(`${result.url.ok ? 'PASS' : 'FAIL'}  url            ${result.url.detail}`);
     if (result.backlink) lines.push(`${result.backlink.ok ? 'PASS' : 'FAIL'}  backlink       ${result.backlink.detail}`);
     if (result.ownership) lines.push(`${result.ownership.ok ? 'PASS' : 'FAIL'}  ownership      ${result.ownership.detail}`);
     if (result.github) lines.push(`${result.github.ok ? 'PASS' : 'FAIL'}  github         ${result.github.detail}`);
     if (result.lot) lines.push(`${result.lot.ok ? 'PASS' : 'FAIL'}  lot            ${result.lot.detail}`);
+    if (result.duplicate) lines.push(`WARN  duplicate      ${result.duplicate.detail}`);
     const report = lines.join('\n') + `\nVERDICT: ${accepted ? 'ACCEPTED' : 'REJECTED'}`;
 
     let pr_url = null;
     const dry = body.dry === true || !process.env.GITHUB_TOKEN || !process.env.GITHUB_REPO;
     if (accepted && !dry) pr_url = await createPR({ plot, glb, media }, report);
+
+    logAttempt(req, {
+      outcome: accepted ? (dry ? 'accepted-dry' : 'accepted') : 'rejected',
+      slug: plot.slug ?? null,
+      owner: plot.url ? ownerKey(plot.url) : null,
+      url_tier: result.url?.tier ?? null,
+      builder: typeof plot.builder === 'string' ? plot.builder.slice(0, 120) : null,
+      lot: result.lot?.lot ?? null,
+      mode: result.github?.mode ?? null,
+      // how the files arrived: the by-url path is the only way to spend the
+      // full media budget, so its uptake is worth watching
+      transport: body.glb_url ? 'url' : 'inline',
+      media_by_url: Object.keys(body.media_urls || {}).length,
+      request_bytes: requestBytes,
+      fetched_bytes: fetchedBytes,
+      failed: failedChecks(result),
+      duplicate_owner: !!result.duplicate,
+      ms: Date.now() - started,
+    });
 
     res.statusCode = accepted ? 200 : 422;
     res.end(JSON.stringify({
@@ -560,6 +686,11 @@ export default async function handler(req, res) {
       result,
     }, null, 2));
   } catch (e) {
+    // Errors are attempts too: a bundle that throws before the checks run
+    // (unreadable JSON, a media url that would not fetch, no glb at all) is
+    // an agent that tried and got nothing, and it is invisible in the report
+    // counts unless it is logged here.
+    logAttempt(req, { outcome: 'error', error: String(e.message || e).slice(0, 300), ms: Date.now() - started });
     console.error('submit failed:', e.message || e);
     res.statusCode = 400;
     res.end(JSON.stringify({ error: String(e.message || e) }));
