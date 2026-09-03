@@ -20,7 +20,7 @@
 //
 // Usage: node scripts/render-posters.mjs [--force] [--only=slug,slug] [--quiet]
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, unlinkSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { launchChrome } from '../lib/headless-chrome.mjs';
 import { serve } from '../lib/static-server.mjs';
@@ -128,6 +128,11 @@ function renderExpr(opts) {
   p.setCam('poster');                        // re-assert after controls.update()
   p.step(0);
 
+  // How much of this poster a visitor can actually see. Taken from the
+  // full-resolution canvas before encoding, so it measures the picture rather
+  // than the compression, and it is the same call /preview shows a builder.
+  const read = p.readability();
+
   const canvas = p.renderer.domElement;
   const encode = (source, q) => {
     const url = source.toDataURL('image/webp', q);
@@ -137,7 +142,7 @@ function renderExpr(opts) {
   let best = null;
   for (const q of o.quality) {
     best = encode(canvas, q);
-    if (best.bytes <= o.maxBytes) return { ...best, downscaled: false, canvas: [canvas.width, canvas.height] };
+    if (best.bytes <= o.maxBytes) return { ...best, read, downscaled: false, canvas: [canvas.width, canvas.height] };
   }
   // Still too heavy at the lowest quality: shrink rather than blur further.
   const small = document.createElement('canvas');
@@ -147,7 +152,7 @@ function renderExpr(opts) {
   for (const q of o.quality) {
     const shot = encode(small, q);
     if (shot.bytes <= o.maxBytes || q === o.quality[o.quality.length - 1]) {
-      return { ...shot, downscaled: true, canvas: [canvas.width, canvas.height] };
+      return { ...shot, read, downscaled: true, canvas: [canvas.width, canvas.height] };
     }
   }
 })()`;
@@ -158,6 +163,19 @@ const todo = plots.filter((p) => force || !existsSync(join(outDir, p.file)));
 log(`posters: ${plots.length} plot(s), ${todo.length} to render` + (todo.length ? '' : ' (all current)'));
 
 let failed = 0;
+// Plots whose poster reads as an empty frame. Never a failure — see the note
+// on READABILITY in public/js/poster-frame.js — but said out loud, because a
+// builder cannot see their own plot and nothing else in the pipeline can tell
+// them the shopfront is invisible.
+//
+// Only a poster RENDERED THIS RUN is warned about, because that is the one
+// somebody just built and can still act on. Plots that were already dark and
+// were not rebuilt are listed in the table and left alone: a warning that
+// fires on every run for something nobody intends to change is a warning
+// people stop reading, and it would drown the submission it exists to catch.
+const dim = [];
+const dimAlready = [];
+const readings = [];
 if (todo.length) {
   const { server, origin } = await serve(join(root, 'public'));
   const noise = [];
@@ -202,8 +220,15 @@ if (todo.length) {
         }), { timeoutMs: 120000 });
         if (!shot) throw new Error('renderer returned nothing');
         writeFileSync(join(outDir, file), Buffer.from(shot.b64, 'base64'));
+        const r = shot.read;
+        if (r) {
+          readings.push({ slug, ...r });
+          if (!r.reads) dim.push({ slug, ...r });
+        }
         log(`  ${slug}: ${shot.w}x${shot.h} ${(shot.bytes / 1024).toFixed(0)} KiB q${shot.q}` +
-          `${shot.downscaled ? ' (downscaled to fit)' : ''} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+          `${shot.downscaled ? ' (downscaled to fit)' : ''}` +
+          `${r ? ` · ${r.centreLit.toFixed(1)}% lit${r.reads ? '' : ' ← reads as an empty frame'}` : ''}` +
+          ` in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
         break;
       } catch (e) {
         await drop();
@@ -231,6 +256,80 @@ if (!only.length) {
     if (current.has(name) || !posterPattern.test(name)) continue;
     unlinkSync(join(outDir, name));
     log(`  pruned ${name}`);
+  }
+}
+
+// Posters this run did not reshoot are still part of the street, and a plot
+// that was already dark would otherwise never be reported — the two on the
+// street when this landed had current posters and would have stayed invisible.
+// The browser decodes the published WebP for us, which node cannot do without
+// a new dependency. Reading the compressed file rather than the canvas costs
+// about half a point, well inside the margin the floor is set with.
+async function readPublished(page, file) {
+  return page.evaluate(`(async () => {
+    const img = new Image();
+    img.src = ${JSON.stringify(`/posters/${file}`)};
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    c.getContext('2d').drawImage(img, 0, 0);
+    return window.__preview.readability(c);
+  })()`, { timeoutMs: 30000 });
+}
+
+const unread = plots.filter((p) => !readings.some((r) => r.slug === p.slug) && existsSync(join(outDir, p.file)));
+if (unread.length) {
+  const { server, origin } = await serve(join(root, 'public'));
+  let chrome = null;
+  try {
+    chrome = await launchChrome({ width: 640, height: 360 });
+    await chrome.goto(`${origin}/preview.html`);
+    for (const { slug, file } of unread) {
+      try {
+        const r = await readPublished(chrome, file);
+        readings.push({ slug, ...r });
+        if (!r.reads) dimAlready.push({ slug, ...r });
+      } catch (e) {
+        log(`  ${slug}: could not read its published poster (${e.message})`);
+      }
+    }
+  } catch (e) {
+    log(`posters: could not measure the published set (${e.message})`);
+  } finally {
+    if (chrome) await chrome.close().catch(() => {});
+    server.close();
+  }
+}
+
+// ------------------------------------------------------------- readability
+// Warned about, never enforced: a plot that means to be dark is a legitimate
+// plot. Written to the job summary too, because an amber line in a build log
+// is a line nobody reads.
+if (readings.length) {
+  const sorted = [...readings].sort((a, b) => a.centreLit - b.centreLit);
+  const floor = sorted[0].floor;
+  log(`\nposters lit: ${sorted.map((r) => `${r.slug} ${r.centreLit.toFixed(1)}%`).join(' · ')}`);
+  if (dim.length) {
+    console.warn(`\n${dim.length} poster(s) rendered this run read as an empty frame (under ${floor}% of the centre lit):`);
+    for (const r of dim) console.warn(`  ${r.slug}  ${r.centreLit.toFixed(1)}%`);
+    console.warn('  Not a failure — a plot may mean to be dark. But from the street these show\n' +
+      '  nothing a visitor can read, and a directory listing them shows a black rectangle.');
+  }
+  // Said once, quietly, without the warning: these are the street as it is.
+  if (dimAlready.length) {
+    log(`${dimAlready.length} plot(s) already on the street are under the ${floor}% floor ` +
+      `(${dimAlready.map((r) => r.slug).join(', ')}) — not rebuilt this run, so not flagged.`);
+  }
+  const summary = process.env.GITHUB_STEP_SUMMARY;
+  if (summary) {
+    const fresh = new Set(dim.map((r) => r.slug));
+    const rows = sorted.map((r) => `| ${r.slug} | ${r.centreLit.toFixed(1)}% | ${
+      r.reads ? 'reads' : fresh.has(r.slug) ? '**empty frame — built this run**' : 'empty frame (already on the street)'} |`).join('\n');
+    appendFileSync(summary, `\n### Poster readability\n\nShare of each poster's centre carrying visible light. ` +
+      `Under ${floor}% a plot reads as an empty frame from the street. Advisory, never a gate — and only a ` +
+      `poster built in this run is flagged, since that is the one somebody can still act on.\n\n` +
+      `| plot | centre lit | |\n|---|---|---|\n${rows}\n`);
   }
 }
 

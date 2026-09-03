@@ -1,11 +1,27 @@
 name: validate plots
+# Triggered by a plot changing, and by anything that decides what a POSTER IS —
+# the renderer, its framing, and the page it drives. This job is the only one
+# that renders posters, so without those paths the pipeline is exercised only
+# by somebody else's plot submission, which is a strange way to find out you
+# broke it. Posters are content-addressed, so nothing is reshot unless a plot's
+# own bytes changed; a renderer-only change costs a readability pass.
+# (The list is repeated because GitHub Actions does not expand YAML anchors.)
 on:
   pull_request:
-    paths: ['public/plots/**']
+    paths:
+      - 'public/plots/**'
+      - 'scripts/render-posters.mjs'
+      - 'lib/poster-paths.mjs'
+      - 'public/js/poster-frame.js'
+      - 'public/preview.html'
   push:
     branches: [main]
-    paths: ['public/plots/**']
-
+    paths:
+      - 'public/plots/**'
+      - 'scripts/render-posters.mjs'
+      - 'lib/poster-paths.mjs'
+      - 'public/js/poster-frame.js'
+      - 'public/preview.html'
 jobs:
   validate:
     runs-on: ubuntu-latest
