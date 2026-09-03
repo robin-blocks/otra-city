@@ -199,7 +199,6 @@ export function create(ctx) {
   let gsx = null;
   let slot = null;
   let stage = null;
-  let fixture = null;
   let disposed = false;
   let programmeTimer = 0;
   const mutedIds = new Set();
@@ -323,8 +322,13 @@ export function create(ctx) {
       mount: (st, item) => onMount(st, item),
       unmount: () => onUnmount(),
       onProgramme,
-      showFixture: (board) => { fixture = board; board.position.set(0, 2.2, 0); pitch.add(board); if (!stage) state.phase = 'countdown'; },
-      hideFixture: (board) => { pitch.remove(board); fixture = null; },
+      // The SDK offers a countdown board to stand on the pitch. We decline
+      // it: a panel hanging in the air over the turf is a thing that could
+      // not be there, and the venue already answers the question it answers —
+      // `screen_score` shows the next kick-off, from the same schedule, on a
+      // scoreboard that is really mounted on a stand.
+      showFixture: () => { if (!stage) state.phase = 'countdown'; },
+      hideFixture: () => {},
       pollS: cfg.poll_s || 60,
     });
   }
@@ -382,7 +386,6 @@ export function create(ctx) {
       if (unsubMute) unsubMute();
       try { slot?.dispose(); } catch (e) { log.warn('match-4dgsx: dispose', e); }
       slot = null;
-      if (fixture) { pitch.remove(fixture); fixture = null; }
       if (stage) { pitch.remove(stage.group); stage = null; }
       boardTex.dispose();
       // hand every screen back the material it had, then drop ours: the venue

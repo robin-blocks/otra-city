@@ -98,12 +98,31 @@ example no longer names a real lot. The fifth — repeater plates stand across
 the pavement mid-block — is accepted: it is what makes the plate face the
 spawn, and every standing point keeps ≥ 5.9 m of clearance.
 
+## Robin walked it (2026-09-03) — seven items
+Three were the city's, four the stadium's (those are in
+`docs/stadium/STATE.md`). What changed here:
+
+| what he said | what it was | fix |
+|---|---|---|
+| "the road names should be at the start/end of the roads only and should be parallel with the pavement (right now, they're perpendicular)" | plates were per SEGMENT and per repeater, and their faces looked DOWN the road, so they read as boards planted across the pavement | one plate at each END of a road (a stub short enough to see end to end keeps the one at its junction), face parallel to the carriageway looking across it — the reference photo's arrangement. 18 plates → 12 |
+| "for existing lots, the address seems squeezed on to the signs" | the address was jammed into the top-right corner against the name at 18 px | the board is a table now: an address strip, a hairline, the name, the tagline clamped to two lines, then two footer lines. Every row shrinks to fit rather than running under the border |
+| "a lot of the signs have the support poles obscuring the signage" | a directional board sat on ONE post on its own centre line, straight through the text; the street plates' posts at ±0.62 m cut the first and last letter | every board and plate rides TWO posts, at its own ends and set back behind its face. The dimensions moved into `js/city-map.mjs` (`PLATE`, `SIGN`, `postsOf`) so `map-check` measures the posts that are really built, and models the panel between them |
+
+Also from the same list, city-side: **doors open for anybody the city can
+see**, not only the visitor at this keyboard (`doors.update` takes every
+position, `presence.positions` is new) — peers used to walk through closed
+glass; and the SDK's countdown board is **no longer mounted over the turf**
+("we shouldn't have physically-impossible structures unless absolutely
+necessary") — `screen_score` already carries the next kick-off, on a
+scoreboard that is really mounted on a stand.
+
 ## Scores
 - Critic pass 1: correctness PASS, walkability PASS, reliability PASS, performance PASS, integration PASS; visual 7, usability 6, maintainability 8, accessibility 7.
 - Critic pass 2: all five PASS; **visual 8, usability 7, maintainability 8, accessibility 7** — every category clears the rubric's 7.
 
 ## Open issues (ranked)
 1. The two closes carry a subreddit each but no lots — a name with nothing to claim on it.
+1b. A road name is still readable only off the plates at its ends and off lot boards; with the repeaters gone (Robin's call), the middle of a long road names itself nowhere. The HUD is the obvious home if it ever matters.
 2. The road name is not in the HUD; a visitor reads it off plates and boards only.
 3. A CI assertion that no existing `placed` entry changes against `origin/main` would close the last path to moving a held lot (rewriting the record by hand); today that diff is the reviewer's tell.
 4. The City Hall authoring scripts compile against the new manifest but have not been run in Blender.

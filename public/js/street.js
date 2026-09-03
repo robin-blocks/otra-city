@@ -26,11 +26,42 @@ const mat = (color, opts = {}) =>
 const emat = (color, intensity, base = 0x0d0a14) =>
   new THREE.MeshStandardMaterial({ color: base, emissive: color, emissiveIntensity: intensity, roughness: 0.7 });
 
-// Draw one board into a context at (ox, oy). A claimed board carries the
-// plot's name, tagline, builder, permalink and its address; a vacant board
-// carries the address, the lot id and the claim url — the id is what an agent
-// types, the address is what a visitor remembers.
-function drawBoard(x, ox, oy, { name, tagline, by, slug, color, vacant, address, lot }) {
+// Draw one board into a context at (ox, oy), 512 x 320.
+//
+// The layout is a table rather than a stack of guessed baselines: a header
+// strip carrying the ADDRESS, a hairline, the name, the tagline (two lines,
+// clamped), then two footer lines. Every row auto-fits its own width, so a
+// long road name or a long builder shrinks instead of running under the
+// border — the address used to be squeezed into the top-right corner against
+// the name, which is what it looked like: squeezed.
+const ROW = {
+  padX: 30, right: 482,
+  address: { y: 44, px: 20, min: 13 },
+  rule: 62,
+  title: { y: 116, px: 46, min: 22 },
+  subtitle: { y: 160, px: 24, min: 24, lead: 34, lines: 2 },
+  foot1: { y: 250, px: 20, min: 14 },
+  foot2: { y: 288, px: 22, min: 15 },
+};
+
+function drawBoard(x, ox, oy, { address, title, subtitle, foot1, foot2, color }) {
+  const W = ROW.right - ROW.padX;
+  // shrink-to-fit: the widest size at or below `px` that holds `text` in W
+  const fit = (text, weight, spec) => {
+    let px = spec.px;
+    x.font = `${weight}${px}px Menlo, monospace`;
+    while (px > spec.min && x.measureText(text).width > W) {
+      px -= 2;
+      x.font = `${weight}${px}px Menlo, monospace`;
+    }
+    return px;
+  };
+  const line = (text, weight, spec, fill, y = spec.y) => {
+    if (!text) return;
+    fit(text, weight, spec);
+    x.fillStyle = fill;
+    x.fillText(text, ROW.padX, y);
+  };
   x.save();
   x.translate(ox, oy);
   x.textAlign = 'left';
@@ -40,52 +71,71 @@ function drawBoard(x, ox, oy, { name, tagline, by, slug, color, vacant, address,
   x.strokeStyle = color;
   x.lineWidth = 6;
   x.strokeRect(9, 9, 494, 302);
-  x.fillStyle = color;
-  let px = 52;
-  x.font = `700 ${px}px Menlo, monospace`;
-  while (x.measureText(name).width > 450 && px > 24) {
-    px -= 4;
-    x.font = `700 ${px}px Menlo, monospace`;
-  }
-  x.fillText(name, 30, 88);
-  x.fillStyle = '#e9edf6';
-  x.font = '26px Menlo, monospace';
-  const words = (tagline || '').split(' ');
-  let line = '';
-  let ty = 148;
+
+  line(address, '', ROW.address, '#8a86a0');
+  x.strokeStyle = color;
+  x.globalAlpha = 0.45;
+  x.lineWidth = 2;
+  x.beginPath();
+  x.moveTo(ROW.padX, ROW.rule);
+  x.lineTo(ROW.right, ROW.rule);
+  x.stroke();
+  x.globalAlpha = 1;
+
+  line(title, '700 ', ROW.title, color);
+
+  // the tagline wraps to at most two lines and is cut with an ellipsis, so
+  // the footer never moves and never collides with it
+  const spec = ROW.subtitle;
+  x.font = `${spec.px}px Menlo, monospace`;
+  const words = String(subtitle || '').split(' ');
+  const lines = [];
+  let cur = '';
   for (const w of words) {
-    const test = line ? line + ' ' + w : w;
-    if (x.measureText(test).width > 450) {
-      x.fillText(line, 30, ty);
-      ty += 36;
-      line = w;
+    const test = cur ? `${cur} ${w}` : w;
+    if (x.measureText(test).width > W && cur) {
+      lines.push(cur);
+      cur = w;
+      if (lines.length === spec.lines) break;
     } else {
-      line = test;
+      cur = test;
     }
   }
-  if (line) x.fillText(line, 30, ty);
-  x.font = '22px Menlo, monospace';
-  if (vacant) {
-    x.fillStyle = '#8a86a0';
-    x.fillText('your project could stand here', 30, 214);
-    x.fillStyle = '#e9edf6';
-    x.fillText(`lot ${lot}`, 30, 250);
-    x.fillStyle = '#2fe0f8';
-    x.fillText(`otra.city/claim?lot=${lot}`, 30, 288);
-  } else {
-    x.fillStyle = '#8a86a0';
-    x.fillText('built by ' + by, 30, 250);
-    x.fillStyle = '#2fe0f8';
-    x.fillText('otra.city/s/' + slug, 30, 288);
-    if (address) {
-      x.fillStyle = '#b9bcd6';
-      x.font = '600 24px Menlo, monospace';
-      x.textAlign = 'right';
-      x.fillText(address, 478, 42);
+  if (lines.length < spec.lines && cur) lines.push(cur);
+  if (lines.length === spec.lines) {
+    const rest = words.slice(lines.join(' ').split(' ').length);
+    if (rest.length) {
+      let last = lines[spec.lines - 1];
+      while (last && x.measureText(`${last}…`).width > W) last = last.slice(0, -1);
+      lines[spec.lines - 1] = `${last}…`;
     }
   }
+  x.fillStyle = '#e9edf6';
+  lines.forEach((t, i) => x.fillText(t, ROW.padX, spec.y + i * spec.lead));
+
+  line(foot1, '', ROW.foot1, '#8a86a0');
+  line(foot2, '', ROW.foot2, '#2fe0f8');
   x.restore();
 }
+
+// what a claimed lot's board says
+const claimedFields = (plot, color) => ({
+  address: (plot.address || '').toUpperCase(),
+  title: plot.name,
+  subtitle: plot.tagline,
+  foot1: `built by ${plot.builder || 'unknown'}`,
+  foot2: `otra.city/s/${plot.slug}`,
+  color,
+});
+// and what a free one says: the id an agent types, and where to type it
+const vacantFields = (v) => ({
+  address: (v.address || '').toUpperCase(),
+  title: 'VACANT LOT',
+  subtitle: 'your project could stand here',
+  foot1: `lot ${v.lot}`,
+  foot2: `otra.city/claim?lot=${v.lot}`,
+  color: '#47f2ff',
+});
 
 function boardTexture(fields) {
   const c = document.createElement('canvas');
@@ -127,7 +177,7 @@ function claimedBoard(parent, colliders, interactables, plot) {
     new THREE.MeshStandardMaterial({ color: 0x241f38, roughness: 0.8 }));
   grp.add(backing);
   const face = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.06),
-    new THREE.MeshBasicMaterial({ map: boardTexture({ ...plot, by: plot.builder, color: '#' + accent.getHexString() }) }));
+    new THREE.MeshBasicMaterial({ map: boardTexture(claimedFields(plot, '#' + accent.getHexString())) }));
   face.position.z = 0.036;
   grp.add(face);
   parent.add(grp);
@@ -186,9 +236,7 @@ function vacantLots(parent, colliders, interactables, vacant) {
     chunk.forEach((v, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
-      drawBoard(x, col * BOARD_W, row * BOARD_H, {
-        name: 'VACANT LOT', tagline: v.address, color: '#47f2ff', vacant: true, lot: v.lot, address: v.address,
-      });
+      drawBoard(x, col * BOARD_W, row * BOARD_H, vacantFields(v));
       // atlas cell -> uv; v = 1 is the canvas top
       chunkQuads.push({ ...quads[start + i], uv: [col / cols, 1 - (row + 1) / rows, (col + 1) / cols, 1 - row / rows] });
     });
