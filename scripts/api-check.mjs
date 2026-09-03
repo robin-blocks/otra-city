@@ -180,18 +180,29 @@ check('a real domain passes', classifyUrl('https://4dgsx.com').ok);
     { method: 'POST', headers: { 'content-type': 'application/x-ndjson', ...headers }, body });
 
   const v = await fetch(`${d.origin}/api/log-drain`);
-  check('GET echoes the value Vercel needs to register the drain',
-    v.headers.get('x-vercel-verify') === 'verify-token-abc');
-  check('a wrong key is refused', (await post('{}', { 'x-otra-drain-key': 'nope' })).status === 403);
+  check('every response carries the value Vercel verifies against',
+    v.headers.get('x-vercel-verify') === 'verify-token-abc' && v.status === 200);
+  const badKey = await post('{}', { 'x-otra-drain-key': 'nope' });
+  check('a wrong key is refused', badKey.status === 403);
+  check('even a refusal carries the verify header',
+    badKey.headers.get('x-vercel-verify') === 'verify-token-abc');
   check('an unsigned, unkeyed post is refused', (await post('{}')).status === 403);
   const empty = await post(JSON.stringify([BATCH[0]]), { 'x-otra-drain-key': 'shhh' });
   check('a batch with nothing to keep writes nothing',
     empty.status === 200 && (await empty.text()).trim() === '0');
 
+  // The bootstrap window. Vercel will not create a drain until the endpoint
+  // answers its test POST with a 2xx, and does not reveal the secret until the
+  // drain exists — so demanding the secret first deadlocks setup. It must
+  // answer 2xx, and it must still store nothing.
   delete process.env.LOG_DRAIN_SECRET;
-  check('an unconfigured deployment refuses everything',
-    (await post('{}', { 'x-otra-drain-key': 'shhh' })).status === 503,
-    'never an open endpoint that writes what it is handed');
+  const boot = await post(BATCH.map((e) => JSON.stringify(e)).join('\n'));
+  const bootBody = await boot.text();
+  check('an unconfigured endpoint answers 2xx so the drain can be created',
+    boot.status === 200, "Vercel's Test button demands it");
+  check('...and discards every record rather than storing them',
+    /discarded 2 record\(s\)/.test(bootBody) && /LOG_DRAIN_SECRET/.test(bootBody),
+    'never an open write path, in either state');
   process.env.LOG_DRAIN_SECRET = 'shhh';
   d.server.close();
 }
