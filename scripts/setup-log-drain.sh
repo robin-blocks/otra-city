@@ -21,7 +21,22 @@ ask()  { printf '\n%s%s%s\n' "$b" "$1" "$n"; read -r -p "  press return when don
 command -v vercel >/dev/null || die "the vercel CLI is not on PATH — npm i -g vercel"
 vercel whoami >/dev/null 2>&1 || die "not logged in — run: vercel login"
 cd "$(dirname "$0")/.."
-[ -d .vercel ] || die "this directory is not linked to the Vercel project — run: vercel link"
+
+# The project link (.vercel) is gitignored, so it exists only in the checkout
+# somebody ran `vercel link` in. Sessions work in git worktrees under
+# .claude/worktrees/, which never have one — so find the checkout that does
+# instead of telling you to re-link and ending up with two.
+if [ ! -d .vercel ]; then
+  common=$(git rev-parse --git-common-dir 2>/dev/null || true)
+  linked=""
+  [ -n "$common" ] && linked=$(cd "$(dirname "$common")" 2>/dev/null && pwd)
+  if [ -n "$linked" ] && [ -d "$linked/.vercel" ]; then
+    printf '%s  this is a worktree; using the linked checkout at %s%s\n' "$dim" "$linked" "$n"
+    cd "$linked"
+  else
+    die "no Vercel project link (.vercel) here${linked:+ or at $linked} — run: vercel link"
+  fi
+fi
 
 # state of the deployed endpoint: unreachable | bootstrap | configured
 probe_state() {

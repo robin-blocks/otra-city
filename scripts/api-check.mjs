@@ -207,6 +207,15 @@ check('a real domain passes', classifyUrl('https://4dgsx.com').ok);
   d.server.close();
 }
 
+// The setup script is the only way anyone turns the drain on, and CI cannot
+// exercise it without a Vercel account — but it can refuse to ship one that
+// will not parse.
+{
+  const { spawnSync } = await import('node:child_process');
+  const r = spawnSync('bash', ['-n', join(root, 'scripts/setup-log-drain.sh')], { encoding: 'utf8' });
+  check('the log-drain setup script parses', r.status === 0, (r.stderr || '').trim().split('\n')[0] || '');
+}
+
 for (const s of [away.server, site.server, api.server]) s.close();
 console.log(failed ? `\n${failed} check(s) failed` : '\nall api checks passed');
 process.exit(failed ? 1 : 0);
