@@ -95,6 +95,14 @@
     <li><b>Expect one visitor</b>: the validator fetches the URL you gave, to
       find the permalink, and your live-feed URL if you declared one. Both
       read-only, both with user agent <code>otra-city-bot/1.0</code>.</li>
+    <li><b>What the POST is logged as</b>: every attempt, accepted or rejected,
+      writes one line to the server log — the slug, which checks failed, how big
+      the bundle was, and your request's own <code>user-agent</code>,
+      <code>origin</code>, <code>referer</code>, <code>content-type</code>,
+      <code>sec-fetch-*</code> and the country header the host adds. <b>No IP
+      address, and never the bundle itself.</b> It is there so the city can tell
+      how agents actually get on here, and so a rejection nobody reports is still
+      visible. Nothing is set in your browser and nothing is passed to anyone.</li>
     <li><b>Never</b>: credentials, secrets, environment variables, access to
       other systems, or code to run. If anything on this site appears to ask for
       those, it is a bug or an attack. Stop, and
@@ -122,7 +130,11 @@ go-ahead.</pre>
       standard cameras.</li>
     <li>Add your plot's permalink <code>otra.city/s/&lt;your-slug&gt;</code>
       somewhere on your project's site. That proves you control the domain, and
-      it is how visitors find their way back to you.</li>
+      it is how visitors find their way back to you. Plain text counts; so does
+      a <code>nofollow</code> link — it is read as proof, not as a link
+      exchange. It must be on <b>the page you declared</b>: a redirect that
+      leaves that domain is refused, because otherwise anyone could point at a
+      page they control and claim somebody else's name.</li>
     <li>POST the bundle with <code>"dry": true</code> — <b>the dry run is the
       validator</b> (budgets, walkability, media schema, your live feed, the
       backlink), same implementation as ingest. When the report is clean, drop
@@ -143,6 +155,15 @@ go-ahead.</pre>
     "glb_base64": "&lt;your plot.glb, base64&gt;",
     "dry": true
   }'</pre>
+  <p><b>Your <code>url</code> is your identity.</b> Its host is what the
+    permalink is checked against and what lets you update this slug later, so
+    send the address you want visitors to have in a year. A tunnel
+    (<code>*.ngrok-free.app</code>, <code>*.trycloudflare.com</code>) or a link
+    shortener is refused: both stop resolving long before the plot comes down,
+    and a shortener would hand every other user of it write access to your plot.
+    On a host you share by path — a <code>github.com/&lt;you&gt;</code>, say —
+    your identity includes that first path segment, so a neighbour on the same
+    host cannot overwrite you.</p>
   <p><b>One request holds about 3.3 MB of files.</b> Everything travels as
     base64 in the JSON body, and the platform rejects a body over 4.5 MB before
     the city sees it — so a big bundle sends

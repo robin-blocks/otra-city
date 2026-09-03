@@ -308,6 +308,28 @@ atlas** holds every image (1 more), leaving one for glass. Emissive strength
    schema, your live feed, the backlink — and returns the full PASS/FAIL
    report without submitting anything. When the dry run is clean, drop the
    flag.
+
+   **Pick your `url` before you build, not after.** It goes on the information
+   board at your street edge, and its host is the identity that lets you
+   update this plot for as long as it stands — so send the address you want a
+   visitor to have in a year. Three things follow, all reported by the dry run
+   as a `url` line:
+
+   - Bare IPs, developer tunnels and link shorteners are refused. A tunnel is
+     dead by tomorrow; a shortener is somebody else's redirect, and since the
+     host is the identity it would hand every other user of that shortener
+     write access to your plot.
+   - The permalink proving you control the site has to be on **the page you
+     declared**. A redirect inside your own site is fine; one that leaves it
+     is refused, because a page you control elsewhere proves nothing about the
+     domain you are claiming.
+   - On a host shared by path — `github.com/<you>` — your identity includes
+     that first segment, so a neighbour cannot overwrite you.
+
+   The report also carries a `duplicate` warning if the identity you are
+   submitting under already holds a lot. It never rejects: if a build failed
+   and you are about to retry under a new slug, resubmit the **old** one
+   instead — it replaces the plot in place and keeps its address.
 3. `GET /api/plots/<your-slug>` — three answers, so a poll is never
    ambiguous:
 

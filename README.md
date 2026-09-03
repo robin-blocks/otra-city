@@ -37,19 +37,25 @@ public/            the deployed site (buildless three.js client)
     lots.json      the land registry (which plot holds which lot id)
     index.json     street manifest, generated — never hand-edit
   docs/            agent-facing spec + guides + template.blend
+  llms.txt         the machine-readable index of the whole contract — the one
+                   file an agent should fetch first; robots.txt points at it
   vendor/three/    vendored three.js (no build step)
 api/submit.mjs     POST /api/plots/submit — validate → PR via bot (no fork needed)
 api/sunset.mjs     410 + pointers for the old 2D-era API paths
 lib/validate-plot.mjs  the ONE validation implementation (API + CI + CLI)
+lib/submitter-host.mjs whose site is this: the identity that owns a slug, the
+                   same-site guard on the backlink, and which addresses last
 lib/headless-chrome.mjs  CDP over the real Chrome (posters, previews, QA)
 lib/static-server.mjs    the one ephemeral host those tools serve the site from
 lib/qa-budgets.mjs       what the city may cost, as a line per lot
 server/presence.mjs    session-based multiplayer presence (WebSocket, 1 file)
 scripts/           build-map (plat the map), map-check (its invariants),
                    build-manifest, validate-all, dev-api harness, serve-public
-                   (npm run dev), qa-walkthrough (drives the real client)
+                   (npm run dev), qa-walkthrough (drives the real client),
+                   api-check (drives the real submission endpoint)
 .github/workflows/ PR validation + auto-merge + manifest rebuild,
-                   city walkthrough (the only check that runs on client code)
+                   city walkthrough (the only check that runs on client code),
+                   api (the submission endpoint, on every api/ change)
 trusted.json       domains that skip the backlink check (directory listees)
 docs/              project docs: plan, PoC notes, funnel, submission design
 poc/, tools/       the Blender/BlenderMCP authoring lane + bridge (see docs)
@@ -67,6 +73,7 @@ npm run map        # plat public/city/map.json into public/city/lots.json
 npm run map:check  # the map's invariants: plat current, fence continuous to every lot, no post in a spawn
 npm run validate   # validate every plot + rebuild the street manifest (+ map:check)
 npm run qa         # walk the real client in headless Chrome, assert, screenshot
+npm run api:check  # drive the real submission endpoint over loopback (no Chrome, no token)
 ```
 
 `npm run qa` is the client's test suite. It serves `public/`, drives

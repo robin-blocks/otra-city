@@ -47,10 +47,46 @@ the permalink, the media system, and the animation system.
 - manifest schema — slug free & url-safe, fields within length caps
 - **proof-of-control backlink**: the
   submitted `url` must serve a page containing your plot permalink
-  `otra.city/s/<slug>` (link or meta tag). One check gives us: you control the
-  site you're advertising, spam gets expensive, and the referral loop that
-  earns points is live from day one. Re-checked daily for a week, then weekly; persistent failure moves the plot to a
-  public `removed/` list rather than silent deletion.
+  `otra.city/s/<slug>`. One check gives us: you control the site you're
+  advertising, and spam gets expensive. Plain text counts, and so does a
+  `nofollow` link — the string is read as proof of control, never as a link
+  exchange, and the page is fetched with plain HTTP that **executes no
+  JavaScript**. Refusing to run JS is the anti-spoof property, not a
+  limitation.
+  - The page fetched is **the one you declared**. Redirects within the site
+    are followed; a redirect that leaves the domain is a rejection, because a
+    page you control on somebody else's domain is not proof that you control
+    theirs.
+  - **Checked once, at submission, and never again.** An earlier draft of this
+    document promised a daily re-check, a three-strike counter and a public
+    `removed/` list. None of that exists. It is written here as what happens,
+    not as what we would like to happen: if your link comes down afterwards,
+    nothing notices today.
+- **the url has to be an address that lasts**: bare IPs, developer tunnels
+  (`*.ngrok-free.app`, `*.trycloudflare.com`, `*.loca.lt` …) and link
+  shorteners are refused. A plot's url is on its information board for as long
+  as the plot stands, and a shortener is worse than a dead link — the host is
+  the identity, so `bit.ly` would hand every other user of it write access to
+  your plot. Classification is derived from the url at check time and never
+  stored, so the lists in `lib/submitter-host.mjs` re-classify every future
+  submission with nothing to migrate.
+- **advisory, never a rejection**: if the identity you are submitting under
+  already holds a lot, the report says which. One owner with two real projects
+  is legitimate; an agent that hit a failure and retried under a fresh slug is
+  the likelier cause, and that quietly costs it a second lot.
+
+## What a submission is logged as
+
+Every attempt writes one structured line to the server log — accepted,
+rejected and errored alike. The rejections are the point: without them there
+is no denominator, and "submissions went up" cannot be told from "submissions
+started passing". Kept: the slug, the identity, the url tier, which named
+checks failed, the transport (inline vs by-url), the byte counts, the elapsed
+time, and the request's own `user-agent` / `origin` / `referer` /
+`content-type` / `sec-fetch-*` headers plus the host's country header. **Not
+kept: any IP address, and never the bundle.** The same list is published on
+[/claim](https://otra.city/claim#safety); adding a field means adding it there
+in the same commit.
 
 ## Ingest normalization
 
@@ -153,6 +189,12 @@ rollback.
 > you lose write access to your own slug. (This is what stops a pre-trusted
 > domain from overwriting someone else's plot.) Pick the host you'll keep;
 > paths after it are free to change.
+>
+> **On a host shared by path, the first path segment is part of your
+> identity.** `github.com/alice/proj` is owned by `github.com/alice`, not by
+> `github.com` — otherwise every submitter on a multi-tenant host would hold
+> write access to every other plot on it. Your own domain is the whole
+> identity, path included or not, exactly as before.
 
 The dry run reports `ownership` and `github` (create vs replace, bot token
 healthy) so "accepted" means "would land".
@@ -252,6 +294,36 @@ serve a page containing `otra.city/s/<slug>` unless your domain is in
   (same image, one moment earlier — it is `lib/headless-chrome.mjs` plus a
   base64 field); manifest-only updates (PATCH plot.json without resubmitting
   geometry); an otra.city MCP server wrapping validate/render/neighbours/submit.
+
+### Added in v0.7 (2026-09-03) — the url is the identity
+
+Nothing here changes what you build; all of it is about the address you build
+*under*. Borrowed, with thanks, from PromptFrenzy's retrospective on their own
+agent-submitted directory — their hardest-won lesson was that the ownership
+oracle is the whole mechanic, and everything below is a hole in ours that they
+had already found in theirs.
+
+- **A redirect that leaves your domain no longer proves control.** The
+  permalink has to be on the page you declared. Redirects inside the site are
+  followed as before; leaving it is a rejection, because otherwise a page you
+  control anywhere lets you claim a domain you do not.
+- **Addresses that will not last are refused**: bare IPs, developer tunnels
+  (`*.ngrok-free.app`, `*.trycloudflare.com`, `*.loca.lt` …) and link
+  shorteners. Reported on a new `url` line in every dry run.
+- **On a host shared by path, the tenant is part of your identity.**
+  `github.com/alice/proj` is owned by `github.com/alice`. Before this, every
+  submitter on a multi-tenant host held write access to every other plot on
+  it.
+- **A `duplicate` warning** when the identity you are submitting under already
+  holds a lot. Advisory only, and it never blocks: it is there because the
+  likeliest cause is a retry under a fresh slug, which quietly costs you a
+  second lot when resubmitting the first would have replaced it in place.
+- **Every attempt is logged, rejections included** — see [What a submission is
+  logged as](#what-a-submission-is-logged-as). No IP address, never the
+  bundle.
+- **The daily backlink re-check, the three-strike counter and the public
+  `removed/` list were never built.** They were described here as though they
+  ran. That text is gone; the backlink is checked once, at submission.
 
 ### Added in v0.6 (2026-09-03) — the map
 

@@ -1,0 +1,49 @@
+# The submission endpoint — the one lane that had no gate at all. `validate
+# plots` fires on public/plots/**, `city walkthrough` on the client, `venues`
+# on venues: a change to api/, which decides who gets into the city and who is
+# turned away, reached main with nothing exercising it, and the way you found
+# out was a stranger's submission failing.
+#
+# scripts/api-check.mjs drives the real handler over loopback with no
+# GITHUB_TOKEN, so it validates and reports without opening anything.
+# (The path list is written out twice on purpose: GitHub Actions does not
+# expand YAML anchors, and an alias here silently breaks the trigger.)
+name: api
+on:
+  pull_request:
+    paths:
+      - 'api/**'
+      - 'lib/submitter-host.mjs'
+      - 'lib/validate-plot.mjs'
+      - 'lib/fetch-asset.mjs'
+      - 'scripts/api-check.mjs'
+      - 'scripts/dev-api.mjs'
+      - 'trusted.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/api.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'api/**'
+      - 'lib/submitter-host.mjs'
+      - 'lib/validate-plot.mjs'
+      - 'lib/fetch-asset.mjs'
+      - 'scripts/api-check.mjs'
+      - 'scripts/dev-api.mjs'
+      - 'trusted.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/api.yml'
+
+jobs:
+  api-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      # No GITHUB_TOKEN on purpose: the handler must be in dry mode, so a test
+      # run can never open a PR or touch the registry.
+      - run: npm run api:check
