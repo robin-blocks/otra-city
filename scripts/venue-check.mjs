@@ -187,6 +187,44 @@ for (const id of ids) {
           check('match: scoreboard paints hud truth', /[A-Z]{2,4} \d+-\d+ [A-Z]{2,4} \d+:\d\d/.test(ms2?.board || ''), `board "${ms2?.board}", clock ${ms2?.clock}, stage ${ms2?.stage}`);
           const sm = await mx.stats();
           check('match: draw calls with a match on', sm.calls <= MATCH_CALLS, `${sm.calls} (max ${MATCH_CALLS}), ${sm.tris} tris`);
+          // A distributed PA is only a PA if the arrival delay follows the
+          // visitor. Standing at the centre of a symmetric bowl every horn is
+          // equidistant (spread ~0); in a corner one is close and one is far.
+          // If those two readings match, the delays are constants and the
+          // effect is not there, however good it sounds.
+          const paCfg = (def.modules || []).find((m) => m.pa)?.pa;
+          if (paCfg) {
+            // the stem is a few MB and streams: wait for it rather than
+            // sampling the frame after the match mounted
+            const until = Date.now() + 60000;
+            for (;;) {
+              const st = (await mx.state()).venues.find((v) => v.id === id).modules[0].state;
+              if (st.pa?.ready || st.pa?.error || Date.now() > until) break;
+              await mx.step(10);
+              await new Promise((r) => setTimeout(r, 500));
+            }
+          }
+          const msA = (await mx.state()).venues.find((v) => v.id === id).modules[0].state;
+          if (paCfg) {
+            const listen = async (x, z) => {
+              await mx.evaluate(`(() => { const v = window.__venue; const w = v.world.toWorld(v.def, { x: ${x}, z: ${z} });
+                v.camera.position.set(w.x, 2.2, w.z); v.controls.target.set(w.x + 1, 2.2, w.z);
+                v.media.listener.updateMatrixWorld(true); return 1; })()`);
+              await mx.step(20);
+              const st = (await mx.state()).venues.find((v) => v.id === id).modules[0].state;
+              return st.pa || {};
+            };
+            const mid = await listen(0, 0);
+            const corner = await listen(18, -16);
+            check('match: PA is streaming the publisher stem', !!mid.ready && mid.speakers === paCfg.speakers.length,
+              mid.ready ? `${mid.speakers} speakers, source "${mid.source}"` : `not ready: ${mid.error}`);
+            check('match: the venue does not play commentary twice',
+              (msA?.sdkAudio || []).some((x) => x.id === (paCfg.source || 'commentary') && x.on === false),
+              JSON.stringify(msA?.sdkAudio));
+            check('match: PA arrival delay follows the listener',
+              corner.spreadMs - mid.spreadMs >= 25,
+              `spread ${mid.spreadMs} ms at the centre circle vs ${corner.spreadMs} ms in a corner (near ${corner.nearestMs} / far ${corner.farthestMs} ms)`);
+          }
           check('match: renders clean', sm.errors.length === 0 && mx.problems.length === 0, [...sm.errors, ...mx.problems].slice(0, 3).join(' | ') || 'no errors');
           await mx.evaluate('window.__venue.media.setMuted(true)');
           await mx.step(5);

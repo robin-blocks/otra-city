@@ -12,6 +12,7 @@
 // scoreboard shows the next kick-off; there are no replays on the live site
 // (decided 2026-09-02) — a bundle is downloaded only while a match is live.
 import * as THREE from 'three';
+import { createPA } from '/js/pa-system.js';
 
 const SDK_URL = 'https://4dgsx.com/sdk/v1/three.js';
 const FEED_ORIGIN = 'https://4dgsx.com';
@@ -55,6 +56,7 @@ export function create(ctx) {
   const state = {
     phase: 'idle', sdk: 'unloaded', coarse, active: false, match: null, docks: [], stage: null,
     score: null, clock: null, next: null, live: null, recent: [], audio: 'off', board: '', errors: [], updates: 0,
+    pa: null, sdkAudio: null,
   };
 
   // Screens get unlit materials that keep the authored plate as their map:
@@ -86,6 +88,11 @@ export function create(ctx) {
   let simTime = 0;
   let skewMs = 0;
   const now = () => Date.now() - skewMs;
+
+  // The venue's tannoy, if it declared one. Built here rather than per match
+  // so the speakers keep their places across mounts; it only carries sound
+  // while a match is up.
+  const pa = cfg.pa && media?.listener ? createPA({ listener: media.listener, root, cfg: cfg.pa, log }) : null;
 
   function paintBoard() {
     const W = BOARD_W;
@@ -229,6 +236,12 @@ export function create(ctx) {
         mutedIds.clear();
       }
       state.audio = !wantOn ? (media?.muted ? 'muted' : 'off') : stage.audio.enabled ? 'on' : 'pending gesture';
+      // Which of the publisher's own sources are still sounding. When the PA
+      // has taken the commentary over, its source must read off here, or the
+      // venue is playing the same voice twice.
+      state.sdkAudio = stage.audio.sources.map((x) => ({ id: x.id, on: x.on }));
+      pa?.setEnabled(wantOn && state.audio === 'on');
+      if (!wantOn) pa?.stop();
     } catch (e) { state.errors.push(`audio: ${e.message}`); }
   }
   function enableAudio() {
@@ -262,6 +275,19 @@ export function create(ctx) {
         st.audio.place(id, { position: [v.x, v.y, v.z], ref: spec.ref, max: spec.max });
       }
     } catch (e) { state.errors.push(`audio place: ${e.message}`); }
+    // The PA plays the publisher's own commentary stem through the venue's
+    // speakers. The SDK's copy is silenced only once ours is actually playing,
+    // so a PA that fails to load leaves commentary audible rather than gone.
+    // `item` is absent when a bundle is mounted directly (the fixture's
+    // ?bundle=), so the URL has to come from whichever path mounted us.
+    const stemFrom = item?.bundleUrl || cfg.bundle;
+    if (pa && stemFrom) {
+      pa.load(stemFrom).then((ok) => {
+        if (!ok || disposed) return;
+        try { st.audio.setOn(pa.state.source, false); } catch (e) { state.errors.push(`pa mute: ${e.message}`); }
+        audioPolicy();
+      });
+    }
     st.on('event', (e) => { if (e.type === 'goal') { goalUntil = simTime + 4; paintBoard(); } });
     st.on('statechange', (s) => { state.stage = s; paintBoard(); });
     state.stage = st.state;
@@ -272,6 +298,7 @@ export function create(ctx) {
     paintBoard();
   }
   function onUnmount() {
+    pa?.stop();
     if (stage) pitch.remove(stage.group);
     stage = null;
     state.match = null;
@@ -371,6 +398,17 @@ export function create(ctx) {
           const map = mesh.material.map;
           if (map && map.flipY !== false) { map.flipY = false; map.needsUpdate = true; }
         }
+        if (pa) {
+          // reported whether or not it is ready: a PA that failed to load is
+          // exactly the thing worth seeing in the state
+          state.pa = pa.state;
+          if (pa.state.ready) {
+            const t = stage.score?.t ?? 0;
+            if (!pa.state.playing && state.audio === 'on') pa.start(t);
+            pa.sync(t);
+            pa.update();            // arrival delays follow the visitor
+          }
+        }
       }
       boardTimer -= dt;
       if (boardTimer <= 0 || (goalUntil > 0 && goalUntil <= simTime && goalUntil > simTime - dt)) {
@@ -387,6 +425,7 @@ export function create(ctx) {
       try { slot?.dispose(); } catch (e) { log.warn('match-4dgsx: dispose', e); }
       slot = null;
       if (stage) { pitch.remove(stage.group); stage = null; }
+      pa?.dispose();
       boardTex.dispose();
       // hand every screen back the material it had, then drop ours: the venue
       // disposes what the scene graph holds, so what it holds must be the
