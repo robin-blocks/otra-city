@@ -260,11 +260,16 @@ window.__preview = {
   mannequin,
   POSTER,
   get plotRoot() { return plotRoot; },
-  /** Measure the frame on screen: { centreLit, meanY, reads, floor, street }.
-   *  Meaningful under the `poster` camera — that is the frame the city
-   *  publishes and a directory shows. Render first; a headless caller should
-   *  setCam('poster') then step() before asking. */
-  readability: () => (plotRoot ? measureReadability(renderer.domElement) : null),
+  /** Measure a frame: { centreLit, meanY, reads, floor, street }.
+   *  With no argument, the frame on screen — meaningful under the `poster`
+   *  camera, which is what the city publishes and a directory shows. Render
+   *  first; a headless caller should setCam('poster') then step().
+   *  Pass a canvas to measure something else, which is how the poster
+   *  renderer reads a poster that is already published without reshooting it. */
+  readability: (source = null) => {
+    if (source) return measureReadability(source);
+    return plotRoot ? measureReadability(renderer.domElement) : null;
+  },
   step(frames = 30, dt = 1 / 60) { // deterministic advance for hidden-tab tests
     for (let i = 0; i < frames; i++) {
       simT += dt;

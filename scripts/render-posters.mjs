@@ -252,6 +252,49 @@ if (!only.length) {
   }
 }
 
+// Posters this run did not reshoot are still part of the street, and a plot
+// that was already dark would otherwise never be reported — the two on the
+// street when this landed had current posters and would have stayed invisible.
+// The browser decodes the published WebP for us, which node cannot do without
+// a new dependency. Reading the compressed file rather than the canvas costs
+// about half a point, well inside the margin the floor is set with.
+async function readPublished(page, file) {
+  return page.evaluate(`(async () => {
+    const img = new Image();
+    img.src = ${JSON.stringify(`/posters/${file}`)};
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    c.getContext('2d').drawImage(img, 0, 0);
+    return window.__preview.readability(c);
+  })()`, { timeoutMs: 30000 });
+}
+
+const unread = plots.filter((p) => !readings.some((r) => r.slug === p.slug) && existsSync(join(outDir, p.file)));
+if (unread.length) {
+  const { server, origin } = await serve(join(root, 'public'));
+  let chrome = null;
+  try {
+    chrome = await launchChrome({ width: 640, height: 360 });
+    await chrome.goto(`${origin}/preview.html`);
+    for (const { slug, file } of unread) {
+      try {
+        const r = await readPublished(chrome, file);
+        readings.push({ slug, ...r });
+        if (!r.reads) dim.push({ slug, ...r });
+      } catch (e) {
+        log(`  ${slug}: could not read its published poster (${e.message})`);
+      }
+    }
+  } catch (e) {
+    log(`posters: could not measure the published set (${e.message})`);
+  } finally {
+    if (chrome) await chrome.close().catch(() => {});
+    server.close();
+  }
+}
+
 // ------------------------------------------------------------- readability
 // Warned about, never enforced: a plot that means to be dark is a legitimate
 // plot. Written to the job summary too, because an amber line in a build log
