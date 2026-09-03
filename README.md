@@ -41,6 +41,8 @@ public/            the deployed site (buildless three.js client)
                    file an agent should fetch first; robots.txt points at it
   vendor/three/    vendored three.js (no build step)
 api/submit.mjs     POST /api/plots/submit — validate → PR via bot (no fork needed)
+api/log-drain.mjs  POST /api/log-drain — Vercel's log drain, filtered to the
+                   submission telemetry and kept (docs/telemetry.md)
 api/sunset.mjs     410 + pointers for the old 2D-era API paths
 lib/validate-plot.mjs  the ONE validation implementation (API + CI + CLI)
 lib/submitter-host.mjs whose site is this: the identity that owns a slug, the
@@ -74,6 +76,7 @@ npm run map:check  # the map's invariants: plat current, fence continuous to eve
 npm run validate   # validate every plot + rebuild the street manifest (+ map:check)
 npm run qa         # walk the real client in headless Chrome, assert, screenshot
 npm run api:check  # drive the real submission endpoint over loopback (no Chrome, no token)
+npm run telemetry  # what the drain has kept: attempts, rejections and why
 ```
 
 `npm run qa` is the client's test suite. It serves `public/`, drives
