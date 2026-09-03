@@ -50,16 +50,28 @@ probe_state() {
 }
 probe_verify() { curl -fsSI --max-time 15 "$ENDPOINT" 2>/dev/null | tr -d '\r' | awk 'tolower($1)=="x-vercel-verify:"{print $2}'; }
 
+# An environment variable only reaches the running function through a build,
+# so every change here is followed by one.
 redeploy() {
   local url
   say "Redeploying production so the new environment variable takes effect"
   url=$(vercel ls --prod 2>/dev/null | grep -m1 '^https://') || die "could not find a production deployment"
   printf '  redeploying %s\n' "$url"
-  vercel redeploy "$url" --yes >/dev/null || die "redeploy failed — do it from the dashboard and re-run this script"
+  # `vercel redeploy` waits by default and has no confirmation flag.
+  vercel redeploy "$url" --target production >/dev/null || {
+    warn "redeploy failed. Redeploy the latest production deployment from the"
+    warn "dashboard, then re-run this script — it picks up where it left off."
+    exit 1
+  }
   printf '  waiting for it to go live'
   for _ in $(seq 1 60); do printf '.'; sleep 5; [ "$(probe_state)" != "unreachable" ] && { printf '\n'; return; }; done
   printf '\n'; warn "still not answering — give it a moment and re-run this script"
 }
+
+# Does production already carry this variable? Re-running must not try to add
+# one twice: the first run can perfectly well set the variable and then fail on
+# the redeploy, which is exactly what happened.
+env_has() { vercel env ls production 2>/dev/null | awk '{print $1}' | grep -qx "$1"; }
 
 say "Checking the deployed endpoint"
 state=$(probe_state)
@@ -69,6 +81,11 @@ ok "$ENDPOINT is up ($state)"
 # ---------------------------------------------------------------- step 1 of 3
 if [ -n "$(probe_verify)" ]; then
   ok "LOG_DRAIN_VERIFY is already set and being served"
+elif env_has LOG_DRAIN_VERIFY; then
+  say "Step 1 of 3 — LOG_DRAIN_VERIFY is set but the running deployment predates it"
+  redeploy
+  [ -n "$(probe_verify)" ] && ok "the endpoint is now serving x-vercel-verify" \
+    || warn "x-vercel-verify still not visible — check the value you set and re-run"
 else
   say "Step 1 of 3 — the verification value"
   cat <<TXT
@@ -105,9 +122,13 @@ ask "Drain created and secret copied?"
 
 # ---------------------------------------------------------------- step 3 of 3
 say "Step 3 of 3 — the secret"
-printf '  Paste the drain secret when prompted. Until this is set, deliveries\n'
-printf '  are accepted and DISCARDED.\n'
-vercel env add LOG_DRAIN_SECRET production || die "vercel env add failed"
+if env_has LOG_DRAIN_SECRET; then
+  ok "LOG_DRAIN_SECRET is already set — redeploying so it takes effect"
+else
+  printf '  Paste the drain secret when prompted. Until this is set, deliveries\n'
+  printf '  are accepted and DISCARDED.\n'
+  vercel env add LOG_DRAIN_SECRET production || die "vercel env add failed"
+fi
 redeploy
 
 say "Verifying"
