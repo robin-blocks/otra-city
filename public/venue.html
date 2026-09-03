@@ -333,9 +333,30 @@ function spawnClearance({ radius = 0.28, height = 0.95 } = {}) {
   return { at: [+s.x.toFixed(2), +s.z.toFixed(2)], radius, ok: blocked.length === 0, blocked };
 }
 
+// Can a visitor get here from the city's spawn at all? The walkable fence is a
+// union of shapes, and two that meet without OVERLAPPING leave a band that
+// belongs to neither — an invisible wall in the middle of open ground, which no
+// flood fill inside the venue can see. Samples the straight line from the city
+// spawn to the venue's, which is the route a visitor actually takes.
+function routeFromCity({ from = [-20, 0], stepM = 0.25 } = {}) {
+  const s = toWorld(def.spawn.x, def.spawn.z);
+  const n = Math.ceil(Math.hypot(s.x - from[0], s.z - from[1]) / stepM);
+  const gaps = [];
+  let run = null;
+  for (let i = 0; i <= n; i++) {
+    const x = from[0] + ((s.x - from[0]) * i) / n;
+    const z = from[1] + ((s.z - from[1]) * i) / n;
+    if (world.contains(x, z)) { if (run) { gaps.push(run); run = null; } continue; }
+    if (run) run.to = [+x.toFixed(2), +z.toFixed(2)];
+    else run = { from: [+x.toFixed(2), +z.toFixed(2)], to: [+x.toFixed(2), +z.toFixed(2)] };
+  }
+  if (run) gaps.push(run);
+  return { from, to: [+s.x.toFixed(2), +s.z.toFixed(2)], samples: n + 1, ok: gaps.length === 0, gaps };
+}
+
 window.__venue = {
   id, def, world, venues, scene, camera, renderer, controls, media, anims, doors, probe, roads, street, mannequin,
-  setPos, setLocal, setTier, setCam, step, stats, walkability, spawnClearance,
+  setPos, setLocal, setTier, setCam, step, stats, walkability, spawnClearance, routeFromCity,
   whenLoaded: () => venues.whenLoaded(id),
   state: () => ({ venues: venues.state(), doors: doors.state(), media: media.state, errors: errors.slice() }),
   errors,
