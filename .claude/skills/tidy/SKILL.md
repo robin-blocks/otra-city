@@ -1,6 +1,6 @@
 ---
 name: tidy
-description: End-of-session close-down for otra.city — the sweep that makes a session safe to compact, delete, or walk away from. Checks that the live city matches the repo, that nobody's submission is stranded in the pipeline, that any rule you tightened is documented before it can reject an honest agent, writes what matters into the project memory, leaves git clean and honest, kills what you started, and names what is blocked on Robin. Use this whenever Robin types /tidy or signals the session is ending — "let's wrap up", "closing down", "done for the night", "before I compact this", "anything hanging over?", "safe to clear the session?", "call it there" — and offer it proactively when a long working session is obviously winding down. Anything that exists only in the conversation dies with the conversation, so this runs before that happens, not after.
+description: End-of-session close-down for otra.city — the sweep that makes a session safe to compact, delete, or walk away from. Goes back over everything Robin asked for this session and accounts for each ask, checks that the live city matches the repo, that nobody's submission is stranded in the pipeline, that any rule you tightened is documented before it can reject an honest agent, writes what matters into the project memory, leaves git clean and honest, kills what you started, and names what is blocked on Robin. Use this whenever Robin types /tidy or signals the session is ending — "let's wrap up", "closing down", "done for the night", "before I compact this", "anything hanging over?", "safe to clear the session?", "call it there" — and offer it proactively when a long working session is obviously winding down. Anything that exists only in the conversation dies with the conversation, so this runs before that happens, not after.
 ---
 
 # /tidy — close the session down properly
@@ -16,8 +16,12 @@ So the question is not "did I finish my tasks". It is:
 > **If this session vanished right now, what would break, and what would be
 > lost?**
 
-Two failure modes. Every check below serves one of them.
+Three failure modes. Every check below serves one of them.
 
+- **Something asked for was quietly dropped.** Robin made a request, in the
+  middle of a long message or three messages ago, and it never got done. It
+  was not refused and it was not deferred; it simply fell out. From the
+  outside that looks exactly like a request nobody ever made.
 - **Something breaks in public**, because a change is half-landed. The city is
   a live site with a self-serve API that outside agents post to unattended, at
   any hour, with no human in the loop. A validator you tightened without
@@ -29,7 +33,10 @@ Two failure modes. Every check below serves one of them.
   conversation, it never reached a file. The next session starts ignorant and
   repeats the mistake.
 
-The second one is the sneaky one. It never announces itself.
+The last two are the sneaky ones. A broken site gets noticed and a lost fact
+gets rediscovered the hard way, eventually. A dropped request is invisible:
+the only person who can see it is Robin, the next time he walks the city and
+finds the thing he asked for is not there.
 
 ## Start with the sweep
 
@@ -55,7 +62,42 @@ not, and write down everything either way.
 
 ---
 
-## 1. Nothing live is left broken
+## 1. Everything asked for is done, or named
+
+Go back through the whole session — every message Robin sent, not just the
+last one — and write out what he actually asked for. Then account for each
+one. This takes a few minutes and it is the check most likely to find
+something, because it is the only one that looks at intent rather than state.
+
+Long messages carry several asks. A numbered list of seven is seven. So is
+"name the roads **and** put signs up". So is "each vacant lot should be
+claimable, with an ID, clickable like the banner outside a lot" — that is
+three. Split them before you tick them.
+
+For each ask, say which of these it is:
+
+- **Done** — and name the evidence, the same standard as everywhere else here.
+- **Done differently** — he asked for X, the build does Y, because Z. Usually
+  legitimate: a later instruction supersedes an earlier one, or the thing
+  turned out to be wrong when built. But it has to be **said**, not assumed.
+  He asked for X and did not get it; he is owed the sentence.
+- **Deferred** — with the reason, written in `docs/*/STATE.md` or memory, not
+  only in your head.
+- **Not done** — the one that matters. If it is still doable in the time you
+  have, do it now. If it is not, it goes at the **top** of the handoff, not
+  buried in a list of six other things.
+
+Two traps:
+
+- **The half-satisfied ask.** Naming a road after a community that has no lots
+  on it satisfies the words "name the roads" and misses the point of naming
+  them. Where a request had an evident purpose, check the purpose, not the
+  wording.
+- **The ask you answered with a question.** If you asked Robin to choose
+  between options and he chose, his answer is now a requirement — and the
+  place it has to survive is a file, not this conversation.
+
+## 2. Nothing live is left broken
 
 - **Does the deployed city match the repo?** The sweep compares every
   `plot.glb` byte-for-byte against the live site and the spec version alongside
@@ -73,7 +115,7 @@ not, and write down everything either way.
   street is empty and starts it on the next connection, and the client falls
   back to solo play regardless. A stopped machine is the design, not an outage.
 
-## 2. Obligations to the people outside this repo
+## 3. Obligations to the people outside this repo
 
 This is the part that cannot be fixed retroactively. An agent that was told the
 wrong thing about its own submission has been wronged in a way a later apology
@@ -102,7 +144,7 @@ does not undo.
   daily for a week, then weekly; three failures flag the listing and thirty
   days later it is gone. The sweep checks the live page for it.
 
-## 3. Memory is the only thing that survives
+## 4. Memory is the only thing that survives
 
 Memory for this project lives in
 `~/.claude/projects/-Users-robin-Code-personal-otra-city-3d/memory/`, and
@@ -133,7 +175,7 @@ Then do the hard part. Reread the session and hunt specifically for:
 
 If it is in your head and not in a file, it does not exist yet.
 
-## 4. Git is clean and honest
+## 5. Git is clean and honest
 
 - **Uncommitted work** — commit it in logical units, with messages that explain
   *why*. Ask before committing, ask before pushing: pushing is outward-facing,
@@ -160,7 +202,7 @@ Two failure modes worth naming, because both have happened here:
 - **Confirm a merge before deleting its branch.** Read the PR state back; do
   not infer it from a command that printed something reassuring.
 
-## 5. Clear the local mess
+## 6. Clear the local mess
 
 - **The Blender instance.** Sessions start a dedicated GUI Blender with the
   bridge on `:9876`. Kill the one you started; never touch Robin's own Blender,
@@ -173,7 +215,7 @@ Two failure modes worth naming, because both have happened here:
   large. Clearing it is safe; say how much you removed. Check disk on the way
   out — this Mac runs close to full.
 
-## 6. Surface what is blocked on Robin
+## 7. Surface what is blocked on Robin
 
 Anything waiting on a human gets its own short list, at the top of the handoff
 and in memory. Only `plot/*` branches auto-merge, so every `claude/*` PR you
@@ -191,6 +233,8 @@ End with a short brief — what a fresh session needs, in about ten lines. Not a
 recap of what you did; Robin was here for that. Write it for the stranger who
 wakes up tomorrow:
 
+- **Asks not met** — anything he asked for that is not there, or is there in
+  a different shape than he asked for. First, and in his words, not yours.
 - **Live** — what the city is serving, and whether it matches the repo.
 - **Blocked on Robin** — with consequences.
 - **Left undone** — and why, so nobody redoes the reasoning.
