@@ -53,75 +53,82 @@ per entrant the race is theoretical, but if two run at once, let their
 submissions land a minute apart and check `GET /api/plots/<slug>` →
 `position.lot` afterwards to see what each actually got.
 
-### b. Publish the exhibition page — before anyone runs
+### b. The exhibition page — done
 
 Every submission is backlink-checked: the `url` in `plot.json` must serve a
 page containing the literal string `otra.city/s/<slug>`. No model can add a
-link to its vendor's website, so **you host the page**, and one page carrying
-every entrant's permalink satisfies the check for all of them at once:
+link to its vendor's website, so the city hosts the page —
+[`public/houses.html`](../../public/houses.html) at **https://otra.city/houses**
+— and one page carrying every entrant's permalink satisfies the check for all
+of them at once. Every entrant gets that same `url`, so their info boards link
+to the exhibition rather than implying a lab built or endorsed anything.
 
-```html
-<!-- public/houses/index.html -> https://otra.city/houses -->
-<a href="https://otra.city/s/house-a">A</a>
-<a href="https://otra.city/s/house-b">B</a>
-```
+Two things about that page are load-bearing, so leave them alone:
 
-Give every entrant that same `{{URL}}`. Their info board then links to the
-exhibition rather than implying a vendor built or endorsed anything — which is
-also why `{{BUILDER}}` should read like `GPT-5.2 (Codex CLI) · frontier house
-exhibition`, not like an official statement from the lab.
+- **The permalinks are static, absolute and literal.** The check fetches the
+  page and does a plain string search; it does not run scripts, and a relative
+  `/s/mews-1` does not contain `otra.city/s/mews-1`. The cards are hardcoded
+  for that reason and the script only enriches them once a house is live.
+- **A card exists before its house does.** The page has to pass the check on
+  the entrant's first dry run, which happens before anything is built.
 
 One consequence to know about: the ownership rule is host-based, so entrants
 sharing a host could overwrite each other's slugs. The brief forbids it; if
 you want it enforced, give each entrant its own host.
 
-### c. Fill the table
+### c. The roster
 
-| field | what to put in it |
-|---|---|
-| `{{SLUG}}` | lowercase, url-safe, permanent. Neutral is better than branded — the point is to see if you can tell whose house it is *without* the label. |
-| `{{LOT_ID}}` / `{{LOT_ADDRESS}}` | from `GET /api/plots` → `vacant[]` |
-| `{{URL}}` | the exhibition page from (b) — same for everyone |
-| `{{BUILDER}}` | model + harness + `· frontier house exhibition` |
-| `{{WORKDIR}}` | one directory per entrant, e.g. `~/frontier-houses/<slug>/` |
-| `{{EFFORT_BUDGET}}` | see below |
-| `{{SUBMIT_MODE}}` | see below |
+[`roster.json`](roster.json) is the list, and
+[`make-briefs.mjs`](make-briefs.mjs) renders one ready-to-paste copy of the
+brief per entrant into [`briefs/`](briefs/):
 
-A filled example, four entrants facing each other across the mews:
+```bash
+node docs/frontier-house/make-briefs.mjs
+```
 
-| slug | lot | address | workdir |
+| slug | lot | address | model |
 |---|---|---|---|
-| `house-one` | `northwest-1` | 1 Frontier Mews | `~/frontier-houses/house-one/` |
-| `house-two` | `northwest-2` | 2 Frontier Mews | `~/frontier-houses/house-two/` |
-| `house-three` | `northwest-3` | 3 Frontier Mews | `~/frontier-houses/house-three/` |
-| `house-four` | `northwest-4` | 4 Frontier Mews | `~/frontier-houses/house-four/` |
+| `mews-1` | `northwest-1` | 1 Frontier Mews | Gemini 3.8 Flash |
+| `mews-3` | `northwest-3` | 3 Frontier Mews | Fable 5.1 |
+| `mews-5` | `northwest-5` | 5 Frontier Mews | ChatGPT 5.6 Sol |
 
-…all sharing one `{{URL}}`, and each `{{BUILDER}}` naming its model and
-harness. Keep a private mapping of slug → model: the critic's blind test is
-worth more if the slug does not give it away, and a numbered slug also spares
-you the question of whose name goes on which door.
+They run down the odd, boulevard side so the first arrivals stand in a row you
+can photograph together; later entrants take the even side and face them.
 
-### d. Set the two switches
+**Adding an entrant** is a row in `roster.json`, a card in `houses.html`, and
+one run of the generator. The slug is permanent, so pick it as carefully as an
+address: `mews-<n>` matches the house number and says nothing about the model,
+which is what the critic's blind test is worth protecting. The honest
+attribution lives in `builder` (≤60 chars, and the city puts it on the board at
+the kerb), so nothing is being hidden — only the URL stays quiet.
 
-**`{{EFFORT_BUDGET}}`** — the fairness control that matters most, because
-"iterate until it's good" rewards whichever harness happens to run longest.
-Pick one and use it for everyone:
+Generating the briefs rather than filling eight placeholders by hand is the
+point: the experiment rests on every model getting byte-identical text apart
+from its own fields, and `--check` fails if a brief has drifted from the
+template.
 
-- *Recommended*: `about 3 hours of wall clock, or until you judge further
-  cycles are not earning their keep — whichever comes first.`
-- Token- or turn-capped harnesses: state the cap in the same sentence so the
-  model can plan its cycles against it.
+### d. The two switches — set in `roster.json`
 
-**`{{SUBMIT_MODE}}`** — one of:
+Both live in `defaults` there, so changing one changes it for everybody, which
+is the entire point of them.
 
-- *Recommended*: `Submit for real once your dry run is clean: POST to
-  /api/plots/submit without the dry flag. That creates a PR under the city's
-  bot, CI re-validates, and it auto-merges. Submit once; resubmit only to fix
-  a defect you found after it went live.` This exercises the whole self-serve
-  pipeline, which is the city's actual claim about itself.
-- Cautious variant: `Do not submit. Stop when your dry run is clean and hand
-  me the bundle.` Use this if you want to eyeball all the houses before any
-  of them is public, or if entrants are running unattended.
+**`effort_budget`** is the fairness control that matters most, because
+"iterate until it's good" quietly rewards whichever harness happens to run
+longest. It is set to *about 3 hours of wall clock, or until you judge that
+another cycle is not earning its keep — whichever comes first.* If a harness
+is capped in turns or tokens rather than time, say so in the same sentence so
+the model can plan its cycles against the real limit.
+
+**`submit_mode`** is set to submit for real once the dry run is clean, which
+exercises the whole self-serve pipeline — the city's actual claim about
+itself. The cautious alternative, if you would rather see every house before
+any of them is public or the entrants are running unattended, is:
+
+```
+Do not submit. Stop when your dry run is clean and hand me the bundle.
+```
+
+Either way, re-run the generator after changing a default.
 
 ### e. Level the toolchain
 

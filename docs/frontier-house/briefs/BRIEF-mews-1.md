@@ -1,11 +1,5 @@
 # The Frontier House — builder brief
 
-> Paste this whole file to the model. Replace every `{{FILL}}` first; the
-> table in [ORGANISER.md](ORGANISER.md) has one row per entrant. Every entrant
-> gets the identical text apart from those fields — that is the experiment.
-
----
-
 ## Your commission
 
 Build the house you would want to live in, and put it on a street in
@@ -49,13 +43,13 @@ better here than a safe success.
 
 | | |
 |---|---|
-| Your slug | `{{SLUG}}` — your house lives at `https://otra.city/s/{{SLUG}}` forever |
-| Your lot | `{{LOT_ID}}` — {{LOT_ADDRESS}}. Assigned to you; request it in `plot.json` and request no other. |
-| Your `url` | `{{URL}}` — the exhibition page. It already carries your permalink, so the backlink check will pass. Do not change it. |
-| Your `builder` line | `{{BUILDER}}` |
-| Working directory | `{{WORKDIR}}` — yours alone. Create nothing outside it. |
-| Effort budget | {{EFFORT_BUDGET}} |
-| Submission | {{SUBMIT_MODE}} |
+| Your slug | `mews-1` — your house lives at `https://otra.city/s/mews-1` forever |
+| Your lot | `northwest-1` — 1 Frontier Mews. Assigned to you; request it in `plot.json` and request no other. |
+| Your `url` | `https://otra.city/houses` — the exhibition page. It already carries your permalink, so the backlink check will pass. Do not change it. |
+| Your `builder` line | `Gemini 3.8 Flash · frontier house exhibition` |
+| Working directory | `~/frontier-houses/mews-1/` — yours alone. Create nothing outside it. |
+| Effort budget | about 3 hours of wall clock, or until you judge that another cycle is not earning its keep — whichever comes first |
+| Submission | Submit for real once your dry run is clean: POST to /api/plots/submit without the dry flag. That opens a PR under the city's bot, CI re-validates it, and it merges itself. Submit once; resubmit only to fix a defect you found after it went live. |
 
 Tools available to you: a shell, network access, Python/Node, and — if this
 machine has it running — Blender with the BlenderMCP bridge. Use whatever
@@ -84,7 +78,7 @@ curl -s https://otra.city/docs/submission.md
 curl -s https://otra.city/docs/authoring.md
 ```
 
-Then walk the street you are building on: `https://otra.city/lot/{{LOT_ID}}`
+Then walk the street you are building on: `https://otra.city/lot/northwest-1`
 spawns a visitor on the pavement outside your lot, and every neighbour's build
 is public at `/plots/<slug>/plot.glb`. **Fetch your neighbours and
 deliberately differ.** The existing street is neon shopfronts; it is a strong
@@ -220,7 +214,7 @@ listed here as questions, because the answers are the interesting part:
 
 ## What you must deliver
 
-Everything under `{{WORKDIR}}`:
+Everything under `~/frontier-houses/mews-1/`:
 
 ```
 build/            your source — scripts, texture generators, whatever made it
@@ -238,8 +232,8 @@ NOTES.md          decisions, assumptions, open issues, next action
 REPORT.md         the honest final status (see Reporting)
 ```
 
-`plot.json` identity fields are fixed for this exhibition: `slug` `{{SLUG}}`,
-`url` `{{URL}}`, `builder` `{{BUILDER}}`, `lot` `{{LOT_ID}}`, `type`
+`plot.json` identity fields are fixed for this exhibition: `slug` `mews-1`,
+`url` `https://otra.city/houses`, `builder` `Gemini 3.8 Flash · frontier house exhibition`, `lot` `northwest-1`, `type`
 `freeform` unless you deliberately meet the shop door contract. `name` (≤24
 chars) and `tagline` (≤80) are yours — they go on the city's board at your
 kerb, so they are part of the design.
@@ -319,7 +313,7 @@ climb your stairs or see your first floor, and your staircase reads to it as a
 *wall* that eats into the 4 m² of reachable floor you have to prove. So:
 assert your real clearances in your self-test, say plainly in your report that
 they are asserted and not walked, and once your plot is live, walk it at
-`https://otra.city/s/{{SLUG}}` and fix whatever turned out to be a wall.
+`https://otra.city/s/mews-1` and fix whatever turned out to be a wall.
 
 ---
 
@@ -373,7 +367,7 @@ Order matters — later steps are only possible on top of earlier ones.
    attacking it, mark it **blocked** in `REPORT.md` with the exact reason and
    what you tried.
 8. **Submit** as the Submission line in that table directs, then poll
-   `GET /api/plots/{{SLUG}}` — `404` free, `202` in flight (keep polling,
+   `GET /api/plots/mews-1` — `404` free, `202` in flight (keep polling,
    ~a minute), `200` live with your position and poster.
 9. **Walk it live** and write `REPORT.md`.
 
@@ -381,13 +375,13 @@ Order matters — later steps are only possible on top of earlier ones.
 
 ## Boundaries
 
-You own `{{WORKDIR}}` and lot `{{LOT_ID}}`. You do not own, and must not
+You own `~/frontier-houses/mews-1/` and lot `northwest-1`. You do not own, and must not
 change: the otra.city repository (clone it to render — never modify, commit or
 push it), the map, the client, `trusted.json`, any other plot or slug, or any
 other entrant's directory. Every entrant in this
 exhibition submits from the same `url` host, which means the ownership rule
 will not stop you overwriting someone else's slug — **only ever submit to
-`{{SLUG}}`**.
+`mews-1`**.
 
 Make every design decision yourself and record the ones that mattered in
 `NOTES.md`. Come back and ask only if a decision would change the identity

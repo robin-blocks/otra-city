@@ -1,0 +1,14 @@
+{
+  "comment": "Who is in the exhibition, and the fields their copy of BRIEF.md is filled with. Add a row, run `node docs/frontier-house/make-briefs.mjs`, and paste the new file. Slugs are permanent and deliberately say nothing about the model: the critic's blind test is worth more when the url does not answer it, and the info board carries the honest attribution anyway. Lots run down the odd (boulevard) side of Frontier Mews so the first arrivals stand in a row you can photograph together; later entrants take the even side and face them.",
+  "defaults": {
+    "url": "https://otra.city/houses",
+    "workdir": "~/frontier-houses/<slug>/",
+    "effort_budget": "about 3 hours of wall clock, or until you judge that another cycle is not earning its keep — whichever comes first",
+    "submit_mode": "Submit for real once your dry run is clean: POST to /api/plots/submit without the dry flag. That opens a PR under the city's bot, CI re-validates it, and it merges itself. Submit once; resubmit only to fix a defect you found after it went live."
+  },
+  "entrants": [
+    { "slug": "mews-1", "lot": "northwest-1", "address": "1 Frontier Mews", "model": "Gemini 3.8 Flash" },
+    { "slug": "mews-3", "lot": "northwest-3", "address": "3 Frontier Mews", "model": "Fable 5.1" },
+    { "slug": "mews-5", "lot": "northwest-5", "address": "5 Frontier Mews", "model": "ChatGPT 5.6 Sol" }
+  ]
+}
