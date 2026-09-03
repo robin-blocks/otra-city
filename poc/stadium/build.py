@@ -372,6 +372,21 @@ def stand(side):
             mx = (a1, sign * lo if sign < 0 else sign * hi, z1)
         mesh.box(mn, mx, sw, tile_top=tile, skip=skip)
 
+    # Where the aisles fall, walked exactly as the seat loop walks them.
+    def aisle_spans():
+        spans = []
+        a = -half + 0.2
+        n = 0
+        while a + SEAT_W <= half - 0.2:
+            n += 1
+            if n % (AISLE_EVERY + 1) == 0:
+                spans.append((a, a + AISLE_W))
+                a += AISLE_W
+                continue
+            a += SEAT_W
+        return spans
+    AISLES = aisle_spans()
+
     # front wall from the gangway up to the first row, and the terrace body
     B(0, 0.5, -half, half, 0.0, BASE_H, "wall")
     for r in range(ROWS):
@@ -379,6 +394,14 @@ def stand(side):
         d0 = r * ROW_D
         B(d0, d0 + TREAD, -half, half, z - 0.5 if r == 0 else z - ROW_H, z, "terrace")
         B(d0 + TREAD, d0 + ROW_D, -half, half, z - ROW_H, z + 0.25, "riser")          # the half step
+        # The half step is 0.25 m DEEP, and an avatar has a 0.28 m radius: it
+        # could never stand on one, so the next row's face always blocked it
+        # and the terrace could be walked down but never up. In the aisles —
+        # the way up a real stand — the half step is carried forward to 0.5 m,
+        # which makes each row two ordinary 0.25 m steps.
+        for (aa0, aa1) in AISLES:
+            B(d0 + TREAD - 0.25, d0 + TREAD, aa0, aa1, z, z + 0.25, "riser")
+            B(d0 + TREAD - 0.25, d0 + TREAD, aa0, aa1, z, z + 0.25, "ink", mesh=cmesh)
         # seats along the tread, with aisles
         a = -half + 0.2
         n = 0
@@ -406,7 +429,11 @@ def stand(side):
     B(ROWS * ROW_D + REAR_GANG, STAND_DEPTH, door0 + 1.5, half, 0.0, TOP_H + 1.1, "wall")
     B(ROWS * ROW_D + REAR_GANG, STAND_DEPTH, door0, door0 + 1.5, 0.0, TOP_H, "wall")          # floor under the doorway
     B(ROWS * ROW_D + REAR_GANG, STAND_DEPTH, door0, door0 + 1.5, TOP_H + 2.3, TOP_H + 1.1 + 2.3, "wall")   # (lintel above head height)
-    B(ROWS * ROW_D + REAR_GANG - 0.1, ROWS * ROW_D + REAR_GANG, -half, half, TOP_H + 1.05, TOP_H + 1.15, "e_cyan_dim")
+    # the parapet's light strip stops at the doorway: drawn across it, it was
+    # a bar at chest height in the one opening people walk through — and
+    # decoration, so they walked through that too
+    B(ROWS * ROW_D + REAR_GANG - 0.1, ROWS * ROW_D + REAR_GANG, -half, door0, TOP_H + 1.05, TOP_H + 1.15, "e_cyan_dim")
+    B(ROWS * ROW_D + REAR_GANG - 0.1, ROWS * ROW_D + REAR_GANG, door0 + 1.5, half, TOP_H + 1.05, TOP_H + 1.15, "e_cyan_dim")
     # underside/back of the terrace, so the stand reads as a solid raised block
     B(0.5, ROWS * ROW_D, -half, half, 0.0, BASE_H - 0.5, "wall_lt")
     # side walls close the ends
@@ -508,6 +535,12 @@ for wx in [v * 6.0 for v in range(-4, 5)]:
         opaque.box((wx - 0.35, y0 + face, 0.0), (wx + 0.35, y0 + face + 0.02, WALL_H - 0.6), "wall_lt")
         opaque.box((wx - 0.12, y0 + face - 0.01, 0.6), (wx + 0.12, y0 + face + 0.03, WALL_H - 1.0), "e_cyan_dim")
 for wy in [v * 6.0 for v in range(-3, 4)]:
+    # A pilaster on the wall's rhythm at wy = 0 stands in the middle of the
+    # GATE, where there is no wall to pilaster: it read as a column in the
+    # doorway that stayed put when the doors slid apart, and being decoration
+    # it had no collision, so visitors walked through it.
+    if abs(wy) < GATE_W / 2 + 0.4:
+        continue
     for x0, face in ((-FOOT_X, -0.02), (FOOT_X - 0.5, 0.52)):
         opaque.box((x0 + face, wy - 0.35, 0.0), (x0 + face + 0.02, wy + 0.35, WALL_H - 0.6), "wall_lt")
         opaque.box((x0 + face - 0.01, wy - 0.12, 0.6), (x0 + face + 0.03, wy + 0.12, WALL_H - 1.0), "e_cyan_dim")

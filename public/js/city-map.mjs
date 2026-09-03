@@ -21,6 +21,25 @@
 // than renumbering everything after it. The chain origin is the end that
 // never moves — the stadium roundabout for the boulevard — so a road that
 // grows at its far end keeps every address it has already handed out.
+
+// City furniture, dimensioned here rather than in the renderer so the map
+// check measures the posts that are actually built. A plate or a board rides
+// TWO posts, at its own ends (`spread`) and behind its face (`back`): a post
+// on the centre line ran through the lettering of every directional sign, and
+// posts at 0.62 cut the first and last letter of every street name.
+export const PLATE = { w: 1.6, h: 0.3, y: 0.95, post: 1.15, spread: 0.8, back: 0.05, r: 0.03 };
+export const SIGN = { w: 1.6, h: 0.8, y: 2.0, post: 2.4, spread: 0.68, back: 0.06, r: 0.05 };
+/** The two posts of a plate or a board whose face looks along `yaw`. */
+export function postsOf(spec, at, yaw) {
+  const wx = Math.cos(yaw);
+  const wz = -Math.sin(yaw);
+  const bx = -Math.sin(yaw) * spec.back;
+  const bz = -Math.cos(yaw) * spec.back;
+  return [-spec.spread, spec.spread].map((s) => ({ x: at[0] + wx * s + bx, z: at[1] + wz * s + bz, r: spec.r }));
+}
+/** The rotation.y that makes a plate's face look toward `face`. */
+export const plateYaw = (p) => Math.atan2(p.face[0], p.face[1]);
+
 export const LOT_SIZE = 10;
 export const LOT_HALF = LOT_SIZE / 2;
 export const LOT_PITCH = 12;
@@ -353,37 +372,32 @@ export const baySigns = (map) => (map.bays || []).filter((b) => b.label)
   .map((b) => ({ bay: b.id, label: b.label, at: [b.min[0] - 0.75, bayFarZ(b)], yaw: bayOpensSouth(b) ? Math.PI : 0 }));
 export const allLamps = (map) => [...roadLamps(map), ...(map.roundabouts || []).flatMap((r) => roundaboutLamps(map, r)), ...bayLamps(map)];
 
-// A name plate at both ends of every segment of a named road, on the left
-// pavement just inside the trim, facing whoever is arriving: the roundabout
-// it meets, or, at a dead end, back down the road. A short stub (a close
-// with a bay at its end) gets one, at the junction. A LONG segment also gets
-// repeaters, so a visitor between the ends can read where they are — the
-// boulevard's two end plates were 30 m from the spawn. A repeater stands
-// where a lamp stands on the OTHER kerb (the even-k lamps are all on the
-// right), so the two never share a pavement, and it is on a lot boundary,
-// never in front of a lot's centre where /lot/<id> puts a visitor.
+// A street name plate at each END of a named road — the first and last node
+// of its chain, and nowhere else. It stands on the left pavement just inside
+// the trim and its face is PARALLEL TO THE ROAD, looking across it: the
+// British pattern, read from the carriageway or the far kerb as you pass,
+// not a board planted across the pavement facing down the street.
+//
+// `face` is the plate's outward normal (toward the road centre); its width
+// therefore runs along the road. The two posts stand at the plate's own ends
+// and a little behind it, so neither post ever crosses a letter.
 export function namePlates(map) {
   const out = [];
-  const lamps = roadLamps(map);
-  for (const s of roadSegments(map)) {
-    if (!s.road.name) continue;
-    const at = (t) => [s.a[0] + s.ux * t + s.lx * (s.half - 0.9), s.a[1] + s.uz * t + s.lz * (s.half - 0.9)];
-    const u = [s.ux, s.uz];
-    const back = [-s.ux, -s.uz];
-    const tA = s.trimA + (s.endA === 'roundabout' ? 1.5 : 2);
-    const tB = s.L - s.trimB - (s.endB === 'roundabout' ? 1.5 : 2);
-    out.push({ road: s.road.id, segment: s.id, kind: 'end', at: at(tA), face: s.endA === 'roundabout' ? back : u });
-    if (tB - tA < 20) continue;
-    out.push({ road: s.road.id, segment: s.id, kind: 'end', at: at(tB), face: s.endB === 'roundabout' ? u : back });
-    if (tB - tA <= 70) continue;
-    for (const l of lamps) {
-      if (l.road !== s.road.id || l.k % 2) continue;                       // right-kerb lamps only
-      const t = (l.x - s.a[0]) * s.ux + (l.z - s.a[1]) * s.uz;
-      const n = -(l.x - s.a[0]) * s.uz + (l.z - s.a[1]) * s.ux;
-      if (t < 0 || t > s.L || Math.abs(n + (s.half - 0.3)) > 0.05) continue;   // this segment's lamp
-      if (t - tA < 20 || tB - t < 20) continue;
-      out.push({ road: s.road.id, segment: s.id, kind: 'repeater', at: at(t), face: u });
-    }
+  const segs = roadSegments(map);
+  for (const road of map.roads || []) {
+    if (!road.name) continue;
+    const mine = segs.filter((s) => s.road === road);
+    if (!mine.length) continue;
+    const at = (s, t) => [s.a[0] + s.ux * t + s.lx * (s.half - 0.9), s.a[1] + s.uz * t + s.lz * (s.half - 0.9)];
+    const inward = (s) => [-s.lx, -s.lz];      // from the left pavement toward the road
+    const first = mine[0];
+    const last = mine[mine.length - 1];
+    out.push({ road: road.id, segment: first.id, kind: 'end', at: at(first, first.trimA + 2.5), face: inward(first) });
+    // A stub short enough to see end to end needs one plate, not two five
+    // metres apart; the one it keeps is at the junction it hangs off.
+    const total = mine.reduce((m, s) => m + s.L, 0) - first.trimA - last.trimB;
+    if (total < 25) continue;
+    out.push({ road: road.id, segment: last.id, kind: 'end', at: at(last, last.L - last.trimB - 2.5), face: inward(last) });
   }
   return out;
 }

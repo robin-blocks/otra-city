@@ -75,6 +75,34 @@ it the way a roundabout is meant to be walked.
 A flood fill inside the venue cannot see a seam in the fence outside it, which
 is why this shipped green.
 
+## Robin walked it (2026-09-03) — four things a green check had not caught
+He reported them from the live city; all four were real, and all four are
+fixed in `poc/stadium/build.py` and the client, with the venue rebuilt:
+
+| what he saw | what it was | fix | evidence |
+|---|---|---|---|
+| "when the stadium doors open, the central column stays put but people just walk through" | the outer wall's pilaster rhythm (`wy = 0`) put a 0.7 m pilaster in the middle of the GATE, where there is no wall to pilaster — and being decoration it had no collision | pilasters skip any band within the gate opening | `shots/stadium-gate.png`: the opening is clear through to the stair |
+| "would it create problems if the doors opened for other players too? … other players appear to walk through the doors" | `doors.update` only ever saw the local player, so a peer walked through closed glass | doors take EVERY position the city knows (`[player.pos, ...presence.positions]`); `presence.positions` is new | a peer alone at a shop door: open01 0 → 1 → 0 when it leaves |
+| "on the entrance to the stands, there's a horizontal bar blocking the way (even though you can walk straight through it)" | the parapet's light strip was drawn across the full width INCLUDING the doorway, at 1.05 m above the gangway — and the doorway has only a floor, so you walked through it | the strip stops either side of the doorway | fixture shots `doorway-from-stair`, `doorway-from-gangway` |
+| "the steps in the stands are possible to descend but not ascend" | the terrace's half step is 0.25 m deep and an avatar has a 0.28 m radius, so it could never stand on one: the next row's face blocked every ray. You arrived from the rear stair at the top and could never get back up | in the AISLES — the way up a real stand — the half step is carried forward to 0.5 m, making each row two ordinary 0.25 m steps | a real `PlayerController` walks row 0 (y 1.0) to the rear gangway (y 4.0) and back down; through the seats it still cannot climb, which is right |
+
+**New regression guard, and it took two attempts.** The first (a step up must
+have a landing wider than a body radius) did not fail the old build, because
+the fill only ever went DOWNHILL into the terrace — every seat really was
+reachable. What was wrong is that it was a ONE-WAY TRIP. `walkability` now
+runs the fill twice, forwards and backwards, testing each edge in the
+direction it would really be walked, and `venue-check` asserts every seat can
+be LEFT again. Against the old `venue.glb`: **100/600**. Against the new one:
+600/600.
+
+## The build no longer needs a Blender window
+`poc/stadium/run.py` picks its lane: the BlenderMCP bridge when a Blender
+session is listening on 9876, otherwise a HEADLESS `Blender --background`
+(`--bridge` / `--headless` force one). The headless lane rebuilt the venue
+faithfully — same 22 primitives, same 600 seats, `venue.json` unchanged, only
+`venue.glb` moved (1,320,084 → 1,325,424 bytes, the aisle steps) — so a
+terminal session, or CI, can now fix venue geometry.
+
 ## Rebase onto main (#28 street growth, #29 one static host)
 Both landed while this branch was in flight and both overlapped it:
 - `player.setBounds` exists on main taking a `{x, z}` box; this branch needed a
@@ -144,6 +172,11 @@ _none yet_
 
 ## Blockers
 - None.
+
+## Test results (2026-09-03, after Robin's walkthrough)
+- `node scripts/venue-check.mjs --venue stadium`: **all pass**, including the new "every seat can be left again" (600/600) and the unchanged budgets (tier 1: 15 meshes, 21,986 tris, 6 lights).
+- `node scripts/venue-shot.mjs --venue stadium`: 12 cameras; gate, stair, stand_low and the two doorway shots reviewed by eye.
+- Old-asset control: the same check against the pre-fix `venue.glb` fails "every seat can be left again" at 100/600 — the guard sees the defect it was written for.
 
 ## Next action
 - Robin: review and merge `claude/stadium-critique-fixes`. Then observe a live kick-off (RFL slots 12:00 / 16:00 / 20:00 London) — no live match has been watched end to end yet, only replays.

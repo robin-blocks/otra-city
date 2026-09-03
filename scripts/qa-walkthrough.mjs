@@ -233,7 +233,7 @@ await check(`a door controller for every shop (${shops.length})`, async () => {
   return { ok: n >= shops.length, doors: n, shops: shops.length };
 });
 
-await check(`a street name plate at both ends of every segment of every named road (${namePlates(map).length})`, async () => {
+await check(`a street name plate at each end of every named road (${namePlates(map).length}), one per short stub`, async () => {
   const r = await call(() => ({ plates: window.__city.roads.plates, meshes: window.__city.roads.group.children.filter((o) => o.name.startsWith('plates:')).length }));
   return { ok: r.plates === namePlates(map).length && r.meshes === roads.length, ...r, roads: roads.length };
 });

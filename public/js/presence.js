@@ -107,5 +107,12 @@ export function createPresence(scene, player, urlOverride) {
     }
   }
 
-  return { update, get count() { return peers.size; }, get connected() { return connected; } };
+  return {
+    update,
+    get count() { return peers.size; },
+    get connected() { return connected; },
+    // Live peer positions, for the systems that should react to any visitor
+    // rather than only to the one at this keyboard (doors, today).
+    get positions() { return [...peers.values()].map((p) => p.avatar.group.position); },
+  };
 }

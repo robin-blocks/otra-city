@@ -1,6 +1,11 @@
 // Sliding doors and gates: the one controller for a plot's door_panel_L/R
 // and a venue's gate panels. A pair slides apart in local X over `duration`
-// when a visitor is within `open` metres and closes again beyond `close`.
+// when SOMEBODY is within `open` metres and closes again beyond `close`.
+//
+// Somebody, not you: `update` takes every position the city knows about —
+// the visitor and every peer presence is rendering — because a door that
+// only opens for the local player leaves everyone else walking through
+// closed glass, which is what the city looked like.
 // Panels keep their authored base position, so a gate authored off-centre
 // (or a plot door at the identity) both work.
 import * as THREE from 'three';
@@ -23,9 +28,11 @@ export function createDoorSystem() {
       d.right.position.x = d.baseR;
       doors.delete(id);
     },
-    update(dt, p) {
+    update(dt, who) {
+      const people = Array.isArray(who) ? who : [who];
       for (const d of doors.values()) {
-        const dist = Math.hypot(p.x - d.at.x, p.z - d.at.z);
+        let dist = Infinity;
+        for (const p of people) dist = Math.min(dist, Math.hypot(p.x - d.at.x, p.z - d.at.z));
         d.target = dist < d.open ? 1 : dist > d.close ? 0 : d.target;
         d.open01 = THREE.MathUtils.clamp(d.open01 + Math.sign(d.target - d.open01) * (dt / d.duration), 0, 1);
         const e = ease(d.open01);

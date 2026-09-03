@@ -43,7 +43,7 @@ stated and recorded in `docs/stadium/STATE.md`.
 | Manifest | `scripts/build-manifest.mjs`, `public/plots/lots.json` | `reserved` rules keep the allocator (and vacant boards) out of venue precincts. |
 | Venue manifest | `scripts/build-venues.mjs` | Validates every `venue.json` against `docs/venues/venue-schema.json`, computes world-space bounds, writes `public/venues/index.json`. `--check` fails on drift (CI). |
 | Fixture | `public/venue.html` | The evidence page: real client pipeline, one venue at a forced tier, optional match bundle, fixed cameras from `venue.json.cameras`, `window.__venue` API. |
-| Scripts | `scripts/venue-shot.mjs`, `venue-check.mjs`, `venue-bench.mjs` | Screenshots, deterministic checks (budgets, node contract, tier cycle + memory return, walkability, match contract with a mocked feed, console errors), GPU frame-time benchmark. |
+| Scripts | `scripts/venue-shot.mjs`, `venue-check.mjs`, `venue-bench.mjs` | Screenshots, deterministic checks (budgets, node contract, tier cycle + memory return, walkability **in both directions — a seat that can be reached but not left is a bug**, match contract with a mocked feed, console errors), GPU frame-time benchmark. |
 | CI | `.github/workflows/venues.yml` | Runs build-venues `--check`, venue-check, venue-shot on the paths this system owns. |
 
 ## 3. Data

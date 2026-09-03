@@ -521,7 +521,7 @@ window.__step = (frames = 60, dt = 1 / 60) => {
   for (let i = 0; i < frames; i++) {
     simTime += dt;
     player.update(dt, simTime);
-    doors.update(dt, player.pos);
+    doors.update(dt, [player.pos, ...presence.positions]);
     venues.update(dt, player.pos, simTime);
     street.update(dt);
     anims.update(dt, simTime, player.pos);
@@ -549,7 +549,7 @@ renderer.info.autoReset = false;
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const speed = player.update(dt, clock.elapsedTime);
-  doors.update(dt, player.pos);
+  doors.update(dt, [player.pos, ...presence.positions]);
   venues.update(dt, player.pos, clock.elapsedTime);
   street.update(dt);
   anims.update(dt, clock.elapsedTime, player.pos);
