@@ -1,0 +1,70 @@
+# Walks the real city client in headless Chrome on every change that can break
+# it. Until this existed, `validate plots` was path-filtered to
+# public/plots/**, so a change to the client, to lib/ or to scripts/ reached
+# main with nothing but the docs check green — including changes to the very
+# library the poster renderer depends on.
+#
+# (The path list is written out twice on purpose: GitHub Actions does not
+# support YAML anchors, and an alias here silently breaks the trigger.)
+name: city walkthrough
+
+on:
+  pull_request:
+    paths:
+      - 'public/**'
+      - '!public/plots/**'
+      - '!public/posters/**'
+      - 'lib/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/city-walkthrough.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'public/**'
+      - '!public/plots/**'
+      - '!public/posters/**'
+      - 'lib/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/city-walkthrough.yml'
+  # The city can outgrow its draw budget with no client change at all, simply
+  # by filling up, and plot merges deliberately do not run this job.
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: city-walkthrough-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  walkthrough:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+
+      # Deliberately NOT continue-on-error. The poster step in `validate plots`
+      # is lenient because a poster is a nice-to-have for directories that
+      # thumbnail us and must never be what stops an honest plot from landing.
+      # That reasoning does not transfer: this job IS the gate, and a lenient
+      # gate is a decoration that teaches everyone to ignore red.
+      - name: walk the city
+        run: npm run qa
+
+      # Screenshots and the numeric report, kept whether or not the walk passed
+      # — a failure is exactly when the pictures are worth having.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: city-walkthrough-${{ github.run_id }}
+          path: qa-out/
+          retention-days: 14

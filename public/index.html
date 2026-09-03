@@ -488,7 +488,7 @@ document.getElementById('hud-close').addEventListener('click', () => {
 });
 const clock = new THREE.Clock();
 renderer.info.autoReset = false;
-renderer.setAnimationLoop(() => {
+function frame() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const speed = player.update(dt, clock.elapsedTime);
   doors.update(dt, player.pos);
@@ -503,7 +503,20 @@ renderer.setAnimationLoop(() => {
   const i = renderer.info.render;
   const peers = presence.count ? ` · ${presence.count} nearby` : '';
   stats.textContent = `${stats.dataset.load || 'loading…'} · ${i.triangles} tris · ${i.calls} calls · ${speed.toFixed(1)} m/s${peers}${venues.hudText()}`;
-});
+}
+renderer.setAnimationLoop(frame);
+
+// The automation surface, on the same terms preview.html offers window.__preview:
+// a supported handle, not an accident. scripts/qa-walkthrough.mjs walks this page
+// in CI through it. Nothing here is new state — these are the objects the render
+// loop already holds — and pause() exists because __step and the animation loop
+// are two clocks: anything measuring draw calls has to stop one of them first.
+window.__city = {
+  scene, camera, renderer, composer, controls, street, doors, venues, interactables,
+  step: window.__step,
+  pause() { renderer.setAnimationLoop(null); },
+  resume() { renderer.setAnimationLoop(frame); },
+};
 </script>
 </body>
 </html>
