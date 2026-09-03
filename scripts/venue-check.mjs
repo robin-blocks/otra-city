@@ -139,6 +139,8 @@ for (const id of ids) {
       check('tier 2 modules active', st2.tier === 2 && mods.every((m) => m.active || m.failed === false), mods.map((m) => `${m.type}:${m.active ? 'active' : m.failed ? 'FAILED' : 'idle'}`).join(', ') || 'no modules');
       check('tier 2 renders clean', s2.errors.length === 0 && fx.problems.length === 0, [...s2.errors, ...fx.problems].slice(0, 3).join(' | ') || 'no errors');
       const w = await fx.walkability({ cell: 0.25 });   // half-steps are 0.25 m deep
+      const sc = await fx.spawnClearance();
+      check('spawn is clear of geometry', sc.ok, sc.ok ? `avatar radius ${sc.radius} m free at [${sc.at}]` : `blocked at [${sc.at}]: ${sc.blocked.map((b) => `${b.what} ${b.d} m`).join(', ')}`);
       check('walkability: spawn stands on ground', !!w.ok && w.reachable <= w.walkable, w.reason || `${w.reachable} of ${w.walkable} walkable cells reachable (${w.nodes} surfaces, cell ${w.cell} m)`);
       check('walkability: gates passable', (w.gates || []).every((g) => g.reachable), (w.gates || []).map((g) => `${g.id}:${g.reachable ? 'ok' : 'BLOCKED'}`).join(', ') || 'no gates');
       check('walkability: seats reachable', w.seatsReachable >= (def.capacity || 0) && w.seatsReachable === w.seatsTotal, `${w.seatsReachable}/${w.seatsTotal} (capacity ${def.capacity || 0})`);

@@ -218,11 +218,17 @@ export function buildRoads(scene, world) {
       g.add(band);
       colliders.push(band);
     }
-    // lamps on the pavement ring, one per arc, on the arc's midpoint
+    // Lamps on the pavement ring. A WIDE arc gets two, at thirds, rather than
+    // one at its midpoint: the widest arc is the one facing whatever the
+    // roundabout serves, so a midpoint lamp lands exactly on the line people
+    // walk — a post in the doorway, and at the stadium it was in the spawn.
+    const rr = ro + pv - 0.3;
     for (const [a0, a1] of arcs.slice(0, r.lamps ?? 4)) {
-      const a = (a0 + a1) / 2;
-      const rr = ro + pv - 0.3;
-      lamp(cx + rr * Math.cos(a), cz + rr * Math.sin(a), r.lit);
+      // 1.2 rad ~ 69 deg. Three arms make three ~87 deg arcs here, so a
+      // threshold set by eye at 100 deg missed every one of them and put a
+      // post back on the axis.
+      const angles = a1 - a0 > 1.2 ? [a0 + (a1 - a0) / 3, a1 - (a1 - a0) / 3] : [(a0 + a1) / 2];
+      for (const a of angles) lamp(cx + rr * Math.cos(a), cz + rr * Math.sin(a), r.lit);
     }
     if (r.totem) {
       const t = r.totem;

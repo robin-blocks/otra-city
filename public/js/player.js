@@ -32,6 +32,11 @@ export class PlayerController {
     this.walkSpeed = 3.2;
     this.runSpeed = 5.6;
     this.followPos = new THREE.Vector3();
+    // camera occlusion: how far back the visitor chose to be, how close the
+    // camera may be pushed by geometry, and whether it is currently pushed
+    this.camWant = 4.6;
+    this.minCamDist = 0.9;
+    this.camPulled = false;
     // How far a visitor may wander: a { x, z } box, or an (x, z) => boolean
     // for a world that is no longer a rectangle — the city passes
     // world.contains once roads and venues are in, and that predicate is
@@ -62,6 +67,7 @@ export class PlayerController {
     this.enabled = true;
     this.followPos.set(this.pos.x, this.pos.y + 1.15, this.pos.z);
     this.controls.target.copy(this.followPos);
+    this.camWant = this.camera.position.distanceTo(this.controls.target);
   }
 
   addColliders(list) {
@@ -155,6 +161,42 @@ export class PlayerController {
     const delta = new THREE.Vector3().subVectors(this.followPos, this.controls.target);
     this.controls.target.copy(this.followPos);
     this.camera.position.add(delta);
+
+    // Keep the world out of the lens. A chase camera indoors — a shop, or a
+    // seat with a stand wall a metre behind it — otherwise spends its time
+    // inside geometry, showing the inside of a wall instead of the room. Pull
+    // the camera to the first thing between the visitor and the lens
+    // IMMEDIATELY (a snap inward is invisible) and ease back out when the view
+    // clears (a snap outward is a lurch). `camWant` remembers the distance the
+    // visitor chose, so a wall passed in the street gives it straight back.
+    if (this.enabled) {
+      const eye = new THREE.Vector3().subVectors(this.camera.position, this.controls.target);
+      const dist = eye.length();
+      if (dist > 0.01) {
+        eye.divideScalar(dist);
+        // Three rays, not one: a terrace is a comb of treads and seat backs with
+        // gaps between, and a single ray threads a gap and reports a clear view
+        // from inside the stand. The offsets are half an avatar apart, so
+        // anything an avatar-sized camera would be inside of is hit by one.
+        let nearest = null;
+        for (const dy of [0, 0.3, -0.3]) {
+          this.ray.set(new THREE.Vector3(this.controls.target.x, this.controls.target.y + dy, this.controls.target.z), eye);
+          this.ray.far = dist;
+          const h = this.ray.intersectObjects(this.all, false)[0];
+          if (h && (!nearest || h.distance < nearest.distance)) nearest = h;
+        }
+        const hit = nearest;
+        if (hit) this.camPulled = true;
+        else if (this.camPulled && dist >= this.camWant - 0.1) this.camPulled = false;
+        // While pulled in, the scroll wheel is not the truth about how far
+        // back the visitor wants to be — the wall is.
+        if (!this.camPulled) this.camWant = dist;
+        const clear = hit ? Math.max(this.minCamDist, hit.distance - 0.3) : Infinity;
+        const want = Math.min(this.camWant, clear);
+        const next = want < dist ? want : THREE.MathUtils.lerp(dist, want, 1 - Math.exp(-5 * dt));
+        this.camera.position.copy(this.controls.target).addScaledVector(eye, next);
+      }
+    }
 
     const speed = Math.hypot(this.vel.x, this.vel.z);
     this.avatar.update(dt, speed, time);

@@ -316,9 +316,26 @@ if (def) {
   setCam(params.get('cam') || Object.keys(def.cameras)[0]);
 }
 
+// Is the spawn point somewhere an avatar can actually stand? The flood fill
+// works on cell centres and cannot see a 0.14 m post: the stadium spawned
+// visitors inside a lamp, and 150 frames of walking moved them nowhere.
+function spawnClearance({ radius = 0.28, height = 0.95 } = {}) {
+  const s = toWorld(def.spawn.x, def.spawn.z);
+  const ray = new THREE.Raycaster();
+  const blocked = [];
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    ray.set(new THREE.Vector3(s.x, height, s.z), new THREE.Vector3(Math.cos(a), 0, Math.sin(a)));
+    ray.far = radius + 0.12;
+    const hit = ray.intersectObjects(probe.all, false)[0];
+    if (hit) blocked.push({ deg: Math.round((a * 180) / Math.PI), d: +hit.distance.toFixed(2), what: hit.object.parent?.name || hit.object.name || '?' });
+  }
+  return { at: [+s.x.toFixed(2), +s.z.toFixed(2)], radius, ok: blocked.length === 0, blocked };
+}
+
 window.__venue = {
   id, def, world, venues, scene, camera, renderer, controls, media, anims, doors, probe, roads, street, mannequin,
-  setPos, setLocal, setTier, setCam, step, stats, walkability,
+  setPos, setLocal, setTier, setCam, step, stats, walkability, spawnClearance,
   whenLoaded: () => venues.whenLoaded(id),
   state: () => ({ venues: venues.state(), doors: doors.state(), media: media.state, errors: errors.slice() }),
   errors,
