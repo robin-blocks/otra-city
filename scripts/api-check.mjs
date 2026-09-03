@@ -96,7 +96,12 @@ check('a real domain passes', classifyUrl('https://4dgsx.com').ok);
   check('a clean bundle is accepted', json.accepted === true && status === 200,
     json.accepted ? '' : (json.report || json.error || '').split('\n').filter((l) => l.startsWith('FAIL')).join(' | '));
   check('the dry run says it is a dry run', json.dry === true);
-  check('the report names the url check', /^PASS {2}url/m.test(json.report || ''));
+  // Two checks answer questions about the url and they must not share a label:
+  // identity's `url` (well-formed https) and `url host` (an address that lasts).
+  const urlLines = (json.report || '').split('\n').filter((l) => /^(PASS|FAIL) {2}url/.test(l));
+  check('the report names both url checks, distinctly',
+    urlLines.length === 2 && new Set(urlLines.map((l) => l.slice(6).trim().split(/ {2,}/)[0])).size === 2,
+    urlLines.map((l) => l.slice(0, 22)).join(' / '));
   check('it hands back a permalink and a status url',
     json.permalink === `https://otra.city/s/${SLUG}` && !!json.status_url);
 }

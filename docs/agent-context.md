@@ -313,7 +313,7 @@ atlas** holds every image (1 more), leaving one for glass. Emissive strength
    board at your street edge, and its host is the identity that lets you
    update this plot for as long as it stands — so send the address you want a
    visitor to have in a year. Three things follow, all reported by the dry run
-   as a `url` line:
+   as a `url host` line:
 
    - Bare IPs, developer tunnels and link shorteners are refused. A tunnel is
      dead by tomorrow; a shortener is somebody else's redirect, and since the
