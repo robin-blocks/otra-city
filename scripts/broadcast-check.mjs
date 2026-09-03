@@ -25,6 +25,8 @@ const flag = (name) => argv.includes(`--${name}`);
 const FRAMES = Number(arg('frames', '250'));      // 5 s at 50 fps
 const CAMERA = arg('camera', 'gantry');
 const BUNDLE = arg('bundle');
+const CROWD = arg('crowd');
+const CAMTRACK = arg('camtrack');
 const SHOTS = arg('shots');
 const out = arg('out');
 
@@ -43,6 +45,8 @@ async function openBroadcast({ width = 1280, height = 720 } = {}) {
   chrome.onConsole((type, text) => { if (type === 'error') problems.push(text); });
   const q = new URLSearchParams({ camera: CAMERA });
   if (BUNDLE) q.set('bundle', BUNDLE);
+  if (CROWD) q.set('crowd', CROWD);
+  if (CAMTRACK) q.set('camtrack', CAMTRACK.startsWith('http') ? CAMTRACK : `${origin}${CAMTRACK}`);
   // The static host serves files, not vercel.json's rewrites: /broadcast is
   // the public route, /broadcast.html is the file behind it.
   await chrome.goto(`${origin}/broadcast.html?${q}`);
@@ -74,7 +78,8 @@ async function openBroadcast({ width = 1280, height = 720 } = {}) {
   };
 }
 
-console.log(`broadcast check — camera ${CAMERA}, ${FRAMES} frames${BUNDLE ? `, bundle ${BUNDLE}` : ', ambient'}\n`);
+console.log(`broadcast check — camera ${CAMERA}, ${FRAMES} frames${BUNDLE ? `, bundle ${BUNDLE}` : ', ambient'}`
+  + `${CROWD ? `, crowd ${CROWD}` : ''}${CAMTRACK ? `, camtrack ${CAMTRACK}` : ''}\n`);
 
 let a = null, b = null, failed = 0;
 const report = { camera: CAMERA, frames: FRAMES, bundle: BUNDLE || null, checks };
@@ -95,6 +100,10 @@ try {
   // With a bundle, "ready" has to mean the match is ON the pitch. The venue
   // reaches Tier 2 in one tick and the bundle lands seconds later, so a page
   // that resolved at Tier 2 would hand the harness an empty pitch to film.
+  if (CROWD) {
+    check('the crowd is seated', (s0.crowd?.fans ?? 0) > 0, `${s0.crowd?.fans} of ${s0.crowd?.seatsOffered} seats at density ${s0.crowd?.density} (cap ${s0.crowd?.cap})`);
+  }
+  if (CAMTRACK) check('the camera track loaded', (s0.camtrack?.segments ?? 0) > 0, `${s0.camtrack?.segments} segments to frame ${s0.camtrack?.lastFrame}`);
   if (BUNDLE) check('the match is mounted before ready resolves', s0.match?.phase === 'match', `phase "${s0.match?.phase ?? 'none'}"`);
   check('drawing buffer matches the contract', ...(await (async () => {
     const d = await a.evaluate('JSON.stringify([window.rflBroadcast.three.renderer.domElement.width, window.rflBroadcast.three.renderer.domElement.height])').then(JSON.parse);
@@ -120,7 +129,11 @@ try {
       // A mounted match puts the SDK's attribution Sprite in the scene, and
       // Sprite.raycast dereferences raycaster.camera — null by default.
       rc.camera = cam;
-      const hit = rc.intersectObject(scene, true).filter((h) => h.object.isMesh && h.object.visible)[0];
+      // Raycaster ignores visibility, and a hidden object's own .visible can
+      // still be true while the group holding it is hidden — which is exactly
+      // how a venue's Tier-0 impostor is put away. Walk the chain.
+      const shown = (o) => { for (let n = o; n; n = n.parent) if (!n.visible) return false; return true; };
+      const hit = rc.intersectObject(scene, true).filter((h) => h.object.isMesh && shown(h.object))[0];
       // Whose geometry is in the way matters. A mounted bundle brings RFL's
       // own arena — walls, goal frames, corner panels — and its wall stands
       // exactly on the corner of the marked area. That is the subject of the
@@ -146,6 +159,13 @@ try {
 
   // ---- stepping ------------------------------------------------------------
   console.log('\nstepping (§4)');
+  await a.evaluate(`window.rflBroadcast.step(1).then(() => {
+    const p = window.rflBroadcast.pixels();
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < p.length; i++) { h ^= p[i]; h = Math.imul(h, 16777619) >>> 0; }
+    window.__earlyHash = h.toString(16).padStart(8, '0');
+    return true;
+  })`);
   const beforeNet = await a.resources();
   const t1 = await a.step(FRAMES);
   check('step(n) lands on the requested frame', t1.frame === FRAMES, `frame ${t1.frame}, t=${t1.t}s`);
@@ -157,6 +177,12 @@ try {
   check('stepping backwards is refused, not silently wrong', backwards === 'refused', backwards);
   const hashA = await a.hash();
   const sA = await a.state();
+  if (CROWD) {
+    // A crowd that hashes the same at two distant frames is a still photograph
+    // of a crowd, which is exactly the failure RFL called out by name.
+    const early = await a.evaluate('window.__earlyHash || null');
+    check('the crowd is not a still photograph', early && early !== hashA, `frame 1 ${early} vs frame ${FRAMES} ${hashA}`);
+  }
   check('no console errors', a.problems.length === 0 && sA.errors.length === 0,
     [...new Set([...a.problems, ...sA.errors])].slice(0, 3).join(' | ') || 'clean');
 
