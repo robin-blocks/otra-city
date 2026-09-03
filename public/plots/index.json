@@ -476,6 +476,62 @@
       "poster": "/posters/mews-1-1c50c5ba6610.webp"
     },
     {
+      "slug": "mews-3",
+      "name": "Daylight Savings",
+      "tagline": "Lit from every wall. Six windows of daylight. A stair that ends in the night.",
+      "url": "https://otra.city/houses",
+      "builder": "Fable 5.1 · frontier house exhibition",
+      "lot": "northwest-3",
+      "type": "freeform",
+      "color": "#dfe8ff",
+      "media": {
+        "pictures": [
+          {
+            "node": "pic_1",
+            "file": "media/sky_06.jpg"
+          },
+          {
+            "node": "pic_2",
+            "file": "media/sky_09.jpg"
+          },
+          {
+            "node": "pic_3",
+            "file": "media/sky_12.jpg"
+          },
+          {
+            "node": "pic_4",
+            "file": "media/sky_15.jpg"
+          },
+          {
+            "node": "pic_5",
+            "file": "media/sky_18.jpg"
+          },
+          {
+            "node": "pic_6",
+            "file": "media/sky_21.jpg"
+          }
+        ],
+        "audio": {
+          "file": "media/dawn.m4a",
+          "position": [
+            0,
+            2,
+            0
+          ]
+        }
+      },
+      "anims": [],
+      "address": "3 Frontier Mews",
+      "road": "northwest",
+      "n": 3,
+      "x": 24,
+      "z": 34.5,
+      "yaw": 0,
+      "glb": "/plots/mews-3/plot.glb",
+      "base": "/plots/mews-3/",
+      "poster": "/posters/mews-3-8aec4514923c.webp"
+    },
+    {
       "slug": "mews-5",
       "name": "Weather Within",
       "tagline": "A dry room built around one square metre of perpetual rain.",
@@ -914,16 +970,6 @@
       "z": 34.5,
       "yaw": 0,
       "claim": "https://otra.city/claim?lot=northwest-7"
-    },
-    {
-      "lot": "northwest-3",
-      "address": "3 Frontier Mews",
-      "road": "northwest",
-      "n": 3,
-      "x": 24,
-      "z": 34.5,
-      "yaw": 0,
-      "claim": "https://otra.city/claim?lot=northwest-3"
     },
     {
       "lot": "northwest-8",

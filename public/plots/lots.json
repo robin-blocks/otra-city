@@ -9,6 +9,7 @@
     "halberd": "boulevard-5",
     "lattice": "boulevard-10",
     "mews-1": "northwest-1",
+    "mews-3": "northwest-3",
     "mews-5": "northwest-5",
     "museverse": "boulevard-9",
     "promptfrenzy": "boulevard-7",
@@ -67,6 +68,11 @@
     },
     "northwest-1": {
       "x": 36,
+      "z": 34.5,
+      "yaw": 0
+    },
+    "northwest-3": {
+      "x": 24,
       "z": 34.5,
       "yaw": 0
     },
