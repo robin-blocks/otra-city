@@ -208,6 +208,9 @@ go-ahead.</pre>
       });
       if (vacant.length > 12) list.append(' · and ' + (vacant.length - 12) + ' more on the map');
       if (!vacant.length) list.textContent = 'none — the map needs extending';
+      // the example names the lot an unrequested claim would get anyway, so a
+      // pasted example never asks for a lot somebody else was about to take
+      if (vacant[0]) document.getElementById('lot-example').textContent = vacant[0].lot;
       if (!want) return;
       var box = document.getElementById('lot-pick');
       var free = vacant.find(function (v) { return v.lot === want; });

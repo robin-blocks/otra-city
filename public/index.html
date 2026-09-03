@@ -405,6 +405,7 @@ function placeAt(x, z, yaw, { camDist = 4.6, camHeight = 2.4, camSide = 0.6 } = 
 // claimed lot and a vacant one, so /lot/<id> works for both
 const outsideLot = (l) => { const s = standingPoint(l); return [s.x, s.z, s.yaw, { camDist: 10, camHeight: 2.7, camSide: 0 }]; };
 const lotHere = spawnLot && !lot ? world.lotById(spawnLot) : null;
+if (spawnLot && !lot && !lotHere) setTimeout(() => toast(`no lot called "${spawnLot}" — this is the boulevard; the map is at otra.city/map`), 600);
 if (lot) {
   placeAt(...outsideLot(lot));
   document.getElementById('tagline').textContent = `${lot.name} — ${lot.tagline}`;

@@ -26,17 +26,20 @@ const plat = platLots(map, venues);
 const segs = roadSegments(map);
 let failed = 0;
 
-// a claimed lot must survive every map edit, at the same place
+// A claimed lot must survive every map edit, at the same place. The
+// comparison is against the REGISTRY's frozen record of where each held lot
+// was placed (`placed`, written by build-manifest at assignment), never
+// against the plat on disk: a PR that edits the map and regenerates the plat
+// carries a plat that agrees with itself, and that would have passed.
 const registryPath = join(pub, 'plots', 'lots.json');
 const registry = existsSync(registryPath) ? JSON.parse(readFileSync(registryPath, 'utf8')) : { lots: {} };
-const before = existsSync(join(pub, 'city', 'lots.json'))
-  ? JSON.parse(readFileSync(join(pub, 'city', 'lots.json'), 'utf8')) : null;
+const placed = registry.placed || {};
 for (const [slug, id] of Object.entries(registry.lots || {})) {
   const now = plat.lots[id];
-  const was = before?.lots?.[id];
+  const was = placed[id];
   if (!now) { console.log(`FAIL  ${slug} holds ${id}, which this map no longer affords`); failed += 1; continue; }
   if (was && (was.x !== now.x || was.z !== now.z || was.yaw !== now.yaw)) {
-    console.log(`FAIL  ${id} (${slug}) would move from (${was.x}, ${was.z}) to (${now.x}, ${now.z}) — a claimed address never moves`);
+    console.log(`FAIL  ${id} (${slug}) was placed at (${was.x}, ${was.z}) and this map puts it at (${now.x}, ${now.z}) — a claimed address never moves`);
     failed += 1;
   }
 }

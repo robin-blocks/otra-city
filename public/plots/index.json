@@ -556,6 +556,16 @@
       "claim": "https://otra.city/claim?lot=boulevard-1"
     },
     {
+      "lot": "boulevard-2",
+      "address": "2 Singularity Boulevard",
+      "road": "boulevard",
+      "n": 2,
+      "x": 36,
+      "z": 11.5,
+      "yaw": 3.141592653589793,
+      "claim": "https://otra.city/claim?lot=boulevard-2"
+    },
+    {
       "lot": "boulevard-13",
       "address": "13 Singularity Boulevard",
       "road": "boulevard",
@@ -574,16 +584,6 @@
       "z": 11.5,
       "yaw": 3.141592653589793,
       "claim": "https://otra.city/claim?lot=boulevard-14"
-    },
-    {
-      "lot": "boulevard-2",
-      "address": "2 Singularity Boulevard",
-      "road": "boulevard",
-      "n": 2,
-      "x": 36,
-      "z": 11.5,
-      "yaw": 3.141592653589793,
-      "claim": "https://otra.city/claim?lot=boulevard-2"
     },
     {
       "lot": "boulevard-15",

@@ -17,7 +17,7 @@
 // with the city's light pool (js/lights.js) rather than owning a PointLight;
 // the pool lights whichever sources the visitor is nearest.
 import * as THREE from 'three';
-import { roadSegments, roadLamps, roundaboutArcs, roundaboutLamps, namePlates, deadEnds } from '/js/city-map.mjs';
+import { roadSegments, roadLamps, roundaboutArcs, roundaboutLamps, bayLamps, namePlates, deadEnds } from '/js/city-map.mjs';
 import { createInstancer, mergedQuads } from '/js/geom.js';
 
 const mat = (color, opts = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.92, ...opts });
@@ -208,10 +208,12 @@ export function buildRoads(scene, world) {
   }
   const roadLampList = roadLamps(map);
   for (const l of roadLampList) lamp(l);
-  // a kerb block across every dead end, taller than a step: the end of a road
-  // is a thing you can see, not an invisible wall
+  // a kerb block across every dead end, taller than a step, with a lit edge:
+  // the end of a road is a thing you can see at night, not an invisible wall
+  // (the nearest lamp is a pitch away and the block is the pavement's colour)
   for (const e of deadEnds(map)) {
     box('kerb', e.at[0] - e.ux * 0.3, ISLAND_H / 2, e.at[1] - e.uz * 0.3, yawOf(e.ux, e.uz), 0.6, ISLAND_H, e.width);
+    box('bollard_cap', e.at[0] - e.ux * 0.3, ISLAND_H + 0.02, e.at[1] - e.uz * 0.3, yawOf(e.ux, e.uz), 0.14, 0.04, e.width - 0.3);
   }
 
   // ---- roundabouts ---------------------------------------------------------
@@ -281,8 +283,8 @@ export function buildRoads(scene, world) {
     box('paving', cx, PAVE_H / 2, openSouth ? b.max[1] + 0.75 : b.min[1] - 0.75, 0, w + 3, PAVE_H, 1.5);
     for (let x = b.min[0] + 1; x < b.max[0]; x += 2) box('stripe', x, 0.02, cz, 0, 1.2, 0.03, 0.16);
     if (b.label) sign([b.min[0] - 0.75, openSouth ? b.max[1] + 0.75 : b.min[1] - 0.75], openSouth ? Math.PI : 0, [b.label, ''], '#ffbf80');
-    lamp({ x: b.max[0] + 0.75, z: openSouth ? b.max[1] + 0.75 : b.min[1] - 0.75, lit: false });
   }
+  for (const l of bayLamps(map)) lamp(l);   // placed by the shared module, so the map check sees them
 
   // ---- crossings, directional signs, bollards ----------------------------
   for (const c of map.crossings || []) {

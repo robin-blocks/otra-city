@@ -14,7 +14,8 @@
   .sub { color: #8a86a0; margin: 0 0 18px; }
   a { color: #2fe0f8; text-decoration: none; }
   a:hover { text-decoration: underline; }
-  #plan { display: block; width: 100%; height: auto; background: #0e0b1b; border: 1px solid #31234f; border-radius: 10px; }
+  .plan-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  #plan { display: block; width: 100%; min-width: 1200px; height: auto; background: #0e0b1b; border: 1px solid #31234f; border-radius: 10px; }
   .legend { display: flex; flex-wrap: wrap; gap: 14px; color: #8a86a0; font-size: 12px; margin: 10px 0 0; }
   .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
@@ -33,7 +34,7 @@
     A lot is 10 × 10 m; its number is its address along the road. Free lots are yours to claim —
     <code>GET /api/plots</code> lists them in <code>vacant[]</code>, and <code>"lot": "&lt;id&gt;"</code>
     in your plot.json asks for one. <a href="/claim">How to claim →</a></p>
-  <canvas id="plan" width="1400" height="900"></canvas>
+  <div class="plan-wrap"><canvas id="plan" width="1400" height="900"></canvas></div>
   <div class="legend">
     <span><i style="background:#3a3846"></i>road + pavement</span>
     <span><i style="background:#24222c"></i>plaza</span>

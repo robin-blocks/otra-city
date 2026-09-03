@@ -47,15 +47,49 @@ _Last update: 2026-09-03 (M1 in progress on `claude/city-map-expansion-lots-4ce3
 - 2026-09-03 `npm run validate`: all plots valid, manifest 10 lots / 24 vacant, map ok.
 - 2026-09-03 dry runs against `scripts/dev-api.mjs` (signal's glb): no request → "you would get boulevard-1"; `boulevard-13` → free; `boulevard-8` → held by city-hall (FAIL); `mars-1` → not on the map (FAIL); `BOULEVARD 13` → not a lot id (FAIL at the identity table); an update of `signal` asking for `boulevard-13` → kept at boulevard-3, request ignored.
 - 2026-09-03 `npm run qa`, first run on the district: 27 PASS / 8 FAIL, all eight the harness's own conversion — the road walks judged "near the end point" while the avatar runs on into the roundabout (now: progress along the axis); the door-close check stood 1.1 m from the door (now 4.9 m); the boulevard budget was measured with the stadium still resident from the ring walk (now on a fresh page).
+- 2026-09-03 CI on PR #37 (`768142c`): city walkthrough, docs in sync, validate plots, venues — all green. The first CI run failed the 34-lot check with Chrome's "Internal error" after 170 s (the stadium mounting inside a 60 s evaluate on the software renderer); venues are now pinned to tier 0 for the walk.
 - 2026-09-03 `npm run venue:check` on the new world: all venue checks passed — reachable from the city spawn (369 samples, no gap), 600/600 seats reachable, gates ok.
 - 2026-09-03 `npm run qa`, re-run: **35/35 PASS** (`qa-out/report.json`). Every named road walkable end to end by a real controller (7 roads, 8 segments); all 34 lots' standing points clear and frontages walkable; vacant board offers its claim url; `/lot/boulevard-13` lands on its pavement with the address in the HUD; map page renders 34 lots / 24 vacant; console quiet. Budgets: boulevard pose 233 calls / 95,196 tris (limits 370 / 108,000; was 284 / 86,316 before the district — instancing made the wide view cheaper); shopfront pose 81 / 14,036 (65 before: instanced furniture is not culled per piece, base re-based 30 → 46 with the reason in `lib/qa-budgets.mjs`); vacant furniture 8 draw calls for 24 lots; 12 lights and 33 programs constant across a 20 s walk.
 
+## Critic pass 1 (docs/map/CRITIQUE-1.md, 2026-09-03) and what it changed
+All five blocking criteria passed on the critic's own evidence (it re-derived
+every plot's launch position, re-ran map:check and its own venue-check, and
+exercised ten `lot` cases through the API harness). Scores: visual 7,
+maintainability 8, accessibility 7, **usability 6** — a cold visitor at the
+spawn could not read a road name. Ten ranked issues, none blocking. Verified
+each against the source before acting; fixed in the same day:
+
+| # | finding | fix | evidence |
+|---|---|---|---|
+| 1 | `build-map --check` compared the map against the plat on disk, so a PR that moved a held lot and regenerated the plat passed | the registry now FREEZES `placed: { id: { x, z, yaw } }` at assignment; build-map, build-manifest and map-check compare the plat against it | `map-check` "every held lot is frozen where the plat puts it"; a scratch map with the boulevard's origin moved one pitch fails `--check` |
+| 2 | the "STADIUM →" sign stood inside vacant lot boulevard-2 | moved onto the north pavement at (43.2, 5.9); signs and bay lamps are now placed by the shared module and counted by map-check, which also asserts nothing the city puts up stands on a lot | `map-check` "nothing the city puts up stands on a lot" |
+| 3 | the dead-end kerb was invisible at night | a lit cyan edge along the top of every kerb block | `roads.js` deadEnds loop |
+| 4 | the shopfront triangle budget had no term for what the map added (14,036 of 16,000) | budgets carry `perVacant` (160 tris per vacant lot) and re-based bases with the measurements in the file | `lib/qa-budgets.mjs` |
+| 5 | from the spawn nobody could read the road name | repeater plates on long segments where a right-kerb lamp stands (the boulevard gets them at x = 6 and x = −18, 2 m from the spawn); the address on claimed boards is 24 px semibold instead of 18 px grey | `namePlates`, `street.js` |
+| 6 | three City Hall authoring scripts still read `side` | `pictures.py`, `film.py`, `assembly_video.py` read `x`/`z`/`yaw`/`lot` and draw the boulevard's lots only where the picture is the boulevard | `py_compile` clean; not re-run in Blender |
+| 7 | the plan page was a thumbnail on a phone | the canvas keeps a 1200 px minimum width inside a horizontal scroller | `map.html` |
+| 8 | `rankFree` broke ties by id string, not address | ties by (road, number); `vacant[]` is now boulevard-1, 2, 13, 14 … | manifest |
+| 9 | two plates 6.5 m apart on each close | a segment shorter than 20 m gets one plate, at the junction | `namePlates` |
+| 10 | map-check modelled a plate as one centre post | both posts and the plate body are checked | `map-check` |
+| 11 | `/lot/<unknown>` fell through silently | a toast says the lot does not exist and points at the map | `index.html` |
+| 12 | the docs' example lot was a real free lot every copy-paster would ask for | the claim page's example is `vacant[0]`, the lot an unrequested claim gets anyway | `claim.html` |
+
+Not changed, recorded: the five north-side claimed boards moved 6.8 m along
+the pavement (the board frame is now lot-local `BOARD_LOCAL`, the old code put
+both sides' boards at x + 3.4) — the plots themselves did not move; the bay
+`openSouth = cz > 0` heuristic and the duplicated 64 / 0.28 / 1.34 constants
+are pre-existing and noted.
+
+Also found by the fixes: bay lamps stand on the bays' 1.5 m kerbs, which the
+fence did not include (the plat did) — bays now fence their kerbs.
+
 ## Scores
-_none yet_
+- Critic pass 1: correctness PASS, walkability PASS, reliability PASS, performance PASS, integration PASS; visual 7, usability 6, maintainability 8, accessibility 7. Round 2 pending on the fixes above.
 
 ## Open issues (ranked)
-1. Critic pass not yet run (docs/map/CRITIQUE-1.md).
+1. Critic round 2 (re-score usability after the repeater plates and the larger address).
 2. The two closes carry a subreddit each but no lots — a name with nothing to claim on it.
+3. The road name is not in the HUD; a visitor reads it off plates and boards only.
 
 ## Deferred
 - Automatic expansion (a script editing `map.json`); side streets; walking-distance allocation; parking.
@@ -64,4 +98,4 @@ _none yet_
 - None.
 
 ## Next action
-- Run `npm run venue:check`; the critic pass; fix the ranked list; Robin reviews the PR.
+- Re-run qa on the fixes, push, critic round 2, then Robin reviews PR #37.

@@ -325,15 +325,20 @@ def make_map():
         draw.rectangle([road_x0, y0, road_x1, y1], fill=hex2rgb(SIDEWALK))
     dashed_line(draw, road_x0, Y(0), road_x1, Y(0), hex2rgb(WARM), width=3, dash=16, gap=11)
 
-    def lot_box(x_m, side):
-        center_off = side * 11.5
+    def lot_box(x_m, z_m):
+        # the manifest carries the lot centre (x, z) since the map (2026-09-03)
         x0, x1 = sorted([X(x_m - 5), X(x_m + 5)])
-        y0, y1 = sorted([Y(center_off - 5), Y(center_off + 5)])
+        y0, y1 = sorted([Y(z_m - 5), Y(z_m + 5)])
         return [x0, y0, x1, y1]
+
+    # this picture is the BOULEVARD; the district's other roads are off its strip
+    on_blvd = lambda l: l.get("road", "boulevard") == "boulevard"
+    vacant = [v for v in vacant if on_blvd(v)]
+    lots = [l for l in lots if on_blvd(l)]
 
     # ---- vacant lots (dashed cyan outline)
     for v in vacant:
-        box = lot_box(v["x"], v["side"])
+        box = lot_box(v["x"], v["z"])
         dashed_rect(draw, box, hex2rgb(CYAN), width=3, dash=11, gap=8)
         cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
         inner_w = (box[2] - box[0]) - 20
@@ -342,9 +347,9 @@ def make_map():
 
     # ---- built lots
     for lot in lots:
-        box = lot_box(lot["x"], lot["side"])
+        box = lot_box(lot["x"], lot["z"])
         color = lot["color"]
-        is_city_hall = lot.get("x") == 0 and lot.get("side") == 1
+        is_city_hall = lot.get("slug") == "city-hall"
         draw.rectangle(box, fill=scale_color(color, 0.35), outline=hex2rgb(color), width=4)
         cx = (box[0] + box[2]) / 2
         inner_w = (box[2] - box[0]) - 20
@@ -545,11 +550,11 @@ def make_builders():
     lots = index["lots"]
 
     city_hall = next(
-        (l for l in lots if l.get("slug") == "city-hall" or (l.get("x") == 0 and l.get("side") == 1)),
+        (l for l in lots if l.get("slug") == "city-hall"),
         None,
     )
     others = [l for l in lots if l is not city_hall]
-    others.sort(key=lambda l: (l["x"], l["side"]))
+    others.sort(key=lambda l: (l.get("road", ""), l["x"], l["z"]))
     ordered = ([city_hall] if city_hall else []) + others
     n = len(ordered)
 

@@ -78,10 +78,10 @@ function drawBoard(x, ox, oy, { name, tagline, by, slug, color, vacant, address,
     x.fillStyle = '#2fe0f8';
     x.fillText('otra.city/s/' + slug, 30, 288);
     if (address) {
-      x.fillStyle = '#8a86a0';
-      x.font = '18px Menlo, monospace';
+      x.fillStyle = '#b9bcd6';
+      x.font = '600 24px Menlo, monospace';
       x.textAlign = 'right';
-      x.fillText(address, 478, 38);
+      x.fillText(address, 478, 42);
     }
   }
   x.restore();

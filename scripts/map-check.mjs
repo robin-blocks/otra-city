@@ -21,7 +21,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import {
-  LOT_HALF, BOARD_LOCAL, lotToWorld, lotRect, rectsOverlap, roadSegments, fenceShapes, fenceContains,
+  LOT_HALF, BOARD_LOCAL, lotToWorld, lotRect, rectsOverlap, rectContains, roadSegments, fenceShapes, fenceContains,
   standingPoint, allLamps, namePlates, platLots, rankFree,
 } from '../public/js/city-map.mjs';
 
@@ -110,6 +110,12 @@ check('lot ids are url-safe and carry their road', lots.every((l) => /^[a-z][a-z
   const twice = Object.entries(counts).filter(([, n]) => n > 1).map(([id]) => id);
   check(`registry: every held lot exists and is held once (${held.length} held)`, missing.length === 0 && twice.length === 0,
     [...missing.map(([s, id]) => `${s} holds unknown ${id}`), ...twice.map((id) => `${id} held twice`)].join('; '));
+  const placed = registry.placed || {};
+  const frozenOk = held.every(([, id]) => placed[id] && plat.lots[id]
+    && placed[id].x === plat.lots[id].x && placed[id].z === plat.lots[id].z && placed[id].yaw === plat.lots[id].yaw);
+  check('registry: every held lot is frozen where the plat puts it (a map edit cannot move a claimed lot)', frozenOk,
+    frozenOk ? `${held.length} placed` : held.filter(([, id]) => !placed[id]).map(([s, id]) => `${id} (${s}) has no placed record — run npm run manifest`).join('; ')
+      || held.filter(([, id]) => placed[id] && plat.lots[id] && (placed[id].x !== plat.lots[id].x || placed[id].z !== plat.lots[id].z)).map(([s, id]) => `${id} (${s}) moved`).join('; '));
   const manLots = manifest.lots || [];
   const agree = manLots.every((l) => registry.lots[l.slug] === l.lot && plat.lots[l.lot]
     && l.x === plat.lots[l.lot].x && l.z === plat.lots[l.lot].z && l.yaw === plat.lots[l.lot].yaw && l.address === plat.lots[l.lot].address);
@@ -231,12 +237,32 @@ const fmtGaps = (g) => g.slice(0, 3).map((q) => `[${q.from}]..[${q.to}]`).join('
 
 // ---- nothing stands in anyone's way ----------------------------------------
 {
+  // a plate is two posts 0.62 m either side of its centre plus the plate
+  // between them; a directional sign and a bay lamp are posts the renderer
+  // places from map.json (js/roads.js), so they are counted here too
+  const plateParts = (p) => {
+    const yaw = Math.atan2(p.face[0], p.face[1]);
+    const wx = Math.cos(yaw);
+    const wz = -Math.sin(yaw);
+    return [-0.62, 0, 0.62].map((s) => ({ what: `plate ${p.road}`, x: p.at[0] + wx * s, z: p.at[1] + wz * s, r: s ? 0.05 : 0.8 }));
+  };
   const posts = [
-    ...allLamps(map).map((l) => ({ what: `lamp ${l.road || l.roundabout}`, x: l.x, z: l.z, r: 0.1 })),
-    ...namePlates(map).map((p) => ({ what: `plate ${p.road}`, x: p.at[0], z: p.at[1], r: 0.1 })),
+    ...allLamps(map).map((l) => ({ what: `lamp ${l.road || l.roundabout || l.bay}`, x: l.x, z: l.z, r: 0.1 })),
+    ...namePlates(map).flatMap(plateParts),
+    ...(map.signs || []).map((s) => ({ what: `sign "${(s.lines || [])[0]}"`, x: s.at[0], z: s.at[1], r: 0.1 })),
     ...(map.bollards || []).map(([x, z]) => ({ what: 'bollard', x, z, r: 0.12 })),
     ...lots.map((l) => { const b = lotToWorld(l, ...BOARD_LOCAL); return { what: `board ${l.id}`, x: b.x, z: b.z, r: 0.1 }; }),
   ];
+  {
+    // nothing the city puts up may stand on a lot — the lot is the claimant's
+    const intruders = [];
+    for (const p of posts) {
+      if (p.what.startsWith('board')) continue;
+      const lot = lots.find((l) => rectContains(lotRect(l), p.x, p.z));
+      if (lot) intruders.push(`${p.what} at ${f1(p.x)},${f1(p.z)} stands on ${lot.id}`);
+    }
+    check('nothing the city puts up stands on a lot', intruders.length === 0, intruders.slice(0, 3).join('; '));
+  }
   const AVATAR = 0.28;
   const spots = [{ what: 'spawn', x: map.spawn.x, z: map.spawn.z }, ...lots.map((l) => ({ what: `standing point of ${l.id}`, ...standingPoint(l) }))];
   const bad = [];
@@ -249,6 +275,7 @@ const fmtGaps = (g) => g.slice(0, 3).map((q) => `[${q.from}]..[${q.to}]`).join('
   const clash = [];
   for (let i = 0; i < posts.length; i++) {
     for (let j = i + 1; j < posts.length; j++) {
+      if (posts[i].what === posts[j].what && posts[i].what.startsWith('plate')) continue;   // a plate's own parts
       const d = Math.hypot(posts[i].x - posts[j].x, posts[i].z - posts[j].z);
       if (d < posts[i].r + posts[j].r + 0.5) clash.push(`${posts[i].what} / ${posts[j].what} ${f1(d)} m`);
     }

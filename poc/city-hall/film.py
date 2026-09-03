@@ -94,8 +94,8 @@ for i, lx in enumerate((-30, -18, -6, 6, 18, 30)):
     lo.location = (lx, ly, 3.4)
     col.objects.link(lo)
 for v in INDEX.get("vacant", []):
-    vx, vy = v["x"], -v["side"] * 11.5
-    box("vac_%d_%d" % (vx, v["side"]), (vx - 5, vy - 5, 0), (vx + 5, vy + 5, 0.1), flat_mat("f_vac", srgb("#1b1926")))
+    vx, vy = v["x"], -v["z"]                       # Blender y is -world z; the manifest carries the lot centre
+    box("vac_%s" % v["lot"], (vx - 5, vy - 5, 0), (vx + 5, vy + 5, 0.1), flat_mat("f_vac", srgb("#1b1926")))
     for (a, b_, c, d) in ((-5, -5, 5, -4.9), (-5, 4.9, 5, 5), (-5, -5, -4.9, 5), (4.9, -5, 5, 5)):
         box("vacl", (vx + a, vy + b_, 0.1), (vx + c, vy + d, 0.14), cyan)
     box("vacm", (vx - 0.22, vy - 0.22, 1.7), (vx + 0.22, vy + 0.22, 2.14), cyan)
@@ -108,8 +108,8 @@ for lot in INDEX["lots"]:
     new = [o for o in bpy.data.objects if o not in before]
     root = bpy.data.objects.new("plot_" + lot["slug"], None)
     col.objects.link(root)
-    root.location = (lot["x"], -lot["side"] * 11.5, 0)
-    root.rotation_euler = (0, 0, math.pi if lot["side"] > 0 else 0)
+    root.location = (lot["x"], -lot["z"], 0)
+    root.rotation_euler = (0, 0, lot["yaw"])        # three.js rotation.y and Blender's z rotation agree in sign
     for o in new:
         for c in list(o.users_collection):
             c.objects.unlink(o)

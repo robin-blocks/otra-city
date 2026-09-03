@@ -1,5 +1,5 @@
 {
-  "comment": "THE MAP. Authored by hand; everything else is derived. Metres, x east, z north on the PLAN (map.html draws z up); the rendered city is that plan's mirror image (three.js's +z points at the viewer), so walking east down the boulevard the +z lots are on your right. A road is a chain of nodes walked first to last; left/right are that walk's sides on the plan; every junction is a roundabout. `lots` on a road says which sides bear 10 x 10 m lots at `lot_pitch`, and `from_m` is the phase of the first slot per segment (one number or one per segment). Lot numbers count slots from the chain's FIRST node \u2014 put that end where it will never move and grow a road at its far end, so addresses already handed out never change. Road IDS are permanent and positional (they are inside every lot id); NAMES and `sub` are display only and will be voted on one day, so rename freely. `node scripts/build-map.mjs` plats this into city/lots.json; `npm run manifest` merges that with the registry (plots/lots.json) into plots/index.json.",
+  "comment": "THE MAP. Authored by hand; everything else is derived. Metres, x east, z north on the PLAN (map.html draws z up); the rendered city is that plan's mirror image (three.js's +z points at the viewer), so walking east down the boulevard the +z lots are on your right. A road is a chain of nodes walked first to last; left/right are that walk's sides on the plan; every junction is a roundabout. `lots` on a road says which sides bear 10 x 10 m lots at `lot_pitch`, and `from_m` is the phase of the first slot per segment (one number or one per segment). Lot numbers count slots from the chain's FIRST node — put that end where it will never move and grow a road at its far end, so addresses already handed out never change. Road IDS are permanent and positional (they are inside every lot id); NAMES and `sub` are display only and will be voted on one day, so rename freely. `node scripts/build-map.mjs` plats this into city/lots.json; `npm run manifest` merges that with the registry (plots/lots.json) into plots/index.json.",
   "version": "0.1",
   "spawn": {
     "x": -20,
@@ -95,7 +95,7 @@
           16
         ]
       },
-      "comment": "the west side of the ring, through the stadium roundabout \u2014 the first street of the district a visitor reaches. Lots on the outside only (plan-left, x<60)."
+      "comment": "the west side of the ring, through the stadium roundabout — the first street of the district a visitor reaches. Lots on the outside only (plan-left, x<60)."
     },
     {
       "id": "north",
@@ -365,15 +365,16 @@
   "signs": [
     {
       "at": [
-        40.6,
-        7.4
+        43.2,
+        5.9
       ],
       "yaw": -1.5708,
       "lines": [
-        "STADIUM \u2192",
+        "STADIUM →",
         "otra.city/stadium"
       ],
-      "color": "#ffd479"
+      "color": "#ffd479",
+      "comment": "on the north pavement past boulevard-2's east edge (x 41); a sign on a lot would stand on someone's claim"
     },
     {
       "at": [
@@ -382,7 +383,7 @@
       ],
       "yaw": -1.5708,
       "lines": [
-        "GATES \u2192",
+        "GATES →",
         "no ticket needed"
       ],
       "color": "#2fe0f8"

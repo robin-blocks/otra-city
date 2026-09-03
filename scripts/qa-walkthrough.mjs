@@ -378,14 +378,14 @@ for (const [name, pose] of Object.entries(BUDGETS.poses)) {
     await call(() => window.__city.step(30, 1 / 60));
     const m = await measure();
     await call(() => window.__city.resume());
-    const cap = { calls: limit(pose.calls, lots.length), tris: limit(pose.tris, lots.length) };
+    const cap = { calls: limit(pose.calls, lots.length, vacant.length), tris: limit(pose.tris, lots.length, vacant.length) };
     const lightCap = limit(BUDGETS.lights, lots.length);
     return {
       ok: m.peers === 0 && m.calls <= cap.calls && m.tris <= cap.tris
         && m.lights <= lightCap && m.lights >= BUDGETS.lights.floor,
       ...m,
       limits: { ...cap, lights: `${BUDGETS.lights.floor}..${lightCap}` },
-      lots: lots.length,
+      lots: lots.length, vacant: vacant.length,
     };
   }, { picture: true });
 }

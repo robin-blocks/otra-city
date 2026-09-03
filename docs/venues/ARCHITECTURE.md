@@ -33,7 +33,7 @@ stated and recorded in `docs/stadium/STATE.md`.
 
 | Subsystem | File | Responsibility |
 |---|---|---|
-| World layout | `public/js/world.js` | Layout truth: boulevard constants, road graph, venue placements, walkable bounds (`contains(x,z)`), fog/camera presets, tier geometry (`distanceToBox`, `insideBox`). Everything else reads it; it imports nothing but three. |
+| World layout | `public/js/world.js` | Layout truth: the map and the plat (`public/city/`), venue placements, the walkable fence (`contains(x,z)`, built by `js/city-map.mjs`), fog/camera presets, tier geometry (`distanceToBox`, `insideBox`). Everything else reads it; it imports only three and `city-map.mjs`. |
 | Roads | `public/js/roads.js` | Renders every road in `public/city/map.json` (chains, roundabouts, plazas, crossings, bays, lamps, signs, name plates, bollards) in the street's box-and-emissive language, instanced; emits colliders; lit lamps register light-pool sources. Static, always resident, small. |
 | Venue streamer | `public/js/venues.js` | Reads `public/venues/index.json`; builds impostors; computes tiers per venue per frame with hysteresis and an unload grace; loads/normalises/disposes `venue.glb`; registers and removes colliders, gates, anims, quiet zones; activates/deactivates modules; emits `tier` events; exposes `state()` for tests. |
 | Modules | `public/js/venue-modules/<type>.js` | `create(ctx) → { activate(), deactivate(), update(dt, playerPos, time), dispose(), state }`. M1 ships `match-4dgsx`. |

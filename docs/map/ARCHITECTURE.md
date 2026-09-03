@@ -28,10 +28,10 @@
 
 | subsystem | file | responsibility |
 |---|---|---|
-| Map geometry | `public/js/city-map.mjs` | The one implementation of: segments and trims, the plat, lamp positions, roundabout arcs and lamps, name-plate positions, dead ends, the walkable fence and its point test. Imports nothing. Node and the browser import the same file. |
-| Plat | `scripts/build-map.mjs` | `map.json` → `lots.json`. `--check` fails on a stale plat, and on any edit that moves or removes a lot the registry holds. |
+| Map geometry | `public/js/city-map.mjs` | The one implementation of: segments and trims, the plat, lamp positions (road, roundabout, bay), roundabout arcs, name-plate positions (both ends of every segment, one on a short close, repeaters on long segments where a right-kerb lamp stands), dead ends, the walkable fence and its point test. Imports nothing. Node and the browser import the same file. |
+| Plat | `scripts/build-map.mjs` | `map.json` → `lots.json`. `--check` fails on a stale plat, and on any edit that moves (against the registry's `placed` record) or removes a lot the registry holds. |
 | Manifest | `scripts/build-manifest.mjs` | Plat + registry + every `plot.json` → `index.json`; allocates lots (requested if free, else nearest free to the centre); writes the registry back. |
-| Map check | `scripts/map-check.mjs` | Deterministic invariants (plat, registry, manifest, fence continuity along roads / around roundabouts / spawn→every lot, clearance of every spawn point, no post on a post). |
+| Map check | `scripts/map-check.mjs` | Deterministic invariants (plat, registry incl. `placed`, manifest, fence continuity along roads / around roundabouts / spawn→every lot, clearance of every spawn point from every lamp, plate post, sign, bollard and board, no post on a post, nothing the city puts up standing on a lot). |
 | World | `public/js/world.js` | Loads map, plat, venues; builds the fence via `fenceShapes`; `contains(x,z)`, `reach`, fog/far presets, spawn, `lotById`. |
 | Roads | `public/js/roads.js` | Renders every road from the map (asphalt, pavements, instanced dashes/lamps/bollards/stripes, roundabouts with bands and totems, plazas, bays, crossings, directional signs, **name plates**, dead-end kerbs). Registers lamp light sources with the pool. |
 | Street | `public/js/street.js` | Lot furniture only: an info board per claimed lot; instanced pads/markers/posts and atlas-textured boards for every vacant lot. |
@@ -71,7 +71,14 @@ Dependency direction: `city-map.mjs` ← everything. `world.js` ← `roads.js`,
 
 ### `public/plots/lots.json` (registry, written by the manifest builder)
 
-`{ lots: { "city-hall": "boulevard-8", ... } }`
+`{ lots: { "city-hall": "boulevard-8", ... }, placed: { "boulevard-8": { x, z, yaw }, ... } }`
+
+`placed` freezes where each held lot stood when it was assigned. The plat is
+regenerated from the map, so a map edit that moved a claimed lot would
+regenerate a plat that agrees with itself; `build-map --check`, the manifest
+builder and `map-check` all compare the plat against `placed`, never against
+the plat on disk (the critic's first finding). A freed lot's record is
+dropped, so it may move again.
 
 ### `public/plots/index.json` (generated)
 

@@ -40,10 +40,20 @@ const assigned = { ...(registry.lots || {}) };
 for (const slug of Object.keys(assigned)) {
   if (!slugs.includes(slug)) delete assigned[slug]; // plot removed -> free the lot
 }
+// The registry also FREEZES where each held lot stands (`placed`): the plat
+// is regenerated from the map, so a map edit that moved a claimed lot would
+// regenerate a plat that agrees with itself — only a record made at the moment
+// of assignment can say the lot used to be somewhere else.
+const frozen = { ...(registry.placed || {}) };
+const same = (a, b) => a && b && a.x === b.x && a.z === b.z && a.yaw === b.yaw;
 for (const [slug, id] of Object.entries(assigned)) {
   if (!plat.lots[id]) {
     throw new Error(`registry: ${slug} holds "${id}", which city/lots.json does not afford. ` +
       'A claimed lot never leaves the map: fix map.json (or run `npm run map` if the plat is stale).');
+  }
+  if (frozen[id] && !same(frozen[id], plat.lots[id])) {
+    throw new Error(`registry: ${id} (${slug}) was placed at (${frozen[id].x}, ${frozen[id].z}) and the map now puts it at ` +
+      `(${plat.lots[id].x}, ${plat.lots[id].z}). A claimed address never moves: revert the map edit.`);
   }
 }
 const holder = new Map(Object.entries(assigned).map(([s, id]) => [id, s]));
@@ -94,10 +104,17 @@ const lots = slugs.map((slug) => {
 const vacant = rankFree(plat, holder.keys(), centre)
   .map((l) => ({ ...placed(l.id), claim: `https://otra.city/claim?lot=${l.id}` }));
 
-// persist assignments (deterministic key order) so lots never shuffle
+// persist assignments (deterministic key order) so lots never shuffle, and
+// freeze the place of every held lot
+for (const id of Object.values(assigned)) {
+  const L = plat.lots[id];
+  frozen[id] = { x: L.x, z: L.z, yaw: L.yaw };
+}
+for (const id of Object.keys(frozen)) if (!holder.has(id)) delete frozen[id];   // a freed lot may move again
 writeFileSync(registryPath, JSON.stringify({
   comment: registry.comment,
   lots: Object.fromEntries(Object.keys(assigned).sort().map((s) => [s, assigned[s]])),
+  placed: Object.fromEntries(Object.keys(frozen).sort().map((id) => [id, frozen[id]])),
 }, null, 2) + '\n');
 
 writeFileSync(join(root, 'index.json'), JSON.stringify({

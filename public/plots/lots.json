@@ -11,5 +11,57 @@
     "museverse": "boulevard-9",
     "promptfrenzy": "boulevard-7",
     "signal": "boulevard-3"
+  },
+  "placed": {
+    "boulevard-10": {
+      "x": -12,
+      "z": 11.5,
+      "yaw": 3.141592653589793
+    },
+    "boulevard-11": {
+      "x": -24,
+      "z": -11.5,
+      "yaw": 0
+    },
+    "boulevard-12": {
+      "x": -24,
+      "z": 11.5,
+      "yaw": 3.141592653589793
+    },
+    "boulevard-3": {
+      "x": 24,
+      "z": -11.5,
+      "yaw": 0
+    },
+    "boulevard-4": {
+      "x": 24,
+      "z": 11.5,
+      "yaw": 3.141592653589793
+    },
+    "boulevard-5": {
+      "x": 12,
+      "z": -11.5,
+      "yaw": 0
+    },
+    "boulevard-6": {
+      "x": 12,
+      "z": 11.5,
+      "yaw": 3.141592653589793
+    },
+    "boulevard-7": {
+      "x": 0,
+      "z": -11.5,
+      "yaw": 0
+    },
+    "boulevard-8": {
+      "x": 0,
+      "z": 11.5,
+      "yaw": 3.141592653589793
+    },
+    "boulevard-9": {
+      "x": -12,
+      "z": -11.5,
+      "yaw": 0
+    }
   }
 }

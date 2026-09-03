@@ -119,6 +119,11 @@ export function discRectOverlap(c, r, R, margin = 0) {
   return Math.hypot(c[0] - px, c[1] - pz) < r + margin - EPS;
 }
 
+export function rectContains(R, x, z) {
+  const dx = x - R.c[0];
+  const dz = z - R.c[1];
+  return Math.abs(dx * R.ux + dz * R.uz) <= R.hx && Math.abs(-dx * R.uz + dz * R.ux) <= R.hz;
+}
 export const lotRect = (lot, margin = 0) => {
   const c = Math.cos(lot.yaw);
   const s = Math.sin(lot.yaw);
@@ -204,7 +209,7 @@ export function rankFree(plat, takenIds, centre = [0, 0]) {
   return Object.values(plat.lots)
     .filter((l) => !taken.has(l.id))
     .map((l) => ({ l, d: Math.hypot(l.x - centre[0], l.z - centre[1]) }))
-    .sort((a, b) => a.d - b.d || a.l.id.localeCompare(b.l.id))
+    .sort((a, b) => a.d - b.d || a.l.road.localeCompare(b.l.road) || a.l.n - b.l.n)
     .map((e) => e.l);
 }
 
@@ -226,8 +231,12 @@ export function fenceShapes(map, plat, venues = []) {
   for (const r of map.roundabouts || []) {
     if (nodes[r.at]) shapes.push({ kind: 'disc', id: r.id, c: nodes[r.at], r: r.outer_r + (r.pavement ?? 2.5) + 0.5 });
   }
-  for (const a of [...(map.aprons || []), ...(map.bays || [])]) {
+  for (const a of map.aprons || []) {
     shapes.push({ kind: 'box', id: a.id, min: [a.min[0] - 0.5, a.min[1] - 0.5], max: [a.max[0] + 0.5, a.max[1] + 0.5] });
+  }
+  // a bay's 1.5 m kerbs are pavement: walkable, and where its lamp stands
+  for (const b of map.bays || []) {
+    shapes.push({ kind: 'box', id: b.id, min: [b.min[0] - 2, b.min[1] - 2], max: [b.max[0] + 2, b.max[1] + 2] });
   }
   for (const lot of Object.values(plat?.lots || {})) {
     const A = lotToWorld(lot, -LOT_HALF, 0);
@@ -334,20 +343,44 @@ export function roundaboutLamps(map, r) {
   }
   return out;
 }
-export const allLamps = (map) => [...roadLamps(map), ...(map.roundabouts || []).flatMap((r) => roundaboutLamps(map, r))];
+// The unlit lamp at a bay's far corner (a bay north of the road opens south).
+export const bayLamps = (map) => (map.bays || []).map((b) => {
+  const openSouth = (b.min[1] + b.max[1]) / 2 > 0;
+  return { bay: b.id, x: b.max[0] + 0.75, z: openSouth ? b.max[1] + 0.75 : b.min[1] - 0.75, lit: false };
+});
+export const allLamps = (map) => [...roadLamps(map), ...(map.roundabouts || []).flatMap((r) => roundaboutLamps(map, r)), ...bayLamps(map)];
 
 // A name plate at both ends of every segment of a named road, on the left
 // pavement just inside the trim, facing whoever is arriving: the roundabout
-// it meets, or, at a dead end, back down the road.
+// it meets, or, at a dead end, back down the road. A short stub (a close
+// with a bay at its end) gets one, at the junction. A LONG segment also gets
+// repeaters, so a visitor between the ends can read where they are — the
+// boulevard's two end plates were 30 m from the spawn. A repeater stands
+// where a lamp stands on the OTHER kerb (the even-k lamps are all on the
+// right), so the two never share a pavement, and it is on a lot boundary,
+// never in front of a lot's centre where /lot/<id> puts a visitor.
 export function namePlates(map) {
   const out = [];
+  const lamps = roadLamps(map);
   for (const s of roadSegments(map)) {
     if (!s.road.name) continue;
     const at = (t) => [s.a[0] + s.ux * t + s.lx * (s.half - 0.9), s.a[1] + s.uz * t + s.lz * (s.half - 0.9)];
     const u = [s.ux, s.uz];
     const back = [-s.ux, -s.uz];
-    out.push({ road: s.road.id, segment: s.id, at: at(s.trimA + (s.endA === 'roundabout' ? 1.5 : 2)), face: s.endA === 'roundabout' ? back : u });
-    out.push({ road: s.road.id, segment: s.id, at: at(s.L - s.trimB - (s.endB === 'roundabout' ? 1.5 : 2)), face: s.endB === 'roundabout' ? u : back });
+    const tA = s.trimA + (s.endA === 'roundabout' ? 1.5 : 2);
+    const tB = s.L - s.trimB - (s.endB === 'roundabout' ? 1.5 : 2);
+    out.push({ road: s.road.id, segment: s.id, kind: 'end', at: at(tA), face: s.endA === 'roundabout' ? back : u });
+    if (tB - tA < 20) continue;
+    out.push({ road: s.road.id, segment: s.id, kind: 'end', at: at(tB), face: s.endB === 'roundabout' ? u : back });
+    if (tB - tA <= 70) continue;
+    for (const l of lamps) {
+      if (l.road !== s.road.id || l.k % 2) continue;                       // right-kerb lamps only
+      const t = (l.x - s.a[0]) * s.ux + (l.z - s.a[1]) * s.uz;
+      const n = -(l.x - s.a[0]) * s.uz + (l.z - s.a[1]) * s.ux;
+      if (t < 0 || t > s.L || Math.abs(n + (s.half - 0.3)) > 0.05) continue;   // this segment's lamp
+      if (t - tA < 20 || tB - t < 20) continue;
+      out.push({ road: s.road.id, segment: s.id, kind: 'repeater', at: at(t), face: u });
+    }
   }
   return out;
 }
