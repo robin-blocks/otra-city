@@ -40,13 +40,20 @@ export async function loadWorld({ street = null, base = '' } = {}) {
   const shapes = [];
   const b = street?.bounds || BOULEVARD_FALLBACK;
   shapes.push({ kind: 'box', id: 'boulevard', min: [-b.x, -b.z], max: [b.x, b.z] });
+  // A road that joins another walkable area has to OVERLAP it, not merely reach
+  // the same point. The street's own fence deliberately stops 2 m inside the
+  // end of its asphalt (a kerb you cannot step off), so a segment beginning at
+  // that asphalt's end left a 1 m band belonging to neither — an invisible wall
+  // exactly where the boulevard becomes the road to the stadium. Corridors
+  // therefore run JOIN metres past each end: the 2 m kerb plus a margin.
+  const JOIN = 3;
   if (roads) {
     const nodes = roads.nodes || {};
     for (const s of roads.segments || []) {
       const a = nodes[s.from];
       const b = nodes[s.to];
       if (!a || !b) continue;
-      shapes.push({ kind: 'obb', id: s.id, a, b, half: (s.width ?? 8) / 2 + (s.pavement ?? 2.5) + 0.5 });
+      shapes.push({ kind: 'obb', id: s.id, a, b, half: (s.width ?? 8) / 2 + (s.pavement ?? 2.5) + 0.5, join: JOIN });
     }
     for (const r of roads.roundabouts || []) {
       const c = nodes[r.at];
@@ -74,7 +81,8 @@ export async function loadWorld({ street = null, base = '' } = {}) {
         const pz = z - s.a[1];
         const t = px * ux + pz * uz;
         const n = -px * uz + pz * ux;
-        if (t >= -0.5 && t <= L + 0.5 && Math.abs(n) <= s.half) return true;
+        const j = s.join ?? 0.5;
+        if (t >= -j && t <= L + j && Math.abs(n) <= s.half) return true;
       }
     }
     return false;
@@ -85,7 +93,7 @@ export async function loadWorld({ street = null, base = '' } = {}) {
   // growth nor a venue beyond its end can run off the edge of the world.
   const reach = shapes.reduce((m, s) => Math.max(m,
     s.kind === 'disc' ? Math.hypot(s.c[0], s.c[1]) + s.r
-      : s.kind === 'obb' ? Math.max(Math.hypot(...s.a), Math.hypot(...s.b)) + s.half
+      : s.kind === 'obb' ? Math.max(Math.hypot(...s.a), Math.hypot(...s.b)) + s.half + (s.join ?? 0)
         : Math.max(Math.abs(s.min[0]), Math.abs(s.max[0]), Math.abs(s.min[1]), Math.abs(s.max[1]))), 0);
 
   // Venues stand beyond the boulevard's fog line, so a city that has one sees

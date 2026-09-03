@@ -139,6 +139,9 @@ for (const id of ids) {
       check('tier 2 modules active', st2.tier === 2 && mods.every((m) => m.active || m.failed === false), mods.map((m) => `${m.type}:${m.active ? 'active' : m.failed ? 'FAILED' : 'idle'}`).join(', ') || 'no modules');
       check('tier 2 renders clean', s2.errors.length === 0 && fx.problems.length === 0, [...s2.errors, ...fx.problems].slice(0, 3).join(' | ') || 'no errors');
       const w = await fx.walkability({ cell: 0.25 });   // half-steps are 0.25 m deep
+      const rt = await fx.routeFromCity();
+      check('reachable from the city spawn', rt.ok, rt.ok ? `${rt.samples} samples from [${rt.from}] to [${rt.to}], no gap in the walkable fence`
+        : `fence gap: ${rt.gaps.map((g) => `[${g.from}]..[${g.to}]`).join(', ')}`);
       const sc = await fx.spawnClearance();
       check('spawn is clear of geometry', sc.ok, sc.ok ? `avatar radius ${sc.radius} m free at [${sc.at}]` : `blocked at [${sc.at}]: ${sc.blocked.map((b) => `${b.what} ${b.d} m`).join(', ')}`);
       check('walkability: spawn stands on ground', !!w.ok && w.reachable <= w.walkable, w.reason || `${w.reachable} of ${w.walkable} walkable cells reachable (${w.nodes} surfaces, cell ${w.cell} m)`);

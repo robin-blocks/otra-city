@@ -52,6 +52,29 @@ the boulevard spawn against a 400 budget — real but not pressing), the bowl's
 brightness against the city's darker look (a taste call for Robin), and the
 soak, mocked-feed and visual-diff gaps in verification.
 
+## Invisible wall between the boulevard and the stadium (reported by Robin, fixed)
+Robin could not walk from the stadium back to the main road. Reproduced by
+sampling `world.contains` along the axis: a **1 m band at x 40.25–41.25**
+belonged to no shape. The boulevard's walkable box ends at `street.bounds.x`,
+which is deliberately 2 m INSIDE the end of its own asphalt (#28's kerb), while
+a road segment's corridor only ran 0.5 m past its start node at the asphalt's
+end. The two met without overlapping.
+
+Road corridors now run 3 m past each end (the 2 m kerb plus a margin), so a
+road that joins another walkable area overlaps it. The axis is continuous from
+x 34 to 80, and a real `PlayerController` walks the boulevard → roundabout →
+forecourt → tier 2 without stopping.
+
+Found while verifying: a visitor walking the centre line climbed the 0.3 m
+roundabout kerb (under the 0.35 m step) onto the island and jammed against the
+planter. The island kerb is now 0.45 m, above step height, so you flow around
+it the way a roundabout is meant to be walked.
+
+**New regression guard**: `venue-check` asserts `reachable from the city spawn`
+— it samples the walkable fence along the route a visitor actually takes.
+A flood fill inside the venue cannot see a seam in the fence outside it, which
+is why this shipped green.
+
 ## Rebase onto main (#28 street growth, #29 one static host)
 Both landed while this branch was in flight and both overlapped it:
 - `player.setBounds` exists on main taking a `{x, z}` box; this branch needed a

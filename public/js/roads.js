@@ -187,12 +187,17 @@ export function buildRoads(scene, world) {
     ring.position.set(cx, ROAD_TOP + 0.002, cz);   // 2 mm above the arms: no coplanar fight
     g.add(ring);
     colliders.push(ring);
-    const island = new THREE.Mesh(new THREE.CylinderGeometry(ri, ri, PAVE_H, 48), M.paving);
-    island.position.set(cx, PAVE_H / 2, cz);
+    // The island kerb is deliberately TALLER than the avatar's 0.35 m step: a
+    // 0.3 m kerb let visitors walking the boulevard's centre line climb onto
+    // the island and jam against the planter, instead of flowing around it the
+    // way a roundabout is meant to be walked.
+    const ISLAND_H = 0.45;
+    const island = new THREE.Mesh(new THREE.CylinderGeometry(ri, ri, ISLAND_H, 48), M.paving);
+    island.position.set(cx, ISLAND_H / 2, cz);
     g.add(island);
     colliders.push(island);
     const planter = new THREE.Mesh(new THREE.CylinderGeometry(ri - 0.8, ri - 0.8, 0.5, 48), M.dark);
-    planter.position.set(cx, PAVE_H + 0.25, cz);
+    planter.position.set(cx, ISLAND_H + 0.25, cz);
     g.add(planter);
     colliders.push(planter);
     // the arms cut the pavement ring; what is left are arcs between them
@@ -236,15 +241,15 @@ export function buildRoads(scene, world) {
     }
     if (r.totem) {
       const t = r.totem;
-      box(1.2, 7, 1.2, M.totem, cx, PAVE_H + 0.5 + 3.5, cz, 0, true);
+      box(1.2, 7, 1.2, M.totem, cx, ISLAND_H + 0.5 + 3.5, cz, 0, true);
       for (const [sx, sz] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
-        box(0.06, 6.6, 0.06, M.band, cx + sx * 0.62, PAVE_H + 0.5 + 3.5, cz + sz * 0.62);
+        box(0.06, 6.6, 0.06, M.band, cx + sx * 0.62, ISLAND_H + 0.5 + 3.5, cz + sz * 0.62);
       }
-      box(1.4, 0.12, 1.4, M.band, cx, PAVE_H + 0.5 + 7.05, cz);
+      box(1.4, 0.12, 1.4, M.band, cx, ISLAND_H + 0.5 + 7.05, cz);
       // a board on the face that looks back down the boulevard
       const face = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.5),
         new THREE.MeshBasicMaterial({ map: boardTexture(t.lines || [], t.color || '#2fe0f8') }));
-      face.position.set(cx - 0.61, PAVE_H + 0.5 + 5.2, cz);
+      face.position.set(cx - 0.61, ISLAND_H + 0.5 + 5.2, cz);
       face.rotation.y = -Math.PI / 2;
       g.add(face);
     }
