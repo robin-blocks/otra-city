@@ -13,7 +13,9 @@ on:
       - 'public/js/**'
       - 'public/index.html'
       - 'public/venue.html'
+      - 'public/broadcast.html'
       - 'scripts/venue-*.mjs'
+      - 'scripts/broadcast-check.mjs'
       - 'scripts/build-venues.mjs'
       - 'lib/**'
       - 'docs/venues/venue-schema.json'
@@ -26,7 +28,9 @@ on:
       - 'public/js/**'
       - 'public/index.html'
       - 'public/venue.html'
+      - 'public/broadcast.html'
       - 'scripts/venue-*.mjs'
+      - 'scripts/broadcast-check.mjs'
       - 'scripts/build-venues.mjs'
       - 'lib/**'
 
@@ -41,11 +45,13 @@ jobs:
       - run: node scripts/build-venues.mjs --check --strict
       - run: node scripts/venue-check.mjs --all --out poc/out/venue-check.json
       - run: node scripts/venue-shot.mjs --all --out poc/out/shots
+      - run: node scripts/broadcast-check.mjs --out poc/out/broadcast-check.json --shots poc/out/shots
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: venue-evidence
           path: |
             poc/out/venue-check.json
+            poc/out/broadcast-check.json
             poc/out/shots/*.png
           if-no-files-found: warn
