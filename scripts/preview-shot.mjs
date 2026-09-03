@@ -106,10 +106,13 @@ const shotExpr = (opts) => `(async () => {
   p.setCam(o.cam);                       // re-assert: controls.update() drifts it
   p.step(0);
   const canvas = p.renderer.domElement;
+  // The poster camera is the frame the city publishes, so it is the one worth
+  // measuring: a build can pass every budget and still show nothing.
+  const read = o.cam === 'poster' ? p.readability() : null;
   const url = canvas.toDataURL('image/png');
   let tris = 0;
   p.scene.traverse((n) => { if (n.isMesh && n.geometry?.index) tris += n.geometry.index.count / 3; });
-  return { b64: url.slice(url.indexOf(',') + 1), w: canvas.width, h: canvas.height };
+  return { b64: url.slice(url.indexOf(',') + 1), w: canvas.width, h: canvas.height, read };
 })()`;
 
 const { server, origin } = await serve(join(new URL('..', import.meta.url).pathname, 'public'),
@@ -132,6 +135,16 @@ try {
     if (dir && dir !== '.' && !existsSync(dir)) mkdirSync(dir, { recursive: true });
     writeFileSync(file, Buffer.from(shot.b64, 'base64'));
     console.log(`${file}  ${shot.w}x${shot.h}  ${(Buffer.from(shot.b64, 'base64').length / 1024).toFixed(0)} KiB  cam=${cam}`);
+    if (shot.read) {
+      const r = shot.read;
+      const pct = r.centreLit.toFixed(1);
+      console.log(r.reads
+        ? `  readable: ${pct}% of the frame is lit (the street runs ${r.street[0]}-${r.street[1]}%)`
+        : `  WARNING: only ${pct}% of the frame is lit, under the ${r.floor}% floor.\n` +
+          `  From the street this reads as an empty frame. Plots a visitor can read run\n` +
+          `  ${r.street[0]}-${r.street[1]}%. Outline dark masses with emissive edges, or raise the\n` +
+          `  emissive strength on what you want seen. Not a rejection — a dark plot is allowed.`);
+    }
   }
   if (problems.length) {
     console.log(`\npage errors (your build may still be fine, but read them):`);

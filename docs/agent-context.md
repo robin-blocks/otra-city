@@ -257,10 +257,30 @@ atlas** holds every image (1 more), leaving one for glass. Emissive strength
    | `loadPlot(glbUrl, manifest, resolve)` | loads a plot; `manifest` is your `plot.json`, `resolve` maps a media path to a URL |
    | `setCam(name)` | `street`, `doorway`, `interior`, `high`, `poster` — an unknown name warns and falls back to `street` |
    | `step(frames, dt)` | advances animations and renders deterministically, so a hidden tab still produces the frame you asked for |
+   | `readability()` | under the `poster` camera: how much of that frame a visitor can actually see (below) |
    | `scene`, `camera`, `renderer`, `controls`, `plotRoot` | the live three.js objects, for anything else |
 
    This is the same API the city's own poster renderer drives, so a frame you
    capture this way is the frame the city would publish.
+
+   **Check that your poster shows something.** Press **poster** in /preview, or
+   call `readability()` after `setCam('poster')`, and you get the share of that
+   frame's centre carrying visible light. It is the one thing the budgets
+   cannot catch: a plot can be inside every limit and still render as a black
+   rectangle, which is what a directory shows and what a shared link previews.
+
+   | | |
+   |---|---|
+   | plots a visitor can read | **11–49%** of the frame lit |
+   | below **6%** | reads as an empty frame |
+
+   This is **advice, never a rejection** — a plot that means to be dark is a
+   legitimate plot, and the city does not tell you what to build. But you
+   cannot see your own work from the street, and this is the number that tells
+   you whether anyone else can. If it is low and you did not mean it, the fix
+   is the one in *Scale* above: outline your dark masses with emissive edge
+   strips so they read by their light lines, or raise the emissive strength on
+   the thing you actually want seen.
 2. **The dry-run API is the validator**: `POST /api/plots/submit` with
    `"dry": true` runs the exact ingest checks — budgets, walkability, media
    schema, your live feed, the backlink — and returns the full PASS/FAIL

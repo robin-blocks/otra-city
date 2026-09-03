@@ -20,7 +20,7 @@
 //
 // Usage: node scripts/render-posters.mjs [--force] [--only=slug,slug] [--quiet]
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, unlinkSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { launchChrome } from '../lib/headless-chrome.mjs';
 import { serve } from '../lib/static-server.mjs';
@@ -128,6 +128,11 @@ function renderExpr(opts) {
   p.setCam('poster');                        // re-assert after controls.update()
   p.step(0);
 
+  // How much of this poster a visitor can actually see. Taken from the
+  // full-resolution canvas before encoding, so it measures the picture rather
+  // than the compression, and it is the same call /preview shows a builder.
+  const read = p.readability();
+
   const canvas = p.renderer.domElement;
   const encode = (source, q) => {
     const url = source.toDataURL('image/webp', q);
@@ -137,7 +142,7 @@ function renderExpr(opts) {
   let best = null;
   for (const q of o.quality) {
     best = encode(canvas, q);
-    if (best.bytes <= o.maxBytes) return { ...best, downscaled: false, canvas: [canvas.width, canvas.height] };
+    if (best.bytes <= o.maxBytes) return { ...best, read, downscaled: false, canvas: [canvas.width, canvas.height] };
   }
   // Still too heavy at the lowest quality: shrink rather than blur further.
   const small = document.createElement('canvas');
@@ -147,7 +152,7 @@ function renderExpr(opts) {
   for (const q of o.quality) {
     const shot = encode(small, q);
     if (shot.bytes <= o.maxBytes || q === o.quality[o.quality.length - 1]) {
-      return { ...shot, downscaled: true, canvas: [canvas.width, canvas.height] };
+      return { ...shot, read, downscaled: true, canvas: [canvas.width, canvas.height] };
     }
   }
 })()`;
@@ -158,6 +163,12 @@ const todo = plots.filter((p) => force || !existsSync(join(outDir, p.file)));
 log(`posters: ${plots.length} plot(s), ${todo.length} to render` + (todo.length ? '' : ' (all current)'));
 
 let failed = 0;
+// Plots whose poster reads as an empty frame. Never a failure — see the note
+// on READABILITY in public/js/poster-frame.js — but said out loud, because a
+// builder cannot see their own plot and nothing else in the pipeline can tell
+// them the shopfront is invisible.
+const dim = [];
+const readings = [];
 if (todo.length) {
   const { server, origin } = await serve(join(root, 'public'));
   const noise = [];
@@ -202,8 +213,15 @@ if (todo.length) {
         }), { timeoutMs: 120000 });
         if (!shot) throw new Error('renderer returned nothing');
         writeFileSync(join(outDir, file), Buffer.from(shot.b64, 'base64'));
+        const r = shot.read;
+        if (r) {
+          readings.push({ slug, ...r });
+          if (!r.reads) dim.push({ slug, ...r });
+        }
         log(`  ${slug}: ${shot.w}x${shot.h} ${(shot.bytes / 1024).toFixed(0)} KiB q${shot.q}` +
-          `${shot.downscaled ? ' (downscaled to fit)' : ''} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+          `${shot.downscaled ? ' (downscaled to fit)' : ''}` +
+          `${r ? ` · ${r.centreLit.toFixed(1)}% lit${r.reads ? '' : ' ← reads as an empty frame'}` : ''}` +
+          ` in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
         break;
       } catch (e) {
         await drop();
@@ -231,6 +249,29 @@ if (!only.length) {
     if (current.has(name) || !posterPattern.test(name)) continue;
     unlinkSync(join(outDir, name));
     log(`  pruned ${name}`);
+  }
+}
+
+// ------------------------------------------------------------- readability
+// Warned about, never enforced: a plot that means to be dark is a legitimate
+// plot. Written to the job summary too, because an amber line in a build log
+// is a line nobody reads.
+if (readings.length) {
+  const sorted = [...readings].sort((a, b) => a.centreLit - b.centreLit);
+  const floor = sorted[0].floor;
+  log(`\nposters lit: ${sorted.map((r) => `${r.slug} ${r.centreLit.toFixed(1)}%`).join(' · ')}`);
+  if (dim.length) {
+    console.warn(`\n${dim.length} poster(s) read as an empty frame (under ${floor}% of the centre lit):`);
+    for (const r of dim) console.warn(`  ${r.slug}  ${r.centreLit.toFixed(1)}%`);
+    console.warn('  Not a failure — a plot may mean to be dark. But from the street these show\n' +
+      '  nothing a visitor can read, and a directory listing them shows a black rectangle.');
+  }
+  const summary = process.env.GITHUB_STEP_SUMMARY;
+  if (summary) {
+    const rows = sorted.map((r) => `| ${r.slug} | ${r.centreLit.toFixed(1)}% | ${r.reads ? 'reads' : '**empty frame**'} |`).join('\n');
+    appendFileSync(summary, `\n### Poster readability\n\nShare of each poster's centre carrying visible light. ` +
+      `Under ${floor}% a plot reads as an empty frame from the street. Advisory, never a gate.\n\n` +
+      `| plot | centre lit | |\n|---|---|---|\n${rows}\n`);
   }
 }
 

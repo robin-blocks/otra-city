@@ -22,6 +22,13 @@
     border-radius: 999px; cursor: pointer;
   }
   #cams button:hover { border-color: #2fe0f8; color: #2fe0f8; }
+  /* the readability line sits just above the camera bar, by the poster button */
+  #poster-note {
+    position: fixed; left: 12px; bottom: 54px; z-index: 2; max-width: 640px;
+    font: 12px/1.5 ui-monospace, Menlo, monospace; text-wrap: pretty;
+  }
+  #poster-note.ok { color: #7ce2a0; }
+  #poster-note.warn { color: #ffb37a; }
   #drop {
     position: fixed; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center;
     color: #8a86a0; font: 14px/1.7 ui-monospace, Menlo, monospace; text-align: center;
@@ -44,6 +51,7 @@
   <code>setCam()</code> and <code>step(frames)</code> —
   <a href="/docs/agent-context.md" style="color:#2fe0f8">documented here</a></span>
 </div>
+<div id="poster-note"></div>
 <div id="cams">
   <button data-cam="street">street ¾</button>
   <button data-cam="doorway">doorway</button>
@@ -74,7 +82,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createAvatar } from '/js/avatar.js';
 import { createMediaSystem } from '/js/media.js';
 import { createAnimSystem } from '/js/anims.js';
-import { framePoster, framePoints, POSTER } from '/js/poster-frame.js';
+import { framePoster, framePoints, measureReadability, describeReadability, POSTER } from '/js/poster-frame.js';
 
 // ---- identical pipeline constants to the city client ----
 const LIGHT_CAP = 30;
@@ -159,14 +167,31 @@ function layout() {
   });
 }
 
+// How much of this poster a visitor could actually see. Shown under the camera
+// bar the moment you press "poster", because a builder cannot look at their own
+// plot any other way and a black frame passes every other check. Declared above
+// setCam because setCam('street') runs while this module is still evaluating.
+const posterNote = document.getElementById('poster-note');
+function reportReadability() {
+  if (!plotRoot) return null;
+  const r = measureReadability(renderer.domElement);
+  posterNote.textContent = describeReadability(r);
+  posterNote.className = r.reads ? 'ok' : 'warn';
+  return r;
+}
+
 function setCam(name) {
   posterMode = name === 'poster';
   mannequin.group.visible = !posterMode;   // a poster shows the plot, not a visitor
   layout();
   if (posterMode) {
     if (plotRoot) framePoster(camera, controls.target, framePoints(plotRoot));
+    // The reading needs a rendered frame, and the one on screen is the frame
+    // before this camera moved. Render, then measure, then report.
+    if (plotRoot) requestAnimationFrame(() => { composer.render(); reportReadability(); });
     return;
   }
+  posterNote.textContent = '';
   // An unknown name used to fall back to the street camera in silence, which
   // looks exactly like a camera that moved. Say so instead.
   if (!CAMS[name]) {
@@ -235,6 +260,11 @@ window.__preview = {
   mannequin,
   POSTER,
   get plotRoot() { return plotRoot; },
+  /** Measure the frame on screen: { centreLit, meanY, reads, floor, street }.
+   *  Meaningful under the `poster` camera — that is the frame the city
+   *  publishes and a directory shows. Render first; a headless caller should
+   *  setCam('poster') then step() before asking. */
+  readability: () => (plotRoot ? measureReadability(renderer.domElement) : null),
   step(frames = 30, dt = 1 / 60) { // deterministic advance for hidden-tab tests
     for (let i = 0; i < frames; i++) {
       simT += dt;
