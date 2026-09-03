@@ -43,19 +43,61 @@ export const CAMERAS = {
     return { pos: [p.x ?? 0, p.height_m ?? 8.7, p.back_m ?? -10.6], lookAt: [0, 0.6, 0], fov: p.vfov_deg ?? 50 };
   },
 
-  /** Helicopter orbit with turbulence. radius_m, height_m, period_s. */
+  /**
+   * Helicopter orbit. radius_m, height_m, period_s (negative orbits the other
+   * way), phase, turbulence, bank, vfov_deg.
+   *
+   * A first version of this moved the camera body around on slow noise and
+   * called it turbulence. Measured, it came out at 0.08 Hz and 3 mm per frame
+   * with no roll — which is a crane on a calm day, not an aircraft. Three
+   * things had to change, and the order matters:
+   *
+   *   Angle, not position.  At 60 m, sliding the body a metre barely moves the
+   *                         frame; turning the aim a quarter of a degree moves
+   *                         it eight pixels. Aim wander is specified in radians
+   *                         and converted to a target offset by distance, so it
+   *                         reads the same from 20 m or 200 m.
+   *   Two bands.            Slow airframe wander (~0.3 Hz) is the wind; a small
+   *                         5-7 Hz component is the machine the camera is bolted
+   *                         to. Either alone reads as wrong — the first as a
+   *                         drone, the second as a broken mount.
+   *   Roll.                 An orbiting aircraft banks, and the bank angle is
+   *                         not a taste question: a coordinated turn at v² / rg
+   *                         gives about 1.7° at the default radius and period.
+   *                         The operator's own horizon wanders on top of it.
+   */
   heli(t, seed, p = {}) {
-    const r = p.radius_m ?? 60, h = p.height_m ?? 45, period = p.period_s ?? 90;
-    const a = (t / period) * Math.PI * 2 + (p.phase ?? 0);
-    const pos = [Math.cos(a) * r, h, Math.sin(a) * r];
-    // Turbulence grows with height and speed, as a real airframe's does; the
-    // look-at wanders less than the body, because the operator is correcting.
-    const air = (p.turbulence ?? 1) * (0.5 + h / 90);
-    return {
-      pos: add(pos, shake(seed, t * 0.35, 0.9 * air)),
-      lookAt: add([0, 2, 0], shake(seed + 77, t * 0.21, 1.6 * air)),
-      fov: p.vfov_deg ?? 42,
-    };
+    const r = p.radius_m ?? 60, h = p.height_m ?? 45;
+    const period = p.period_s ?? 90;
+    const T = Math.abs(period) || 90;
+    const dir = period < 0 ? -1 : 1;                 // which way round the bowl
+    const a = (t / T) * Math.PI * 2 * dir + (p.phase ?? 0);
+    const air = p.turbulence ?? 1;
+
+    // Body: the airframe moving in air. Metres, slow, plus a slower swell in
+    // and out of the orbit so the radius is never exactly constant.
+    const body = shake(seed, t * 0.5, 0.55 * air);
+    const swell = noise1(seed + 101, t * 0.13) * 1.4 * air;
+    const pos = [Math.cos(a) * r + body[0] + Math.cos(a) * swell,
+                 h + body[1] + noise1(seed + 103, t * 0.11) * 0.9 * air,
+                 Math.sin(a) * r + body[2] + Math.sin(a) * swell];
+
+    // Aim: radians, converted to a target offset by the distance it is thrown
+    // over. The tangent to the orbit is the horizontal axis to swing about.
+    const dist = Math.hypot(pos[0], pos[2], pos[1] - 2) || 1;
+    const drift = 0.0045 * air, buzz = 0.00055 * air;
+    const yaw = noise1(seed + 77, t * 0.29) * drift + noise1(seed + 79, t * 6.1) * buzz;
+    const pitch = noise1(seed + 81, t * 0.23) * drift + noise1(seed + 83, t * 7.3) * buzz;
+    const lookAt = [-Math.sin(a) * yaw * dist, 2 + pitch * dist, Math.cos(a) * yaw * dist];
+
+    // Roll: the coordinated-turn bank for this orbit, then the operator on top.
+    const v = (2 * Math.PI * r) / T;
+    const bank = Math.atan((v * v) / (r * 9.81)) * (p.bank ?? 1) * dir;
+    const roll = bank
+      + noise1(seed + 91, t * 0.19) * 0.012 * air
+      + noise1(seed + 93, t * 5.7) * 0.0016 * air;
+
+    return { pos, lookAt, roll, fov: p.vfov_deg ?? 42 };
   },
 
   /**

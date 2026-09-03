@@ -348,11 +348,14 @@ function applyTimeOfDay(hour) {
  * built-in shots and RFL's own track files alike — is expressed from the pitch
  * centre with +z toward the north stand, and converted here exactly once.
  */
-function aim({ pos, lookAt, fov }) {
+function aim({ pos, lookAt, fov, roll }) {
   const p = world.toWorld(def, { x: pos[0], z: pos[2] });
   const t = world.toWorld(def, { x: lookAt[0], z: lookAt[2] });
   camera.position.set(p.x, pos[1], p.z);
   camera.lookAt(t.x, lookAt[1], t.z);
+  // lookAt can never tilt the horizon — it always levels the camera against
+  // its up vector — so roll is applied afterwards, about the view axis.
+  if (roll) camera.rotateZ(roll);
   if (fov && fov !== camera.fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
   camera.updateMatrixWorld();
 }
