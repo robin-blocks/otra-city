@@ -3,8 +3,13 @@
 // pavements (0.3 m, walkable), centre dashes, warm lamps, a roundabout with
 // an island totem, pedestrian aprons, drop-off bays, zebra crossings,
 // freestanding signs and bollards. Static and always resident — it is small.
-// Lamps beyond `light_budget` keep their glowing head but get no PointLight,
-// so the road system cannot spend the scene's dynamic-light budget by itself.
+//
+// A lit lamp registers a light SOURCE with the city's light pool (js/lights.js)
+// rather than owning a PointLight. The pool lights whichever sources the
+// visitor is nearest, so the roads cannot spend the scene's light budget by
+// themselves and `light_budget` in roads.json is no longer a hard cap — it is
+// the number of lamps that offer to light, and the pool decides which of them
+// actually do as you walk. Same contract as the boulevard's own lamps.
 import * as THREE from 'three';
 
 const mat = (color, opts = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.92, ...opts });
@@ -78,7 +83,8 @@ export function buildRoads(scene, world) {
   const colliders = [];
   const interactables = [];
   let lights = 0;
-  if (!data) return { group: g, colliders, interactables, lights };
+  const sources = [];   // light sources for the city's light pool (js/lights.js)
+  if (!data) return { group: g, colliders, interactables, lights, sources };
 
   const M = {
     asphalt: mat(0x17161c),
@@ -106,9 +112,7 @@ export function buildRoads(scene, world) {
     box(0.14, 3.3, 0.14, M.dark, x, 1.65, z, 0, true);
     box(0.34, 0.14, 0.34, M.head, x, 3.37, z);
     if (lit && budget > 0) {
-      const l = new THREE.PointLight(0xffbf80, 40, 26, 2);
-      l.position.set(x, 3.4, z);
-      g.add(l);
+      sources.push({ position: new THREE.Vector3(x, 3.4, z), color: 0xffbf80, intensity: 40, distance: 26, decay: 2 });
       budget -= 1;
       lights += 1;
     }
@@ -288,5 +292,5 @@ export function buildRoads(scene, world) {
     box(0.28, 0.06, 0.28, M.band, x, PAVE_H + 0.8, z);
   }
 
-  return { group: g, colliders, interactables, lights };
+  return { group: g, colliders, interactables, lights, sources };
 }

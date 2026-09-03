@@ -18,7 +18,11 @@ no account, WASD to walk, other citizens visible as they wander.
 ```
 public/            the deployed site (buildless three.js client)
   index.html       the whole app: world, avatars, doors, media, boards
-  js/              street/avatar/player/media/anims/presence modules
+  js/              street/roads/world/venues/avatar/player/media/anims/doors/
+                   presence modules, plus lights (the city's light pool:
+                   lamps and plots register sources, the nearest few are lit)
+                   and quality + perfguard (graphics preset picked from the
+                   hardware, stepped down at runtime if frames drop)
   plots/           one folder per accepted plot (plot.json + plot.glb + media/)
     lots.json      the land registry (city-assigned positions)
     index.json     street manifest, generated — never hand-edit
@@ -28,11 +32,11 @@ api/submit.mjs     POST /api/plots/submit — validate → PR via bot (no fork n
 api/sunset.mjs     410 + pointers for the old 2D-era API paths
 lib/validate-plot.mjs  the ONE validation implementation (API + CI + CLI)
 lib/headless-chrome.mjs  CDP over the real Chrome (posters, previews, QA)
-lib/static-server.mjs    the one static host those scripts serve the site from
+lib/static-server.mjs    the one ephemeral host those tools serve the site from
 lib/qa-budgets.mjs       what the city may cost, as a line per lot
 server/presence.mjs    session-based multiplayer presence (WebSocket, 1 file)
-scripts/           build-manifest, validate-all, dev-api harness,
-                   qa-walkthrough (drives the real client in headless Chrome)
+scripts/           build-manifest, validate-all, dev-api harness, serve-public
+                   (npm run dev), qa-walkthrough (drives the real client)
 .github/workflows/ PR validation + auto-merge + manifest rebuild,
                    city walkthrough (the only check that runs on client code)
 trusted.json       domains that skip the backlink check (directory listees)
@@ -44,7 +48,8 @@ poc/, tools/       the Blender/BlenderMCP authoring lane + bridge (see docs)
 
 ```bash
 npm install
-npm run dev        # static client on :5173
+npm run dev        # the client on :5173 (PORT=… moves it; no-store, and vercel.json's
+                   # clean URLs apply, so /s/<slug> and /embed work locally)
 npm run presence   # multiplayer server on :8787 (optional — client runs solo without it)
 npm run api        # submission endpoint harness on :8788 (optional)
 npm run validate   # validate every plot + rebuild the street manifest
@@ -56,15 +61,23 @@ npm run qa         # walk the real client in headless Chrome, assert, screenshot
 the render loop, on the same terms `preview.html` offers `window.__preview` —
 and checks that plots load, the boulevard is walkable end to end, every lot is
 standing ground, doors open and shut, an info board offers its link without
-navigating and only the pill leaves, permalinks and embeds frame correctly, a
-video screen decodes, and the draw budget in `lib/qa-budgets.mjs` holds. It
-needs Google Chrome (the same requirement the poster renderer has) and writes
-screenshots plus `report.json` to `qa-out/`.
+navigating and only the pill leaves, permalinks and embeds frame correctly, the
+HUD is right on desktop, phone and embed, a video screen decodes, and the draw
+budget in `lib/qa-budgets.mjs` holds. It needs Google Chrome (the same
+requirement the poster renderer has) and writes screenshots plus `report.json`
+to `qa-out/`.
 
 Every expectation comes from `public/plots/index.json`, so the city gains lots
 without anyone editing the tests. Budgets are a base plus a per-lot slope for
 the same reason. Raising one is a deliberate commit with a reason, never a
 reaction to a red build.
+
+URL knobs the client understands: `?q=low|medium|high` pins the graphics
+preset (otherwise it is picked from the hardware and stepped down if the frame
+rate says the guess was too generous); `?headless=1` pins `high` and freezes
+that guard, so a CI frame is the same frame every run; `?perftarget=30` changes
+the frame rate the guard defends; `?ws=` points presence somewhere else.
+
 
 ## Deploy
 

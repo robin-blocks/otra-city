@@ -10,3 +10,6 @@ poc/stadium/out/
 
 # session worktrees (.claude/worktrees/<branch>) are checkouts, not content
 .claude/worktrees/
+
+# client-check output (scripts/check-client.mjs --shots)
+shots/
