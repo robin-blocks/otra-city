@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Broadcast — otra.city</title>
+<meta name="robots" content="noindex">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  /* The drawing buffer is always 1280 x 720. The canvas is centred and scaled
+     down to fit a human's window; a capture reads the buffer, not the CSS. */
+  #stage { position: fixed; inset: 0; display: grid; place-items: center; }
+  canvas { max-width: 100vw; max-height: 100vh; }
+  #note {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 2; padding: 6px 10px;
+    color: #8a86a0; background: rgba(10, 8, 23, .82); border-top: 1px solid #31234f;
+    font: 11px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap;
+  }
+  #note b { color: #2fe0f8; }
+  #note.bad { color: #ffb4b4; border-top-color: #7a2b2b; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="note">starting…</div>
+<script type="importmap">
+{
+  "imports": {
+    "three": "/vendor/three/three.module.js",
+    "three/addons/": "/vendor/three/jsm/"
+  }
+}
+</script>
+<script type="module">
+// A page built to be filmed, not visited.
+//
+// The RFL broadcast brief (docs/broadcast/REPLY.md) asks for a deterministic
+// surface a headless capture can drive: fixed timestep, no wall clock, same
+// inputs and seed giving the same pixels. This is the bare version of it —
+// the stadium, one static camera, `step()` and `frame()` — the step the brief
+// itself proposes so both sides iterate from footage instead of specs.
+//
+// It runs the client's real pipeline (world, venues, doors, anims, media), so
+// what is filmed is the city visitors walk. Three things are deliberately
+// left out, and each one is a determinism bug if it comes back:
+//
+//   presence.js   other visitors arrive over a socket on their own schedule
+//   perfguard.js  quality that steps down mid-capture changes the pixels
+//   rAF stepping  a render loop advances the scene off the wall clock
+//
+// That last one is why nothing here renders on its own. The page draws one
+// frame when `ready` resolves so a human sees the pitch, and after that only
+// `step()` moves time.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { createMediaSystem } from '/js/media.js';
+import { createAnimSystem } from '/js/anims.js';
+import { loadStreet } from '/js/street.js';
+import { loadWorld } from '/js/world.js';
+import { buildRoads } from '/js/roads.js';
+import { createVenues } from '/js/venues.js';
+import { createDoorSystem } from '/js/doors.js';
+
+const FPS = 50;                 // the brief's timebase; one step is 20 ms
+const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
+
+// Errors are evidence: a silent failure films a black hour, so every one is
+// kept for `state()`, echoed to the console the harness reads, and shown.
+const errors = [];
+const note = document.getElementById('note');
+function fail(where, e) {
+  const msg = `${where}: ${e && e.message ? e.message : e}`;
+  errors.push(msg);
+  console.error('broadcast', msg);
+  note.classList.add('bad');
+  note.textContent = errors.join('\n');
+  return msg;
+}
+addEventListener('error', (e) => fail('page', e.message || e));
+addEventListener('unhandledrejection', (e) => fail('unhandled', e.reason?.message || e.reason));
+const origError = console.error.bind(console);
+console.error = (...a) => { errors.push(a.map(String).join(' ')); origError(...a); };
+
+const params = new URLSearchParams(location.search);
+const num = (name, dflt) => { const v = params.get(name); const n = v === null ? NaN : Number(v); return Number.isFinite(n) ? n : dflt; };
+
+// A query parameter must never become code, and this route is public: the
+// same rule the venue fixture follows. Bundle URLs are data the SDK fetches
+// and must be https (or same-origin, for a local test bundle).
+const httpsOnly = (u) => { try { const x = new URL(u, location.href); return x.protocol === 'https:' || x.origin === location.origin ? x.href : null; } catch { return null; } };
+
+const wantVenue = params.get('venue') || 'stadium';
+const wantCam = params.get('camera') || 'gantry';
+const bundle = params.get('bundle') ? httpsOnly(params.get('bundle')) : null;
+if (params.get('bundle') && !bundle) fail('bundle', 'must be an https URL; ignored');
+const seed = num('seed', 1);
+const t0 = Math.max(0, num('t0', 0));
+// The city is the establishing shot, so the plots load by default and
+// `?street=0` is the opt-out. It costs about 8 draw calls and 4.7k triangles
+// from a wide camera — measured, not assumed — and it is the difference
+// between filming otra.city and filming a stadium that happens to sit in it.
+const withStreet = params.get('street') !== '0';
+
+// Parameters the brief names that this bare page does not honour yet. They
+// are reported rather than ignored — a capture that silently got an empty
+// crowd would be discovered a week of footage later.
+const unimplemented = [];
+if (params.has('camtrack')) unimplemented.push('camtrack (§4) — no camera track file is read; the camera is static');
+if (params.has('crowd')) unimplemented.push('crowd (§6) — the stands are empty geometry; nobody is seated');
+if (params.has('timeofday')) unimplemented.push('timeofday (§4) — lighting is fixed at the stadium’s night preset');
+if (params.has('seed')) unimplemented.push('seed (§4) — accepted and reported, but nothing random is drawn yet');
+
+// ---- renderer: the client's pipeline, with the capture's constraints -------
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);      // never devicePixelRatio: the buffer must be 1280 x 720 on every machine
+renderer.setSize(W, H);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.info.autoReset = false;
+document.getElementById('stage').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0817);
+scene.fog = new THREE.Fog(0x0a0817, 32, 95);
+const camera = new THREE.PerspectiveCamera(50, W / H, 0.1, 220);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300),
+  new THREE.MeshStandardMaterial({ color: 0x121017, roughness: 0.95 }));
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.01;
+scene.add(ground);
+scene.add(new THREE.HemisphereLight(0x8899ff, 0x080610, 0.25));
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.12, 0.3, 1.0));
+composer.addPass(new OutputPass());
+
+const loader = new GLTFLoader().setDRACOLoader(new DRACOLoader().setDecoderPath('/vendor/three/jsm/libs/draco/gltf/'));
+const media = createMediaSystem(camera);
+const anims = createAnimSystem();
+const doors = createDoorSystem();
+
+// The streamer and the doors react to a position. There is no player here, so
+// the camera's own position stands in: a venue is at Tier 2 because the
+// broadcast is inside it.
+const viewer = {
+  pos: new THREE.Vector3(),
+  colliders: [], extra: [], all: [],
+  addColliders(list) { this.extra.push(...list); this.all = [...this.colliders, ...this.extra]; },
+  removeColliders(list) { const drop = new Set(list); this.extra = this.extra.filter((c) => !drop.has(c)); this.all = [...this.colliders, ...this.extra]; },
+};
+
+let def = null, venues = null, V = null, world = null, frame = 0;
+
+async function boot() {
+  const street = withStreet ? await loadStreet(scene) : null;
+  world = await loadWorld({ street });
+  scene.fog.near = world.presets.fog[0];
+  scene.fog.far = world.presets.fog[1];
+  camera.far = Math.max(camera.far, world.presets.cameraFar);
+  camera.updateProjectionMatrix();
+  const roads = buildRoads(scene, world);
+  viewer.colliders = [ground, ...(street?.colliders || []), ...roads.colliders];
+  viewer.all = [...viewer.colliders];
+
+  def = world.venues.find((v) => v.id === wantVenue);
+  if (!def) throw new Error(`no venue "${wantVenue}" in /venues/index.json`);
+  def.tiers.unload_after_s = 0;
+
+  // Ambient mode is an empty pitch (§4). The match module's schedule path
+  // polls a programme feed on a 60 s wall-clock timer, which would be both
+  // network after load and a clock the capture cannot control — so with no
+  // bundle the module is removed rather than left idling.
+  def.modules = (def.modules || []).filter((m) => {
+    if (m.type !== 'match-4dgsx') return true;
+    if (!bundle) return false;
+    m.bundle = bundle;
+    // No audio on a broadcast: RFL mixes crowd and commentary themselves, and
+    // the venue's PA loads its commentary stem after the match has mounted,
+    // without the mount awaiting it. That is a fetch during capture and an
+    // <audio> element running off the wall clock — both for a soundtrack
+    // nobody records. Dropped rather than muted.
+    delete m.pa;
+    delete m.audio;
+    return true;
+  });
+
+  venues = createVenues(scene, world, { loader, player: viewer, doors, anims, media, camera, renderer });
+  V = venues.get(wantVenue);
+
+  // Park the viewer at the venue's centre so the streamer resolves Tier 2,
+  // then hold the venue there for the whole capture.
+  const centre = world.toWorld(def, { x: 0, z: 0 });
+  viewer.pos.set(centre.x, 0, centre.z);
+  V.force = 2;
+
+  useCamera(wantCam);
+  advance(1 / FPS);
+  await venues.whenLoaded(wantVenue);
+  // The streamer creates and activates a venue's modules on the update after
+  // the GLB lands, so the match module does not exist until we tick again.
+  for (let i = 0; i < 2; i++) advance(1 / FPS);
+  // A mounted match is part of "ready". The venue reaches Tier 2 in one tick
+  // but the bundle takes seconds of wall time to arrive, and a harness that
+  // started stepping at Tier 2 would film an empty pitch until it landed —
+  // the failure that is only visible once there is footage.
+  if (bundle) await matchMounted();
+  // Let the venue settle: gates, anims and the module's first board. The
+  // count is fixed on purpose. Waiting for the mount above happens on the
+  // wall clock without advancing anything, because a settle loop that ran
+  // "until mounted" would tick a different number of times on a slow network
+  // and no two runs would agree.
+  for (let i = 0; i < 30; i++) advance(1 / FPS);
+  // `t0` is a warm-up, not a seek — the scene is stepped to it.
+  const start = Math.round(t0 * FPS);
+  while (frame < start) { advance(1 / FPS); frame += 1; }
+  draw();
+}
+
+/** The match module's own view of itself, or null if the venue has no match. */
+function matchState() {
+  const v = venues?.state()?.find((x) => x.id === wantVenue);
+  return v?.modules?.find((m) => m.type === 'match-4dgsx')?.state ?? null;
+}
+
+/**
+ * Hold `ready` until the bundle is on the pitch. Polled on the wall clock and
+ * deliberately outside the fixed timestep: nothing here advances the scene, so
+ * however long the download takes, every run reaches frame 0 in the same state.
+ */
+async function matchMounted({ timeoutMs = 120000 } = {}) {
+  const until = Date.now() + timeoutMs;
+  for (;;) {
+    const m = matchState();
+    if (m?.phase === 'match') return m;
+    if (m?.errors?.length) { fail('match', `bundle did not mount: ${m.errors.join('; ')}`); return m; }
+    if (Date.now() > until) { fail('match', `bundle did not mount within ${timeoutMs / 1000}s (phase "${m?.phase ?? 'none'}")`); return m; }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
+
+function useCamera(name) {
+  const c = def?.cameras?.[name];
+  if (!c) {
+    fail('camera', `unknown camera "${name}" — one of ${Object.keys(def?.cameras || {}).join(', ')}`);
+    return false;
+  }
+  const p = world.toWorld(def, { x: c[0][0], z: c[0][2] });
+  const t = world.toWorld(def, { x: c[1][0], z: c[1][2] });
+  camera.position.set(p.x, c[0][1], p.z);
+  camera.lookAt(t.x, c[1][1], t.z);
+  camera.updateMatrixWorld();
+  return true;
+}
+
+/** One fixed-timestep tick. Every system here takes dt from us; none reads a clock. */
+let simT = 0;
+function advance(dt) {
+  simT += dt;
+  doors.update(dt, viewer.pos);
+  venues.update(dt, viewer.pos, simT);
+  anims.update(dt, simT, viewer.pos);
+  media.update(viewer.pos, dt);
+}
+
+function draw() {
+  renderer.info.reset();
+  composer.render();
+  // finish() blocks until the driver has actually drawn: without it `frame()`
+  // can read a buffer the GPU has not finished writing.
+  renderer.getContext().finish();
+  if (!errors.length) {
+    const r = renderer.info.render;
+    note.textContent = `otra.city broadcast · ${wantVenue} · camera ${wantCam} · frame ${frame} `
+      + `(${(frame / FPS).toFixed(2)}s @ ${FPS}fps) · ${W}×${H} · ${r.calls} calls · ${r.triangles} tris`
+      + (unimplemented.length ? `\nnot in this build: ${unimplemented.join(' · ')}` : '');
+  }
+}
+
+const ready = boot().then(() => ({ venue: wantVenue, camera: wantCam, fps: FPS, width: W, height: H }))
+  .catch((e) => { fail('boot', e); throw e; });
+
+window.rflBroadcast = {
+  ready,
+  fps: FPS, width: W, height: H,
+
+  /**
+   * Advance the scene to absolute frame `n` on the 50 fps timebase and draw it.
+   * Resolves once the GPU has finished the frame, so `frame()` is safe after.
+   * Time has no inverse here: stepping backwards needs a reload.
+   */
+  async step(n) {
+    await ready;
+    const target = n === undefined ? frame + 1 : Math.round(n);
+    if (target < frame) throw new Error(`step(${target}) is behind the current frame ${frame}; reload with ?t0= to rewind`);
+    while (frame < target) { advance(1 / FPS); frame += 1; }
+    draw();
+    return { frame, t: frame / FPS };
+  },
+
+  /** The current frame as a PNG data URL. The drawing buffer is preserved, so this may be called any time after `step()`. */
+  frame() { return renderer.domElement.toDataURL('image/png'); },
+
+  /** Raw RGBA for a harness that would rather not decode PNG. Bottom-up, as WebGL reads it. */
+  pixels() {
+    const gl = renderer.getContext();
+    const buf = new Uint8Array(W * H * 4);
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    return buf;
+  },
+
+  camera: (name) => useCamera(name),
+  cameras: () => Object.keys(def?.cameras || {}),
+
+  state() {
+    const r = renderer.info.render;
+    return {
+      venue: wantVenue, camera: wantCam, frame, t: frame / FPS, fps: FPS,
+      width: W, height: H, pixelRatio: renderer.getPixelRatio(),
+      tier: V?.tier ?? null, loaded: !!V?.near,
+      bundle, seed, street: withStreet,
+      match: (() => { const m = matchState(); return m ? { phase: m.phase, errors: m.errors ?? [] } : null; })(),
+      calls: r.calls, tris: r.triangles,
+      unimplemented, errors: errors.slice(),
+    };
+  },
+  errors,
+  // escape hatches for a harness that needs to look closer
+  three: { scene, camera, renderer, composer },
+};
+</script>
+</body>
+</html>

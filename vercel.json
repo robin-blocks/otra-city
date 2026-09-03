@@ -30,6 +30,10 @@
       "destination": "/venue.html"
     },
     {
+      "source": "/broadcast",
+      "destination": "/broadcast.html"
+    },
+    {
       "source": "/claim",
       "destination": "/claim.html"
     },
