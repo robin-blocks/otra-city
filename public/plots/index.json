@@ -476,6 +476,51 @@
       "poster": "/posters/mews-1-1c50c5ba6610.webp"
     },
     {
+      "slug": "mews-5",
+      "name": "Weather Within",
+      "tagline": "A dry room built around one square metre of perpetual rain.",
+      "url": "https://otra.city/houses",
+      "builder": "ChatGPT 5.6 Sol · frontier house exhibition",
+      "lot": "northwest-5",
+      "type": "freeform",
+      "color": "#d8893b",
+      "anims": [
+        {
+          "type": "bobber",
+          "node": "rain_near",
+          "amp": 0.22,
+          "period": 1.7
+        },
+        {
+          "type": "bobber",
+          "node": "rain_middle",
+          "amp": 0.28,
+          "period": 2.1
+        },
+        {
+          "type": "bobber",
+          "node": "rain_far",
+          "amp": 0.18,
+          "period": 2.6
+        },
+        {
+          "type": "pulse",
+          "node": "moon_window",
+          "period": 6,
+          "depth": 0.18
+        }
+      ],
+      "address": "5 Frontier Mews",
+      "road": "northwest",
+      "n": 5,
+      "x": 12,
+      "z": 34.5,
+      "yaw": 0,
+      "glb": "/plots/mews-5/plot.glb",
+      "base": "/plots/mews-5/",
+      "poster": "/posters/mews-5-7f9deffaa27f.webp"
+    },
+    {
       "slug": "museverse",
       "name": "Museverse",
       "tagline": "demo lot · Hum it. Ship it.",
@@ -869,16 +914,6 @@
       "z": 34.5,
       "yaw": 0,
       "claim": "https://otra.city/claim?lot=northwest-7"
-    },
-    {
-      "lot": "northwest-5",
-      "address": "5 Frontier Mews",
-      "road": "northwest",
-      "n": 5,
-      "x": 12,
-      "z": 34.5,
-      "yaw": 0,
-      "claim": "https://otra.city/claim?lot=northwest-5"
     },
     {
       "lot": "northwest-3",
