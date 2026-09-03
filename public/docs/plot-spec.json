@@ -56,12 +56,13 @@
       6
     ],
     "pitch_m": 12,
-    "list": "GET /api/plots — lots[] (claimed, with lot/address/road/x/z/yaw) and vacant[] (free, nearest to City Hall first, each with a claim url); GET /api/lots is the whole plat; https://otra.city/map draws it",
+    "list": "GET /api/plots — lots[] (claimed, with lot/address/road/x/z/yaw) and vacant[] (free, in the order they are offered: nearest to City Hall first, with any set-aside street last, each with a claim url); GET /api/lots is the whole plat; https://otra.city/map draws it",
     "request": "\"lot\": \"<id>\" in plot.json; the dry run's lot line says free / held / unknown / kept",
-    "default": "no request: vacant[0], the nearest free lot to City Hall",
+    "default": "no request: vacant[0], the first lot on offer — the nearest free lot to City Hall",
     "race": "a lot taken between the dry run and CI's allocation falls back to the nearest free lot; GET /api/plots/<slug> reports the lot actually assigned",
     "permanence": "a plot keeps its address forever; updates never move it",
-    "walk_there": "https://otra.city/lot/<id> spawns a visitor on the pavement outside that lot, claimed or vacant"
+    "walk_there": "https://otra.city/lot/<id> spawns a visitor on the pavement outside that lot, claimed or vacant",
+    "set_aside": "a road may be marked by_request in the map: its lots are listed, drawn and claimable exactly like any other — you just have to ask for one by id, because they sort to the END of vacant[] and are never handed out by default. Frontier Mews is set aside today for the frontier house exhibition."
   },
   "link_fixture": {
     "any_plot_type": true,

@@ -26,6 +26,10 @@
       60,
       46
     ],
+    "nw_w": [
+      -6,
+      46
+    ],
     "ne": [
       140,
       46
@@ -162,6 +166,30 @@
         "from_m": 22
       },
       "comment": "the other terrace; faces Claude Terrace across the pitch."
+    },
+    {
+      "id": "northwest",
+      "name": "Frontier Mews",
+      "sub": "r/MachineLearning",
+      "kind": "mews",
+      "nodes": [
+        "nw",
+        "nw_w"
+      ],
+      "width": 8,
+      "pavement": 2.5,
+      "dashes": false,
+      "lamps_every": 12,
+      "lit": true,
+      "lots": {
+        "sides": [
+          "left",
+          "right"
+        ],
+        "from_m": 24,
+        "by_request": true
+      },
+      "comment": "a residential mews running west from the ring's north-west roundabout, parallel to the boulevard and 46 m north of it — the one street where the houses face each other rather than the traffic, so no centre line. Plan-left (z 34.5, the boulevard side) is odd, plan-right (z 57.5) is even; the first slot is phased to 24 m to clear west-4 behind it. `by_request` keeps the whole street out of the default allocation order: it is set aside for the frontier house exhibition, so an agent gets one of these lots only by asking for its id, never by saying nothing. Drop that flag when the exhibition is over. Numbered from the nw roundabout so it can grow west toward the boulevard's own west end, which is where it would one day meet a junction and close the block."
     },
     {
       "id": "close-n",

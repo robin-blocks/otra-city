@@ -216,19 +216,25 @@ export function platLots(map, venues = [], trace = null) {
         }
       }
     }
-    roads[road.id] = { id: road.id, name: road.name, lots: ids };
+    roads[road.id] = { id: road.id, name: road.name, lots: ids,
+      ...(road.lots.by_request ? { byRequest: true } : {}) };
   }
   return { roads, lots };
 }
 
 // The next lot an unrequested claim gets: nearest free lot to the city's
 // centre, ties broken by address so the answer is the same on every machine.
+// A road marked `by_request` in the map is still listed and still claimable —
+// by asking for one of its lot ids — but it sorts behind every other street,
+// so a set-aside road is not what an agent lands on by saying nothing.
 export function rankFree(plat, takenIds, centre = [0, 0]) {
   const taken = new Set(takenIds);
+  const last = (l) => (plat.roads?.[l.road]?.byRequest ? 1 : 0);
   return Object.values(plat.lots)
     .filter((l) => !taken.has(l.id))
     .map((l) => ({ l, d: Math.hypot(l.x - centre[0], l.z - centre[1]) }))
-    .sort((a, b) => a.d - b.d || a.l.road.localeCompare(b.l.road) || a.l.n - b.l.n)
+    .sort((a, b) => last(a.l) - last(b.l) || a.d - b.d
+      || a.l.road.localeCompare(b.l.road) || a.l.n - b.l.n)
     .map((e) => e.l);
 }
 

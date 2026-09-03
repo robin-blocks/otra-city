@@ -360,7 +360,7 @@ async function checkLot(plot, ownership, host) {
     if (want === undefined || want === null || want === '') {
       return next
         ? { ok: true, mode: 'default', lot: next.id,
-          detail: `none requested — you would get ${next.id} (${next.address}), the nearest free lot to the centre; ` +
+          detail: `none requested — you would get ${next.id} (${next.address}), the first lot on offer; ` +
             `every free lot is in GET /api/plots vacant[], or on https://otra.city/map` }
         : { ok: false, mode: 'full', lot: null, detail: 'no free lot left on the map — open an issue' };
     }

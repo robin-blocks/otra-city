@@ -18,6 +18,11 @@
 - **Manifest** — `public/plots/index.json`: claimed lots (plot.json fields +
   the lot's geometry + glb/base/poster) and `vacant[]` (every unclaimed lot,
   in default-allocation order, each with its claim url).
+- **Set-aside road** — one with `lots.by_request` in the map. Its lots are
+  platted, drawn, addressed and claimable as usual, but `rankFree` sorts them
+  behind every other street, so they are never allocated to a claim that named
+  no lot. This is how a street is held for an event; `reserved` is the other
+  tool and stops lots existing at all.
 - **Address** — `<n> <Road Name>`; **id** — `<road id>-<n>`. Numbers count
   slots from the chain's first node: left odd / right even when both sides
   bear lots, consecutive when one does. A slot a junction swallows leaves a
@@ -30,7 +35,7 @@
 |---|---|---|
 | Map geometry | `public/js/city-map.mjs` | The one implementation of: segments and trims, the plat, lamp positions (road, roundabout, bay), roundabout arcs, name-plate positions (both ends of every segment, one on a short close, repeaters on long segments where a right-kerb lamp stands), dead ends, the walkable fence and its point test. Imports nothing. Node and the browser import the same file. |
 | Plat | `scripts/build-map.mjs` | `map.json` → `lots.json`. `--check` fails on a stale plat, and on any edit that moves (against the registry's `placed` record) or removes a lot the registry holds. |
-| Manifest | `scripts/build-manifest.mjs` | Plat + registry + every `plot.json` → `index.json`; allocates lots (requested if free, else nearest free to the centre); writes the registry back. |
+| Manifest | `scripts/build-manifest.mjs` | Plat + registry + every `plot.json` → `index.json`; allocates lots (requested if free, else the first lot `rankFree` offers); writes the registry back. |
 | Map check | `scripts/map-check.mjs` | Deterministic invariants (plat, registry incl. `placed`, manifest, fence continuity along roads / around roundabouts / spawn→every lot, clearance of every spawn point from every lamp, plate post, sign, bollard and board, no post on a post, nothing the city puts up standing on a lot). |
 | World | `public/js/world.js` | Loads map, plat, venues; builds the fence via `fenceShapes`; `contains(x,z)`, `reach`, fog/far presets, spawn, `lotById`. |
 | Roads | `public/js/roads.js` | Renders every road from the map (asphalt, pavements, instanced dashes/lamps/bollards/stripes, roundabouts with bands and totems, plazas, bays, crossings, directional signs, **name plates**, dead-end kerbs). Registers lamp light sources with the pool. |
@@ -57,6 +62,8 @@ Dependency direction: `city-map.mjs` ← everything. `world.js` ← `roads.js`,
       "lots": { "sides": ["left", "right"], "from_m": 24 } },
     { "id": "north", "name": "Claude Terrace", "sub": "r/ClaudeAI", "nodes": ["nw", "ne"],
       "lots": { "sides": ["left"], "from_m": 22 } },
+    { "id": "northwest", "name": "Frontier Mews", "nodes": ["nw", "nw_w"],
+      "lots": { "sides": ["left", "right"], "from_m": 24, "by_request": true } },
     { "id": "coach_n", "name": null, "nodes": ["nw", "bay_n"], "lots": null }
   ],
   "roundabouts": [ { "id": "rb", "at": "rb", "island_r": 4, "outer_r": 9, "pavement": 2.5, "lamps": 4, "lit": true, "totem": {...} } ],
@@ -104,8 +111,8 @@ is the registry's word; a `lot` in plot.json that disagrees is ignored.
 ```js
 // public/js/city-map.mjs (node + browser)
 roadSegments(map) → [{ road, index, id, from, to, a, b, L, ux, uz, lx, lz, t0, width, pavement, half, trimA, trimB, endA, endB, lotsFrom }]
-platLots(map, venues, trace?) → { roads: { id: { id, name, lots } }, lots: { id: lot } }
-rankFree(plat, takenIds, centre) → [lot]            // default allocation order
+platLots(map, venues, trace?) → { roads: { id: { id, name, lots, byRequest? } }, lots: { id: lot } }
+rankFree(plat, takenIds, centre) → [lot]            // default allocation order (set-aside roads last)
 fenceShapes(map, plat, venues) → shapes; fenceContains(shapes, x, z); fenceReach(shapes)
 lotToWorld(lot, lx, lz); lotFront(lot, d); standingPoint(lot, d = 6.7) → { x, z, yaw }
 roadLamps(map); roundaboutArcs(map, r); roundaboutLamps(map, r); allLamps(map); namePlates(map); deadEnds(map)
