@@ -170,6 +170,7 @@ import { createJoystick } from '/js/joystick.js';
 import { loadStreet, FRONT_LINE } from '/js/street.js';
 import { createMediaSystem } from '/js/media.js';
 import { createAnimSystem } from '/js/anims.js';
+import { createLightSystem } from '/js/lights.js';
 import { createPresence } from '/js/presence.js';
 import { loadWorld } from '/js/world.js';
 import { buildRoads } from '/js/roads.js';
@@ -212,7 +213,9 @@ scene.add(new THREE.HemisphereLight(0x8899ff, 0x080610, 0.25));
 
 const media = createMediaSystem(camera);
 const anims = createAnimSystem();
+const lights = createLightSystem(scene);
 window.__media = media;
+window.__lights = lights;
 window.__anims = anims;
 
 // city soundtrack: quiet global loop, owned by the media system — which plays
@@ -321,6 +324,10 @@ const loader = new GLTFLoader().setDRACOLoader(
   new DRACOLoader().setDecoderPath('/vendor/three/jsm/libs/draco/gltf/'));
 
 const street = await loadStreet(scene);
+// The boulevard's lamps join the pool like any plot's fixtures — they just
+// belong to the city rather than to a lot, so they are never the reserved
+// three. (roads.js and venues.js budget their own lights; see lights.js.)
+lights.harvest(street.group, null);
 interactables.push(...street.interactables);
 // The world beyond the boulevard: roads, venues, the walkable fence and the
 // fog line that lets a stadium read from the spawn. The boulevard's own half
@@ -410,6 +417,9 @@ Promise.all(street.manifest.lots.map((p) => new Promise((resolve) => {
       total += l.intensity;
     }
     if (total > LIGHT_CAP) for (const l of plotLights) l.intensity *= LIGHT_CAP / total;
+    // Straight after the cap, never before it: harvesting earlier would carry
+    // Blender's raw watts into the pool and white out the city.
+    lights.harvest(gltf.scene, container.position);
     const panels = ['door_panel_L', 'door_panel_R'].map((n) => gltf.scene.getObjectByName(n));
     if (panels[0] && panels[1]) {
       doors.add(p.slug, {
@@ -448,6 +458,9 @@ Promise.all(street.manifest.lots.map((p) => new Promise((resolve) => {
     }
   });
   const ms = (performance.now() - t0).toFixed(0);
+  // Light the city where the visitor actually is, with no ramp: the spawn and
+  // a permalink's establishing shot must not fade up out of darkness.
+  lights.seed(player.pos);
   document.getElementById('stats').dataset.load = `${loaded}/${street.manifest.lots.length} plots in ${ms} ms`;
 });
 
@@ -469,6 +482,7 @@ window.__step = (frames = 60, dt = 1 / 60) => {
     venues.update(dt, player.pos, simTime);
     street.update(dt);
     anims.update(dt, simTime, player.pos);
+    lights.update(player.pos, dt);
     controls.update();
   }
   presence.update(1 / 60, simTime);
@@ -495,6 +509,7 @@ function frame() {
   venues.update(dt, player.pos, clock.elapsedTime);
   street.update(dt);
   anims.update(dt, clock.elapsedTime, player.pos);
+  lights.update(player.pos, dt);
   presence.update(dt, clock.elapsedTime);
   media.update(player.pos, dt);
   controls.update();
@@ -512,7 +527,7 @@ renderer.setAnimationLoop(frame);
 // loop already holds — and pause() exists because __step and the animation loop
 // are two clocks: anything measuring draw calls has to stop one of them first.
 window.__city = {
-  scene, camera, renderer, composer, controls, street, doors, venues, interactables,
+  scene, camera, renderer, composer, controls, street, doors, venues, interactables, lights,
   step: window.__step,
   pause() { renderer.setAnimationLoop(null); },
   resume() { renderer.setAnimationLoop(frame); },

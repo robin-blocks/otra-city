@@ -310,6 +310,89 @@ for (const [name, pose] of Object.entries(BUDGETS.poses)) {
   }, { picture: true });
 }
 
+// --- the light pool --------------------------------------------------------
+// The pool exists so the number of visible lights never changes, because that
+// number is a shader define: a light switched off mid-street recompiles
+// programs under the visitor's feet. Both halves of that promise are testable
+// without a GPU, so they are tested.
+await check('walking the street never changes the light count or recompiles', async () => {
+  await teleport(-east.x, 0, Math.PI / 2);
+  await walk(20);                                  // warm pass: everything compiles once
+  await teleport(east.x, 0, -Math.PI / 2);
+  return call(() => {
+    const c = window.__city, p = window.__player;
+    c.pause();
+    c.step(30, 1 / 60);
+    const programs = new Set([c.renderer.info.programs.length]);
+    const totals = new Set();
+    const points = new Set();
+    p.setStick(0, 1);
+    for (let i = 0; i < 80; i++) {
+      c.step(15, 1 / 60);
+      let all = 0, pt = 0;
+      c.scene.traverse((o) => { if (o.isLight && o.visible) { all += 1; if (o.isPointLight) pt += 1; } });
+      totals.add(all); points.add(pt);
+      programs.add(c.renderer.info.programs.length);
+    }
+    p.setStick(0, 0);
+    c.resume();
+    return {
+      // The scene total also carries the avatar's fill and whatever roads.js
+      // and venues.js budget for themselves; what the pool promises is that
+      // the number never MOVES as you walk, which is what the define needs.
+      ok: totals.size === 1 && points.size === 1 && programs.size === 1,
+      lightCounts: [...totals], pointLights: [...points], pooled: c.lights.state.pool, programs: [...programs],
+    };
+  });
+});
+
+await check('a light ramps, it never pops', async () => {
+  const lot = lots[0];
+  await teleport(lot.x - 6, lot.side * 8, lot.side > 0 ? -Math.PI / 2 : Math.PI / 2);
+  return call(() => {
+    const c = window.__city, p = window.__player;
+    c.pause();
+    const dt = 1 / 60;
+    // FADE_S in public/js/lights.js, plus the quantisation of state's own
+    // reporting: k is published to three decimals, so two consecutive samples
+    // of a true 0.0476 step can read as 0.048 apart.
+    const allowed = dt / 0.35 + 0.0015;
+    let worst = 0, at = null;
+    p.setStick(0, 1);
+    let prev = c.lights.state.slots.map((x) => x.k);
+    // The ramp is a property of the simulation, not of the picture, so this
+    // drives the player and the pool directly: 300 composited frames of
+    // software WebGL would take longer than the check is worth.
+    for (let i = 0; i < 300; i++) {                // 5 s: more than one 12 m lot pitch
+      p.update(dt, i * dt);
+      c.lights.update(p.pos, dt);
+      const now = c.lights.state.slots.map((x) => x.k);
+      for (let j = 0; j < now.length; j++) {
+        const d = Math.abs(now[j] - prev[j]);
+        if (d > worst) { worst = d; at = j; }
+      }
+      prev = now;
+    }
+    p.setStick(0, 0);
+    c.resume();
+    return { ok: worst <= allowed + 1e-6, worstStep: +worst.toFixed(4), allowed: +allowed.toFixed(4), slot: at };
+  });
+});
+
+await check('standing on a lot, its own lights hold their slots', async () => {
+  const lot = lots.find((l) => l.type === 'shop') || lots[0];
+  await teleport(lot.x, lot.side * 11.5, lot.side > 0 ? 0 : Math.PI);
+  return call((a) => {
+    const c = window.__city;
+    c.pause();
+    c.step(60, 1 / 60);
+    const st = c.lights.state;
+    c.resume();
+    const mine = st.slots.filter((s) => s.of === `lot ${a.x}` && s.k > 0.5).length;
+    return { ok: st.onLot !== null && mine > 0, onLot: st.onLot, slotsHeldByThisLot: mine, slots: st.slots };
+  }, { x: lot.x });
+}, { picture: true });
+
 // --- arrival modes ---------------------------------------------------------
 const perma = lots[0];
 await check(`a permalink lands you outside its plot (?plot=${perma.slug})`, async () => {
