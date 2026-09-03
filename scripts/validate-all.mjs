@@ -47,6 +47,9 @@ for (const slug of readdirSync(root)) {
   }
 }
 execSync('node scripts/build-manifest.mjs', { stdio: 'inherit' });
+// the map: plat current, registry and manifest consistent, fence continuous
+// to every lot, nothing standing in a spawn point (scripts/map-check.mjs)
+const mapOk = spawnSync('node', [join(here, 'scripts', 'map-check.mjs')], { stdio: 'inherit' }).status === 0;
 if (failed) console.error(`\n${failed} plot(s) failed`);
-if (failed || !docsOk) process.exit(1);
+if (failed || !docsOk || !mapOk) process.exit(1);
 console.log('\nall plots valid');

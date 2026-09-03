@@ -51,10 +51,16 @@ so even minimal shops look branded.
 
 ## Map
 
-Streets lined with shopfronts. The network grows procedurally as lots sell: a
-main boulevard from the central spawn, side streets added when frontage fills.
+Streets lined with shopfronts. The network grows as lots are claimed: a main
+boulevard from the central spawn, side streets added when frontage fills.
 This keeps the city dense (no ghost-town grid) and makes distance-from-spawn a
 real, walkable value gradient.
+
+*Status (2026-09-03):* the map is data (`public/city/map.json` → the plat in
+`public/city/lots.json`, see `docs/map/`): named roads, a ring around the
+stadium, every lot pre-platted with a permanent id and address, every free
+lot visible and claimable by id. Expansion is a manual edit of `map.json` for
+now; the automatic version is a script that makes that edit.
 
 ## Avatars (v1)
 

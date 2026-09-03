@@ -119,8 +119,11 @@ def load_lots():
     lots = data["lots"]
     segment = data.get("segment", "boulevard-0")
 
+    # this strip is the BOULEVARD; lots on the district's other roads are left out
+    lots = [l for l in lots if l.get("road", "boulevard") == "boulevard"]
+
     def sort_key(l):
-        return (l["x"], 0 if l.get("side", 1) == 1 else 1, l["slug"])
+        return (l["x"], 0 if l["z"] > 0 else 1, l["slug"])
 
     lots_sorted = sorted(lots, key=sort_key)
     return segment, lots_sorted
@@ -131,7 +134,7 @@ def load_lots():
 # --------------------------------------------------------------------------
 def lot_origin(lot):
     sx = ORIGIN_X + lot["x"] * PXM
-    sy = ORIGIN_Y - lot["side"] * V_OFFSET_PX
+    sy = ORIGIN_Y - (1 if lot["z"] > 0 else -1) * V_OFFSET_PX
     return sx, sy
 
 
@@ -235,7 +238,7 @@ def make_dome_columns():
 
 
 def is_city_hall(lot):
-    return lot["x"] == 0 and lot.get("side", 1) == 1
+    return lot.get("slug") == "city-hall"
 
 
 def build_plan(lot, index):
@@ -318,7 +321,7 @@ def bounds_check(plans):
     print("FITS" if ok else "!! DOES NOT FIT, adjust constants !!")
     for p in plans:
         n = len(p["cubes"])
-        print(f"  {p['lot']['slug']:14s} x={p['lot']['x']:>4} side={p['lot']['side']:>2} "
+        print(f"  {p['lot']['slug']:14s} x={p['lot']['x']:>4} z={p['lot']['z']:>6} "
               f"style={p['style']:7s} n_cubes={n:2d} start={p['start_t']:.2f} finish={p['finish_t']:.2f}")
     return ok
 

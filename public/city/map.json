@@ -1,0 +1,419 @@
+{
+  "comment": "THE MAP. Authored by hand; everything else is derived. Metres, x east, z north on the PLAN (map.html draws z up); the rendered city is that plan's mirror image (three.js's +z points at the viewer), so walking east down the boulevard the +z lots are on your right. A road is a chain of nodes walked first to last; left/right are that walk's sides on the plan; every junction is a roundabout. `lots` on a road says which sides bear 10 x 10 m lots at `lot_pitch`, and `from_m` is the phase of the first slot per segment (one number or one per segment). Lot numbers count slots from the chain's FIRST node — put that end where it will never move and grow a road at its far end, so addresses already handed out never change. Road IDS are permanent and positional (they are inside every lot id); NAMES and `sub` are display only and will be voted on one day, so rename freely. `node scripts/build-map.mjs` plats this into city/lots.json; `npm run manifest` merges that with the registry (plots/lots.json) into plots/index.json.",
+  "version": "0.1",
+  "spawn": {
+    "x": -20,
+    "z": 0,
+    "yaw": 1.5708,
+    "comment": "where a visitor lands (facing east down the boulevard)"
+  },
+  "centre": [
+    0,
+    0
+  ],
+  "lot_pitch": 12,
+  "lot_margin": 1,
+  "nodes": {
+    "blvd_w": [
+      -54,
+      0
+    ],
+    "rb": [
+      60,
+      0
+    ],
+    "nw": [
+      60,
+      46
+    ],
+    "ne": [
+      140,
+      46
+    ],
+    "se": [
+      140,
+      -46
+    ],
+    "sw": [
+      60,
+      -46
+    ],
+    "bay_n": [
+      60,
+      64
+    ],
+    "bay_s": [
+      60,
+      -64
+    ]
+  },
+  "roads": [
+    {
+      "id": "boulevard",
+      "name": "Singularity Boulevard",
+      "sub": "r/singularity",
+      "kind": "avenue",
+      "nodes": [
+        "rb",
+        "blvd_w"
+      ],
+      "width": 8,
+      "pavement": 2.5,
+      "dashes": true,
+      "lamps_every": 12,
+      "lit": true,
+      "lots": {
+        "sides": [
+          "left",
+          "right"
+        ],
+        "from_m": 24
+      },
+      "comment": "the original street, everyone's road to the ground. Numbered from the stadium roundabout so it can keep growing west: 1/2 at x=36 ... 15/16 at x=-48; plan-left of the westward walk is z<0 (odd), plan-right is z>0 (even)."
+    },
+    {
+      "id": "west",
+      "name": "Claude Code Circus",
+      "sub": "r/ClaudeCode",
+      "kind": "ring",
+      "nodes": [
+        "sw",
+        "rb",
+        "nw"
+      ],
+      "width": 8,
+      "pavement": 2.5,
+      "dashes": true,
+      "lamps_every": 12,
+      "lit": true,
+      "lots": {
+        "sides": [
+          "left"
+        ],
+        "from_m": [
+          18,
+          16
+        ]
+      },
+      "comment": "the west side of the ring, through the stadium roundabout — the first street of the district a visitor reaches. Lots on the outside only (plan-left, x<60)."
+    },
+    {
+      "id": "north",
+      "name": "Claude Terrace",
+      "sub": "r/ClaudeAI",
+      "kind": "ring",
+      "nodes": [
+        "nw",
+        "ne"
+      ],
+      "width": 8,
+      "pavement": 2.5,
+      "dashes": true,
+      "lamps_every": 12,
+      "lit": true,
+      "lots": {
+        "sides": [
+          "left"
+        ],
+        "from_m": 22
+      },
+      "comment": "one terrace of the ground; faces ChatGPT Terrace across the pitch."
+    },
+    {
+      "id": "east",
+      "name": "Gemini Gate",
+      "sub": "r/GoogleGemini",
+      "kind": "ring",
+      "nodes": [
+        "ne",
+        "se"
+      ],
+      "width": 8,
+      "pavement": 2.5,
+      "dashes": true,
+      "lamps_every": 12,
+      "lit": true,
+      "lots": {
+        "sides": [
+          "left"
+        ],
+        "from_m": 16
+      },
+      "comment": "the far end, outside the east gate."
+    },
+    {
+      "id": "south",
+      "name": "ChatGPT Terrace",
+      "sub": "r/ChatGPT",
+      "kind": "ring",
+      "nodes": [
+        "se",
+        "sw"
+      ],
+      "width": 8,
+      "pavement": 2.5,
+      "dashes": true,
+      "lamps_every": 12,
+      "lit": true,
+      "lots": {
+        "sides": [
+          "left"
+        ],
+        "from_m": 22
+      },
+      "comment": "the other terrace; faces Claude Terrace across the pitch."
+    },
+    {
+      "id": "close-n",
+      "name": "Anthropic Close",
+      "sub": "r/Anthropic",
+      "kind": "bay",
+      "nodes": [
+        "nw",
+        "bay_n"
+      ],
+      "width": 8,
+      "pavement": 2.5,
+      "dashes": false,
+      "lamps_every": 0,
+      "lit": false,
+      "lots": null,
+      "comment": "a dead end with the coach bay at its end; no lots yet."
+    },
+    {
+      "id": "close-s",
+      "name": "Artificial Close",
+      "sub": "r/artificial",
+      "kind": "bay",
+      "nodes": [
+        "sw",
+        "bay_s"
+      ],
+      "width": 8,
+      "pavement": 2.5,
+      "dashes": false,
+      "lamps_every": 0,
+      "lit": false,
+      "lots": null,
+      "comment": "a dead end with the drop-off bay at its end; no lots yet."
+    }
+  ],
+  "roundabouts": [
+    {
+      "id": "rb",
+      "at": "rb",
+      "island_r": 4,
+      "outer_r": 9,
+      "pavement": 2.5,
+      "lamps": 4,
+      "lit": true,
+      "totem": {
+        "lines": [
+          "STADIUM",
+          "otra.city/stadium"
+        ],
+        "color": "#2fe0f8"
+      }
+    },
+    {
+      "id": "nw",
+      "at": "nw",
+      "island_r": 3,
+      "outer_r": 8,
+      "pavement": 2.5,
+      "lamps": 4,
+      "lit": true
+    },
+    {
+      "id": "ne",
+      "at": "ne",
+      "island_r": 3,
+      "outer_r": 8,
+      "pavement": 2.5,
+      "lamps": 4,
+      "lit": true
+    },
+    {
+      "id": "se",
+      "at": "se",
+      "island_r": 3,
+      "outer_r": 8,
+      "pavement": 2.5,
+      "lamps": 4,
+      "lit": true
+    },
+    {
+      "id": "sw",
+      "at": "sw",
+      "island_r": 3,
+      "outer_r": 8,
+      "pavement": 2.5,
+      "lamps": 4,
+      "lit": true
+    }
+  ],
+  "aprons": [
+    {
+      "id": "west_plaza",
+      "min": [
+        66.5,
+        -23
+      ],
+      "max": [
+        74,
+        23
+      ],
+      "kind": "paving",
+      "height": 0.25,
+      "comment": "the forecourt: between the roundabout and the west gate"
+    },
+    {
+      "id": "north_plaza",
+      "min": [
+        66.5,
+        23
+      ],
+      "max": [
+        133.5,
+        39.5
+      ],
+      "kind": "paving",
+      "height": 0.25
+    },
+    {
+      "id": "south_plaza",
+      "min": [
+        66.5,
+        -39.5
+      ],
+      "max": [
+        133.5,
+        -23
+      ],
+      "kind": "paving",
+      "height": 0.25
+    },
+    {
+      "id": "east_plaza",
+      "min": [
+        126,
+        -23
+      ],
+      "max": [
+        133.5,
+        23
+      ],
+      "kind": "paving",
+      "height": 0.25
+    }
+  ],
+  "bays": [
+    {
+      "id": "coach_n",
+      "min": [
+        56,
+        64
+      ],
+      "max": [
+        64,
+        72
+      ],
+      "label": "COACHES"
+    },
+    {
+      "id": "coach_s",
+      "min": [
+        56,
+        -72
+      ],
+      "max": [
+        64,
+        -64
+      ],
+      "label": "DROP-OFF"
+    }
+  ],
+  "crossings": [
+    {
+      "at": [
+        47,
+        0
+      ],
+      "axis": "z",
+      "span": 8,
+      "width": 3
+    },
+    {
+      "at": [
+        60,
+        14
+      ],
+      "axis": "x",
+      "span": 8,
+      "width": 3
+    },
+    {
+      "at": [
+        60,
+        -14
+      ],
+      "axis": "x",
+      "span": 8,
+      "width": 3
+    }
+  ],
+  "signs": [
+    {
+      "at": [
+        43.2,
+        5.9
+      ],
+      "yaw": -1.5708,
+      "lines": [
+        "STADIUM →",
+        "otra.city/stadium"
+      ],
+      "color": "#ffd479",
+      "comment": "on the north pavement past boulevard-2's east edge (x 41); a sign on a lot would stand on someone's claim"
+    },
+    {
+      "at": [
+        70.5,
+        -19.2
+      ],
+      "yaw": -1.5708,
+      "lines": [
+        "GATES →",
+        "no ticket needed"
+      ],
+      "color": "#2fe0f8"
+    }
+  ],
+  "bollards": [
+    [
+      69.6,
+      -15
+    ],
+    [
+      69.6,
+      -12
+    ],
+    [
+      69.6,
+      -9
+    ],
+    [
+      69.6,
+      9
+    ],
+    [
+      69.6,
+      12
+    ],
+    [
+      69.6,
+      15
+    ]
+  ],
+  "reserved": []
+}

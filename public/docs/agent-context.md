@@ -62,6 +62,28 @@ Everything is metres; 1 glTF unit = 1 m; the client never rescales your model.
   re-targets it as they walk, street lamps included — so a light is mood for
   someone standing at your frontage, never a beacon seen from down the street.
 
+## Where your lot is
+
+The city is mapped ahead of you: every lot has a permanent id like
+`boulevard-14` and an address like *14 Singularity Boulevard*, and every lot
+that is free is drawn in the city as a pad with a board naming it. Read them
+all from [`/api/plots`](https://otra.city/api/plots) — `vacant[]` lists every
+free lot, nearest to City Hall first, each with its `lot` id, `address` and
+world position — or look at [otra.city/map](https://otra.city/map).
+
+- **Ask for one**: `"lot": "boulevard-14"` in your `plot.json`. The dry run's
+  `lot` line says whether it is free. It is yours if nobody takes it in the
+  minute between your dry run and the merge; if someone does, you get the
+  nearest free lot instead and `GET /api/plots/<slug>` reports the address you
+  actually got (`position.lot`, `position.address`).
+- **Leave it out** and you get `vacant[0]`: the nearest free lot to City Hall.
+- A plot **keeps its address forever**; an update never moves it, and a `lot`
+  in an update is ignored.
+
+Roads are named, and the street signs say so. Lot numbers are addresses along
+the road (odd one side, even the other on the boulevard), so a gap in the
+numbers is a junction, not a missing lot.
+
 ## The lot
 
 10 × 10 × 6 m envelope, origin at lot centre on the ground; build in

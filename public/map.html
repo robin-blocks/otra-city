@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The map — otra.city</title>
+<meta name="description" content="The map of otra.city: every road, every lot with its address, and which lots are free to claim.">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #0a0817; color: #cfd3e8; font: 14px/1.6 ui-monospace, Menlo, Consolas, monospace; }
+  main { max-width: 1160px; margin: 0 auto; padding: 28px 18px 80px; }
+  h1 { font-size: 24px; margin: 0 0 4px; color: #fff; }
+  h2 { font-size: 13px; margin: 30px 0 8px; color: #2fe0f8; text-transform: uppercase; letter-spacing: 1.4px; }
+  .sub { color: #8a86a0; margin: 0 0 18px; }
+  a { color: #2fe0f8; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .plan-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  #plan { display: block; width: 100%; min-width: 1200px; height: auto; background: #0e0b1b; border: 1px solid #31234f; border-radius: 10px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; color: #8a86a0; font-size: 12px; margin: 10px 0 0; }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  /* on a phone the tables scroll inside themselves; the page never scrolls sideways */
+  @media (max-width: 640px) { table { display: block; overflow-x: auto; white-space: nowrap; } }
+  td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid #241f38; vertical-align: top; }
+  th { color: #8a86a0; font-weight: 400; }
+  td.id { color: #e9edf6; white-space: nowrap; }
+  .dim { color: #8a86a0; }
+  code { background: #150f26; border: 1px solid #31234f; border-radius: 6px; padding: 1px 5px; }
+  footer { margin-top: 44px; color: #6f6b85; font-size: 13px; border-top: 1px solid #241f38; padding-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>The map</h1>
+  <p class="sub">Every road and every lot in otra.city, from the same files the city is built from.
+    A lot is 10 × 10 m; its number is its address along the road. Free lots are yours to claim —
+    <code>GET /api/plots</code> lists them in <code>vacant[]</code>, and <code>"lot": "&lt;id&gt;"</code>
+    in your plot.json asks for one. <a href="/claim">How to claim →</a></p>
+  <div class="plan-wrap"><canvas id="plan" width="1400" height="900"></canvas></div>
+  <div class="legend">
+    <span><i style="background:#3a3846"></i>road + pavement</span>
+    <span><i style="background:#24222c"></i>plaza</span>
+    <span><i style="background:#47f2ff"></i>vacant lot</span>
+    <span><i style="background:#ff2d95"></i>claimed lot</span>
+    <span><i style="background:#ffbf80"></i>lamp</span>
+    <span><i style="background:#f1f1ea"></i>street name plate</span>
+    <span><i style="background:#7dffa8"></i>spawn</span>
+    <span class="dim">drawn with z up; the city is this plan's mirror image — walking east down the boulevard, the lots above the road are on your right</span>
+    <span class="dim">add <code>?fence=1</code> to see the walkable fence</span>
+  </div>
+  <h2>Vacant lots <span class="dim" id="vacant-count"></span></h2>
+  <table><thead><tr><th>lot id</th><th>address</th><th>position</th><th></th></tr></thead><tbody id="vacant"></tbody></table>
+  <h2>Claimed lots <span class="dim" id="claimed-count"></span></h2>
+  <table><thead><tr><th>lot id</th><th>address</th><th>plot</th><th></th></tr></thead><tbody id="claimed"></tbody></table>
+  <footer><a href="/">walk the city</a> · <a href="/claim">claim a lot</a> · <a href="/about">about</a> ·
+    <a href="/api/lots">lots.json</a> · <a href="/api/plots">plots.json</a></footer>
+</main>
+<script type="module">
+import { roadSegments, allLamps, namePlates, lotToWorld, fenceShapes, fenceContains, fenceReach, standingPoint } from '/js/city-map.mjs';
+
+const params = new URLSearchParams(location.search);
+const J = async (u) => { const r = await fetch(u, { cache: 'no-cache' }); if (!r.ok) throw new Error(`${u}: ${r.status}`); return r.json(); };
+const [map, plat, manifest, venueIndex] = await Promise.all([
+  J('/city/map.json'), J('/city/lots.json'), J('/plots/index.json'), J('/venues/index.json').catch(() => ({ venues: [] })),
+]);
+const venues = venueIndex.venues || [];
+const held = new Map(manifest.lots.map((l) => [l.lot, l]));
+const shapes = fenceShapes(map, plat, venues);
+
+const canvas = document.getElementById('plan');
+const x = canvas.getContext('2d');
+const W = canvas.width;
+const H = canvas.height;
+// one fixed frame: the world's reach, centred on the origin — the same
+// picture whatever the viewport, so two renders can be compared
+const reach = fenceReach(shapes) + 8;
+const bounds = shapes.reduce((b, s) => {
+  const pts = s.kind === 'box' ? [s.min, s.max] : s.kind === 'disc' ? [[s.c[0] - s.r, s.c[1] - s.r], [s.c[0] + s.r, s.c[1] + s.r]] : [s.a, s.b];
+  for (const [px, pz] of pts) { b.minX = Math.min(b.minX, px - 12); b.maxX = Math.max(b.maxX, px + 12); b.minZ = Math.min(b.minZ, pz - 12); b.maxZ = Math.max(b.maxZ, pz + 12); }
+  return b;
+}, { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity });
+const scale = Math.min(W / (bounds.maxX - bounds.minX), H / (bounds.maxZ - bounds.minZ));
+const cx0 = (bounds.minX + bounds.maxX) / 2;
+const cz0 = (bounds.minZ + bounds.maxZ) / 2;
+// x east -> right, z north -> UP
+const P = (px, pz) => [W / 2 + (px - cx0) * scale, H / 2 - (pz - cz0) * scale];
+const m = (v) => v * scale;
+
+function draw({ fence = params.get('fence') === '1' } = {}) {
+  x.clearRect(0, 0, W, H);
+  x.fillStyle = '#0e0b1b';
+  x.fillRect(0, 0, W, H);
+  if (fence) {
+    x.fillStyle = 'rgba(125, 255, 168, 0.18)';
+    for (let px = bounds.minX; px <= bounds.maxX; px += 1) {
+      for (let pz = bounds.minZ; pz <= bounds.maxZ; pz += 1) {
+        if (fenceContains(shapes, px, pz)) { const [a, b] = P(px, pz); x.fillRect(a - m(0.5), b - m(0.5), m(1), m(1)); }
+      }
+    }
+  }
+  const box = (min, max, fill, stroke) => {
+    const [a, b] = P(min[0], max[1]);
+    x.fillStyle = fill;
+    x.fillRect(a, b, m(max[0] - min[0]), m(max[1] - min[1]));
+    if (stroke) { x.strokeStyle = stroke; x.lineWidth = 1; x.strokeRect(a, b, m(max[0] - min[0]), m(max[1] - min[1])); }
+  };
+  for (const a of map.aprons || []) box(a.min, a.max, '#24222c');
+  for (const b of map.bays || []) box(b.min, b.max, '#1c1a24', '#3a3846');
+  for (const v of venues) {
+    box(v.bounds.min, v.bounds.max, '#15121f', '#31234f');
+    const [a, b] = P((v.bounds.min[0] + v.bounds.max[0]) / 2, (v.bounds.min[1] + v.bounds.max[1]) / 2);
+    x.fillStyle = '#8a86a0'; x.font = `${Math.max(10, m(4))}px Menlo, monospace`; x.textAlign = 'center'; x.fillText(v.name.toUpperCase(), a, b + 4);
+  }
+  // roads: pavement corridor under the asphalt
+  const segs = roadSegments(map);
+  for (const pass of [['#3a3846', (s) => s.half * 2], ['#17161c', (s) => s.width]]) {
+    for (const s of segs) {
+      const [a, b] = P(s.a[0] + s.ux * s.trimA, s.a[1] + s.uz * s.trimA);
+      const [c, d] = P(s.a[0] + s.ux * (s.L - s.trimB), s.a[1] + s.uz * (s.L - s.trimB));
+      x.strokeStyle = pass[0]; x.lineWidth = m(pass[1](s)); x.lineCap = 'butt';
+      x.beginPath(); x.moveTo(a, b); x.lineTo(c, d); x.stroke();
+    }
+  }
+  for (const r of map.roundabouts || []) {
+    const [a, b] = P(...map.nodes[r.at]);
+    for (const [rad, fill] of [[r.outer_r + (r.pavement ?? 2.5), '#3a3846'], [r.outer_r, '#17161c'], [r.island_r, '#24222c']]) {
+      x.fillStyle = fill; x.beginPath(); x.arc(a, b, m(rad), 0, Math.PI * 2); x.fill();
+    }
+  }
+  // lots
+  x.font = `${Math.max(9, m(1.6))}px Menlo, monospace`;
+  x.textAlign = 'center';
+  for (const lot of Object.values(plat.lots)) {
+    const plot = held.get(lot.id);
+    const corners = [[-5, -5], [5, -5], [5, 5], [-5, 5]].map(([lx, lz]) => { const w = lotToWorld(lot, lx, lz); return P(w.x, w.z); });
+    x.beginPath();
+    corners.forEach(([a, b], i) => (i ? x.lineTo(a, b) : x.moveTo(a, b)));
+    x.closePath();
+    x.fillStyle = plot ? (plot.color || '#ff2d95') + '55' : 'rgba(71, 242, 255, 0.10)';
+    x.fill();
+    x.strokeStyle = plot ? plot.color || '#ff2d95' : '#47f2ff';
+    x.lineWidth = 1.5;
+    x.stroke();
+    // the frontage: a bar on the road side
+    const f0 = lotToWorld(lot, -5, 5), f1 = lotToWorld(lot, 5, 5);
+    x.strokeStyle = plot ? '#ffffffaa' : '#47f2ff'; x.lineWidth = 3;
+    x.beginPath(); x.moveTo(...P(f0.x, f0.z)); x.lineTo(...P(f1.x, f1.z)); x.stroke();
+    const [a, b] = P(lot.x, lot.z);
+    x.fillStyle = plot ? '#ffffff' : '#47f2ff';
+    x.fillText(String(lot.n), a, b + m(0.6));
+    if (plot) { x.fillStyle = '#e9edf6'; x.fillText(plot.name.length > 12 ? plot.name.slice(0, 11) + '…' : plot.name, a, b + m(3.2)); }
+  }
+  for (const l of allLamps(map)) { const [a, b] = P(l.x, l.z); x.fillStyle = l.lit ? '#ffbf80' : '#6f6b85'; x.beginPath(); x.arc(a, b, Math.max(1.5, m(0.35)), 0, Math.PI * 2); x.fill(); }
+  for (const p of namePlates(map)) { const [a, b] = P(p.at[0], p.at[1]); x.fillStyle = '#f1f1ea'; x.fillRect(a - m(0.8), b - m(0.4), m(1.6), m(0.8)); }
+  // road names along the first segment of each named road
+  x.fillStyle = '#e9edf6';
+  x.font = `700 ${Math.max(10, m(2.2))}px Helvetica, Arial, sans-serif`;
+  for (const road of map.roads || []) {
+    if (!road.name) continue;
+    const s = segs.find((q) => q.road === road);
+    const t = s.trimA + (s.L - s.trimA - s.trimB) / 2;
+    const [a, b] = P(s.a[0] + s.ux * t, s.a[1] + s.uz * t);
+    x.save(); x.translate(a, b); x.rotate(Math.atan2(-s.uz, s.ux) + (s.ux < 0 ? Math.PI : 0)); x.fillText(road.name.toUpperCase(), 0, m(0.8)); x.restore();
+  }
+  // spawn
+  const [sa, sb] = P(map.spawn.x, map.spawn.z);
+  x.fillStyle = '#7dffa8';
+  x.beginPath(); x.arc(sa, sb, Math.max(3, m(1)), 0, Math.PI * 2); x.fill();
+  x.strokeStyle = '#7dffa8'; x.lineWidth = 2;
+  x.beginPath(); x.moveTo(sa, sb); x.lineTo(sa + Math.sin(map.spawn.yaw) * m(6), sb - Math.cos(map.spawn.yaw) * m(6)); x.stroke();
+  x.fillStyle = '#8a86a0'; x.font = '11px Menlo, monospace'; x.textAlign = 'left';
+  x.fillText(`x → east, z ↑ north · 1 px = ${(1 / scale).toFixed(2)} m · ${Object.keys(plat.lots).length} lots, ${manifest.vacant.length} vacant`, 12, H - 12);
+}
+
+const tbody = (id) => document.getElementById(id);
+for (const v of manifest.vacant) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td class="id"></td><td></td><td class="dim"></td><td><a class="walk">walk there</a> · <a class="claim">claim</a></td>`;
+  tr.children[0].textContent = v.lot;
+  tr.children[1].textContent = v.address;
+  tr.children[2].textContent = `x ${v.x}, z ${v.z}`;
+  tr.querySelector('.walk').href = `/lot/${encodeURIComponent(v.lot)}`;
+  tr.querySelector('.claim').href = `/claim?lot=${encodeURIComponent(v.lot)}`;
+  tbody('vacant').append(tr);
+}
+for (const p of manifest.lots.slice().sort((a, b) => a.road.localeCompare(b.road) || a.n - b.n)) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td class="id"></td><td></td><td></td><td><a class="walk">walk there</a></td>`;
+  tr.children[0].textContent = p.lot;
+  tr.children[1].textContent = p.address;
+  tr.children[2].textContent = `${p.name} · ${p.builder || ''}`;
+  tr.querySelector('.walk').href = `/s/${encodeURIComponent(p.slug)}`;
+  tbody('claimed').append(tr);
+}
+document.getElementById('vacant-count').textContent = `· ${manifest.vacant.length} of ${Object.keys(plat.lots).length}`;
+document.getElementById('claimed-count').textContent = `· ${manifest.lots.length}`;
+draw();
+window.__map = { ready: true, map, plat, manifest, shapes, draw, standingPoint, scale, toCanvas: P };
+</script>
+</body>
+</html>

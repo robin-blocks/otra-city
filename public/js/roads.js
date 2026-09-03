@@ -1,24 +1,39 @@
-// City-owned roads beyond the boulevard, rendered from /city/roads.json in
-// the same box-and-emissive language as street.js: asphalt strips, raised
-// pavements (0.3 m, walkable), centre dashes, warm lamps, a roundabout with
-// an island totem, pedestrian aprons, drop-off bays, zebra crossings,
-// freestanding signs and bollards. Static and always resident — it is small.
+// Every road in the city, rendered from /city/map.json in one box-and-
+// emissive language: asphalt strips, raised pavements (0.3 m, walkable),
+// centre dashes, warm lamps, roundabouts with pavement bands and an island
+// totem, plazas, bays, zebra crossings, directional signs, bollards, a kerb
+// block across every dead end — and a STREET NAME PLATE at every junction and
+// road end: the British pattern, a white plate with black capitals on two
+// black posts, low enough to read from the pavement.
 //
-// A lit lamp registers a light SOURCE with the city's light pool (js/lights.js)
-// rather than owning a PointLight. The pool lights whichever sources the
-// visitor is nearest, so the roads cannot spend the scene's light budget by
-// themselves and `light_budget` in roads.json is no longer a hard cap — it is
-// the number of lamps that offer to light, and the pool decides which of them
-// actually do as you walk. Same contract as the boulevard's own lamps.
+// The boulevard is a road like any other now (street.js draws only the lots),
+// so it grows, junctions and takes its lamps from the same rules as the ring
+// around the stadium. WHERE things stand is decided in js/city-map.mjs, which
+// the map check runs in node: a lamp cannot end up in a spawn point here
+// without the check having failed first.
+//
+// Furniture is instanced (js/geom.js): one draw call per kind of thing,
+// however long the road network gets. A lit lamp registers a light SOURCE
+// with the city's light pool (js/lights.js) rather than owning a PointLight;
+// the pool lights whichever sources the visitor is nearest.
 import * as THREE from 'three';
+import { roadSegments, roadLamps, roundaboutArcs, roundaboutLamps, bayLamps, baySigns, bayOpensSouth, namePlates, deadEnds } from '/js/city-map.mjs';
+import { createInstancer, mergedQuads } from '/js/geom.js';
 
 const mat = (color, opts = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.92, ...opts });
 const emat = (color, intensity, base = 0x0d0a14) =>
   new THREE.MeshStandardMaterial({ color: base, emissive: color, emissiveIntensity: intensity, roughness: 0.7 });
 
-const PAVE_H = 0.3;      // pavement height, same as the boulevard's
+const PAVE_H = 0.3;      // pavement height
 const ROAD_TOP = 0.01;   // asphalt top (box at y -0.05, 0.12 thick)
+// The island kerb is deliberately TALLER than the avatar's 0.35 m step: a
+// 0.3 m kerb let visitors walking the centre line climb onto the island and
+// jam against the planter, instead of flowing around it the way a roundabout
+// is meant to be walked. Dead-end kerb blocks use the same height.
+const ISLAND_H = 0.45;
+const PLATE = { w: 1.6, h: 0.3, y: 0.95, post: 1.15, spread: 0.62 };
 
+// Directional boards and the roundabout totem: the city's neon style.
 function boardTexture(lines, color) {
   const c = document.createElement('canvas');
   c.width = 512;
@@ -43,6 +58,41 @@ function boardTexture(lines, color) {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
+  return t;
+}
+
+// A street name plate: off-white, a thin black border, the name in black
+// capitals in a plain bold face. One texture per road, shared by its plates.
+function plateTexture(name, sub) {
+  const c = document.createElement('canvas');
+  c.width = 1024;
+  c.height = 192;
+  const x = c.getContext('2d');
+  x.fillStyle = '#f1f1ea';
+  x.fillRect(0, 0, 1024, 192);
+  x.strokeStyle = '#141414';
+  x.lineWidth = 8;
+  x.strokeRect(16, 16, 992, 160);
+  x.fillStyle = '#141414';
+  x.textAlign = 'center';
+  x.textBaseline = 'middle';
+  const text = String(name).toUpperCase();
+  const face = (px) => `700 ${px}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+  let px = sub ? 88 : 104;
+  x.font = face(px);
+  while (x.measureText(text).width > 900 && px > 40) {
+    px -= 4;
+    x.font = face(px);
+  }
+  x.fillText(text, 512, sub ? 84 : 100);
+  // the community the street is named for, the way a plate carries its district
+  if (sub) {
+    x.font = `500 34px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+    x.fillText(String(sub), 512, 146);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
   return t;
 }
 
@@ -76,15 +126,15 @@ function bandGeometry(r0, r1, a0, a1, h) {
 }
 
 export function buildRoads(scene, world) {
-  const data = world.roads;
+  const map = world.map;
   const g = new THREE.Group();
   g.name = 'roads';
   scene.add(g);
   const colliders = [];
   const interactables = [];
-  let lights = 0;
   const sources = [];   // light sources for the city's light pool (js/lights.js)
-  if (!data) return { group: g, colliders, interactables, lights, sources };
+  if (!map) return { group: g, colliders, interactables, sources, lamps: 0, plates: 0 };
+  const nodes = map.nodes || {};
 
   const M = {
     asphalt: mat(0x17161c),
@@ -95,31 +145,35 @@ export function buildRoads(scene, world) {
     head: emat(0xffbf80, 2.5),
     band: emat(0x47f2ff, 1.4),
     totem: mat(0x1b1730, { roughness: 0.8 }),
+    plate: new THREE.MeshStandardMaterial({ color: 0xf1f1ea, roughness: 0.6 }),
+    post: new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.8 }),
   };
-  let budget = data.light_budget ?? 6;
-  const nodes = data.nodes || {};
-  const rbs = new Map((data.roundabouts || []).map((r) => [r.at, r]));
+  const inst = createInstancer(g, colliders);
+  const unit = new THREE.BoxGeometry(1, 1, 1);
+  inst.kind('asphalt', unit, M.asphalt, { collide: true });
+  inst.kind('paving', unit, M.paving, { collide: true });
+  inst.kind('kerb', unit, M.paving, { collide: true });
+  inst.kind('dash', unit, M.dash);
+  inst.kind('stripe', unit, M.stripe);
+  inst.kind('lamp_post', unit, M.dark, { collide: true });
+  inst.kind('lamp_head', unit, M.head);
+  inst.kind('sign_post', unit, M.dark, { collide: true });
+  inst.kind('plate_post', unit, M.post, { collide: true });
+  inst.kind('plate_body', unit, M.plate, { collide: true });
+  inst.kind('bollard', new THREE.CylinderGeometry(1, 1, 1, 10), M.dark, { collide: true });
+  inst.kind('bollard_cap', unit, M.band);
 
-  function box(w, h, d, m, x, y, z, ry = 0, collide = false) {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
-    b.position.set(x, y, z);
-    b.rotation.y = ry;
-    g.add(b);
-    if (collide) colliders.push(b);
-    return b;
-  }
-  function lamp(x, z, lit) {
-    box(0.14, 3.3, 0.14, M.dark, x, 1.65, z, 0, true);
-    box(0.34, 0.14, 0.34, M.head, x, 3.37, z);
-    if (lit && budget > 0) {
-      sources.push({ position: new THREE.Vector3(x, 3.4, z), color: 0xffbf80, intensity: 40, distance: 26, decay: 2 });
-      budget -= 1;
-      lights += 1;
-    }
+  const box = (key, x, y, z, ry, sx, sy, sz) => inst.add(key, { x, y, z, ry, sx, sy, sz });
+  const yawOf = (ux, uz) => Math.atan2(-uz, ux);   // rotation.y that aligns local +x with (ux, uz)
+
+  function lamp(l) {
+    box('lamp_post', l.x, 1.65, l.z, 0, 0.14, 3.3, 0.14);
+    box('lamp_head', l.x, 3.37, l.z, 0, 0.34, 0.14, 0.34);
+    if (l.lit) sources.push({ position: new THREE.Vector3(l.x, 3.4, l.z), color: 0xffbf80, intensity: 40, distance: 26, decay: 2 });
   }
   function sign(at, yaw, lines, color) {
     const [x, z] = at;
-    box(0.12, 2.4, 0.12, M.dark, x, 1.2, z, 0, true);
+    box('sign_post', x, 1.2, z, 0, 0.12, 2.4, 0.12);
     const face = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.8),
       new THREE.MeshBasicMaterial({ map: boardTexture(lines, color) }));
     face.position.set(x, 2.0, z);
@@ -132,50 +186,39 @@ export function buildRoads(scene, world) {
     g.add(back);
   }
 
-  // ---- segments ------------------------------------------------------------
-  for (const s of data.segments || []) {
-    const A = nodes[s.from];
-    const B = nodes[s.to];
-    if (!A || !B) continue;
-    let [ax, az] = A;
-    let [bx, bz] = B;
-    const L0 = Math.hypot(bx - ax, bz - az) || 1;
-    const ux = (bx - ax) / L0;
-    const uz = (bz - az) / L0;
-    // a segment meeting a roundabout starts at its outer edge, not its centre
-    const ra = rbs.get(s.from);
-    const rb = rbs.get(s.to);
-    if (ra) { ax += ux * ra.outer_r; az += uz * ra.outer_r; }
-    if (rb) { bx -= ux * rb.outer_r; bz -= uz * rb.outer_r; }
-    const L = Math.hypot(bx - ax, bz - az);
+  // ---- roads: every segment of every chain, trimmed at its roundabouts ---
+  for (const s of roadSegments(map)) {
+    const ax = s.a[0] + s.ux * s.trimA;
+    const az = s.a[1] + s.uz * s.trimA;
+    const L = s.L - s.trimA - s.trimB;
     if (L <= 0.1) continue;
-    const cx = (ax + bx) / 2;
-    const cz = (az + bz) / 2;
-    const ry = Math.atan2(-uz, ux);
-    const w = s.width ?? 8;
-    const pv = s.pavement ?? 2.5;
-    const nx = -uz;
-    const nz = ux;
-    box(L, 0.12, w, M.asphalt, cx, -0.05, cz, ry, true);
+    const cx = ax + s.ux * (L / 2);
+    const cz = az + s.uz * (L / 2);
+    const ry = yawOf(s.ux, s.uz);
+    const w = s.width;
+    const pv = s.pavement;
+    box('asphalt', cx, -0.05, cz, ry, L, 0.12, w);
     for (const side of [-1, 1]) {
       const off = (w / 2 + pv / 2) * side;
-      box(L, PAVE_H, pv, M.paving, cx + nx * off, 0, cz + nz * off, ry, true);
+      box('paving', cx + s.lx * off, PAVE_H / 2, cz + s.lz * off, ry, L, PAVE_H, pv);
     }
-    if (s.dashes) {
-      for (let t = 2.25; t < L - 1; t += 4.5) box(0.9, 0.03, 0.16, M.dash, ax + ux * t, 0.02, az + uz * t, ry);
+    if (s.road.dashes) {
+      for (let t = 2.25; t < L - 1; t += 4.5) box('dash', ax + s.ux * t, 0.02, az + s.uz * t, ry, 0.9, 0.03, 0.16);
     }
-    if (s.lamps_every) {
-      let i = 0;
-      for (let t = s.lamps_every / 2; t < L; t += s.lamps_every, i++) {
-        const side = i % 2 ? 1 : -1;
-        const off = (w / 2 + pv - 0.3) * side;
-        lamp(ax + ux * t + nx * off, az + uz * t + nz * off, s.lit);
-      }
-    }
+  }
+  const roadLampList = roadLamps(map);
+  for (const l of roadLampList) lamp(l);
+  // a kerb block across every dead end, taller than a step, with a lit edge:
+  // the end of a road is a thing you can see at night, not an invisible wall
+  // (the nearest lamp is a pitch away and the block is the pavement's colour)
+  for (const e of deadEnds(map)) {
+    box('kerb', e.at[0] - e.ux * 0.3, ISLAND_H / 2, e.at[1] - e.uz * 0.3, yawOf(e.ux, e.uz), 0.6, ISLAND_H, e.width);
+    box('bollard_cap', e.at[0] - e.ux * 0.3, ISLAND_H + 0.02, e.at[1] - e.uz * 0.3, yawOf(e.ux, e.uz), 0.14, 0.04, e.width - 0.3);
   }
 
   // ---- roundabouts ---------------------------------------------------------
-  for (const r of data.roundabouts || []) {
+  let rbLamps = 0;
+  for (const r of map.roundabouts || []) {
     const C = nodes[r.at];
     if (!C) continue;
     const [cx, cz] = C;
@@ -187,11 +230,6 @@ export function buildRoads(scene, world) {
     ring.position.set(cx, ROAD_TOP + 0.002, cz);   // 2 mm above the arms: no coplanar fight
     g.add(ring);
     colliders.push(ring);
-    // The island kerb is deliberately TALLER than the avatar's 0.35 m step: a
-    // 0.3 m kerb let visitors walking the boulevard's centre line climb onto
-    // the island and jam against the planter, instead of flowing around it the
-    // way a roundabout is meant to be walked.
-    const ISLAND_H = 0.45;
     const island = new THREE.Mesh(new THREE.CylinderGeometry(ri, ri, ISLAND_H, 48), M.paving);
     island.position.set(cx, ISLAND_H / 2, cz);
     g.add(island);
@@ -201,51 +239,23 @@ export function buildRoads(scene, world) {
     g.add(planter);
     colliders.push(planter);
     // the arms cut the pavement ring; what is left are arcs between them
-    const arms = (data.segments || [])
-      .filter((s) => s.from === r.at || s.to === r.at)
-      .map((s) => {
-        const O = nodes[s.from === r.at ? s.to : s.from];
-        return {
-          ang: Math.atan2(O[1] - cz, O[0] - cx),
-          half: Math.asin(Math.min(0.99, ((s.width ?? 8) / 2 + (s.pavement ?? 2.5)) / ro)),
-        };
-      })
-      .sort((a, b) => a.ang - b.ang);
-    const arcs = [];
-    if (!arms.length) arcs.push([0, Math.PI * 2]);
-    for (let i = 0; i < arms.length; i++) {
-      const a = arms[i];
-      const b = arms[(i + 1) % arms.length];
-      const a0 = a.ang + a.half;
-      let a1 = b.ang - b.half;
-      if (i === arms.length - 1) a1 += Math.PI * 2;
-      if (a1 - a0 > 0.05) arcs.push([a0, a1]);
-    }
-    for (const [a0, a1] of arcs) {
+    for (const [a0, a1] of roundaboutArcs(map, r)) {
       const band = new THREE.Mesh(bandGeometry(ro, ro + pv, a0, a1, PAVE_H), M.paving);
       band.position.set(cx, 0, cz);
       g.add(band);
       colliders.push(band);
     }
-    // Lamps on the pavement ring. A WIDE arc gets two, at thirds, rather than
-    // one at its midpoint: the widest arc is the one facing whatever the
-    // roundabout serves, so a midpoint lamp lands exactly on the line people
-    // walk — a post in the doorway, and at the stadium it was in the spawn.
-    const rr = ro + pv - 0.3;
-    for (const [a0, a1] of arcs.slice(0, r.lamps ?? 4)) {
-      // 1.2 rad ~ 69 deg. Three arms make three ~87 deg arcs here, so a
-      // threshold set by eye at 100 deg missed every one of them and put a
-      // post back on the axis.
-      const angles = a1 - a0 > 1.2 ? [a0 + (a1 - a0) / 3, a1 - (a1 - a0) / 3] : [(a0 + a1) / 2];
-      for (const a of angles) lamp(cx + rr * Math.cos(a), cz + rr * Math.sin(a), r.lit);
-    }
+    for (const l of roundaboutLamps(map, r)) { lamp(l); rbLamps += 1; }
     if (r.totem) {
       const t = r.totem;
-      box(1.2, 7, 1.2, M.totem, cx, ISLAND_H + 0.5 + 3.5, cz, 0, true);
+      const totem = new THREE.Mesh(new THREE.BoxGeometry(1.2, 7, 1.2), M.totem);
+      totem.position.set(cx, ISLAND_H + 0.5 + 3.5, cz);
+      g.add(totem);
+      colliders.push(totem);
       for (const [sx, sz] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
-        box(0.06, 6.6, 0.06, M.band, cx + sx * 0.62, ISLAND_H + 0.5 + 3.5, cz + sz * 0.62);
+        box('bollard_cap', cx + sx * 0.62, ISLAND_H + 0.5 + 3.5, cz + sz * 0.62, 0, 0.06, 6.6, 0.06);
       }
-      box(1.4, 0.12, 1.4, M.band, cx, ISLAND_H + 0.5 + 7.05, cz);
+      box('bollard_cap', cx, ISLAND_H + 0.5 + 7.05, cz, 0, 1.4, 0.12, 1.4);
       // a board on the face that looks back down the boulevard
       const face = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.5),
         new THREE.MeshBasicMaterial({ map: boardTexture(t.lines || [], t.color || '#2fe0f8') }));
@@ -255,47 +265,75 @@ export function buildRoads(scene, world) {
     }
   }
 
-  // ---- aprons + bays -------------------------------------------------------
-  for (const a of data.aprons || []) {
+  // ---- plazas + bays -------------------------------------------------------
+  for (const a of map.aprons || []) {
     const h = a.height ?? PAVE_H;
-    box(a.max[0] - a.min[0], h, a.max[1] - a.min[1], M.paving,
-      (a.min[0] + a.max[0]) / 2, h / 2, (a.min[1] + a.max[1]) / 2, 0, true);
+    box('paving', (a.min[0] + a.max[0]) / 2, h / 2, (a.min[1] + a.max[1]) / 2, 0, a.max[0] - a.min[0], h, a.max[1] - a.min[1]);
   }
-  for (const b of data.bays || []) {
+  for (const b of map.bays || []) {
     const w = b.max[0] - b.min[0];
     const d = b.max[1] - b.min[1];
     const cx = (b.min[0] + b.max[0]) / 2;
     const cz = (b.min[1] + b.max[1]) / 2;
-    box(w, 0.12, d, M.asphalt, cx, -0.05, cz, 0, true);
+    box('asphalt', cx, -0.05, cz, 0, w, 0.12, d);
     // kerb on three sides (the side facing the road stays open)
-    const openSouth = cz > 0;   // a bay north of the road opens to the south
-    box(1.5, PAVE_H, d, M.paving, b.min[0] - 0.75, 0, cz, 0, true);
-    box(1.5, PAVE_H, d, M.paving, b.max[0] + 0.75, 0, cz, 0, true);
-    box(w + 3, PAVE_H, 1.5, M.paving, cx, 0, openSouth ? b.max[1] + 0.75 : b.min[1] - 0.75, 0, true);
-    for (let x = b.min[0] + 1; x < b.max[0]; x += 2) box(1.2, 0.03, 0.16, M.stripe, x, 0.02, cz);
-    if (b.label) sign([b.min[0] - 0.75, openSouth ? b.max[1] + 0.75 : b.min[1] - 0.75], openSouth ? Math.PI : 0, [b.label, ''], '#ffbf80');
-    lamp(b.max[0] + 0.75, openSouth ? b.max[1] + 0.75 : b.min[1] - 0.75, false);
+    const openSouth = bayOpensSouth(b);
+    box('paving', b.min[0] - 0.75, PAVE_H / 2, cz, 0, 1.5, PAVE_H, d);
+    box('paving', b.max[0] + 0.75, PAVE_H / 2, cz, 0, 1.5, PAVE_H, d);
+    box('paving', cx, PAVE_H / 2, openSouth ? b.max[1] + 0.75 : b.min[1] - 0.75, 0, w + 3, PAVE_H, 1.5);
+    for (let x = b.min[0] + 1; x < b.max[0]; x += 2) box('stripe', x, 0.02, cz, 0, 1.2, 0.03, 0.16);
   }
+  // the label and the lamp are placed by the shared module, so the map check sees them
+  for (const s of baySigns(map)) sign(s.at, s.yaw, [s.label, ''], '#ffbf80');
+  for (const l of bayLamps(map)) lamp(l);
 
-  // ---- crossings, signs, bollards -----------------------------------------
-  for (const c of data.crossings || []) {
+  // ---- crossings, directional signs, bollards ----------------------------
+  for (const c of map.crossings || []) {
     const [x, z] = c.at;
     const along = c.axis === 'z';   // pedestrians walk along z, stripes run along x
     const n = Math.floor(c.span / 1.1);
     for (let i = 0; i < n; i++) {
       const off = -c.span / 2 + 0.55 + i * 1.1;
-      if (along) box(c.width, 0.03, 0.5, M.stripe, x, 0.025, z + off);
-      else box(0.5, 0.03, c.width, M.stripe, x + off, 0.025, z);
+      if (along) box('stripe', x, 0.025, z + off, 0, c.width, 0.03, 0.5);
+      else box('stripe', x + off, 0.025, z, 0, 0.5, 0.03, c.width);
     }
   }
-  for (const s of data.signs || []) sign(s.at, s.yaw ?? 0, s.lines || [], s.color || '#2fe0f8');
-  for (const [x, z] of data.bollards || []) {
-    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.9, 10), M.dark);
-    b.position.set(x, PAVE_H + 0.45, z);
-    g.add(b);
-    colliders.push(b);
-    box(0.28, 0.06, 0.28, M.band, x, PAVE_H + 0.8, z);
+  for (const s of map.signs || []) sign(s.at, s.yaw ?? 0, s.lines || [], s.color || '#2fe0f8');
+  for (const [x, z] of map.bollards || []) {
+    box('bollard', x, PAVE_H + 0.45, z, 0, 0.12, 0.9, 0.12);
+    box('bollard_cap', x, PAVE_H + 0.8, z, 0, 0.28, 0.06, 0.28);
   }
 
-  return { group: g, colliders, interactables, lights, sources };
+  // ---- street name plates --------------------------------------------------
+  // Two posts, one plate, the name on both faces. Faces are merged per road
+  // (one texture, one draw call each); the posts and plate bodies are
+  // instanced with everything else.
+  const plates = namePlates(map);
+  const quadsByRoad = new Map();
+  const dummy = new THREE.Object3D();
+  for (const p of plates) {
+    const yaw = Math.atan2(p.face[0], p.face[1]);   // a plane's +z faces `face`
+    const wx = Math.cos(yaw);
+    const wz = -Math.sin(yaw);                       // the plate's width axis
+    for (const s of [-PLATE.spread, PLATE.spread]) {
+      box('plate_post', p.at[0] + wx * s, PLATE.post / 2, p.at[1] + wz * s, yaw, 0.06, PLATE.post, 0.06);
+    }
+    box('plate_body', p.at[0], PLATE.y, p.at[1], yaw, PLATE.w, PLATE.h, 0.03);
+    const list = quadsByRoad.get(p.road) || quadsByRoad.set(p.road, []).get(p.road);
+    for (const flip of [0, Math.PI]) {
+      dummy.position.set(p.at[0], PLATE.y, p.at[1]);
+      dummy.rotation.set(0, yaw + flip, 0);
+      dummy.updateMatrix();
+      list.push({ matrix: dummy.matrix.clone(), w: PLATE.w, h: PLATE.h, dz: 0.017 });
+    }
+  }
+  for (const [roadId, quads] of quadsByRoad) {
+    const road = (map.roads || []).find((r) => r.id === roadId);
+    const mesh = new THREE.Mesh(mergedQuads(quads), new THREE.MeshBasicMaterial({ map: plateTexture(road?.name || roadId, road?.sub) }));
+    mesh.name = `plates:${roadId}`;
+    g.add(mesh);
+  }
+
+  inst.flush();
+  return { group: g, colliders, interactables, sources, lamps: roadLampList.length + rbLamps, plates: plates.length };
 }

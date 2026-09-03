@@ -57,6 +57,11 @@ jobs:
       # thumbnail us and must never be what stops an honest plot from landing.
       # That reasoning does not transfer: this job IS the gate, and a lenient
       # gate is a decoration that teaches everyone to ignore red.
+      # The map's own invariants first (plat current, fence continuous to every
+      # lot, nothing standing in a spawn point): a second, not a browser.
+      - name: check the map
+        run: npm run map:check
+
       - name: walk the city
         run: npm run qa
 

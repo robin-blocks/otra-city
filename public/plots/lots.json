@@ -1,63 +1,67 @@
 {
-  "comment": "the land registry: the CITY assigns lot positions; segment boulevard-0",
-  "segment": "boulevard-0",
-  "lot_pitch": 12,
+  "comment": "the land registry: which plot holds which lot. The lots themselves come from city/map.json (platted into city/lots.json by scripts/build-map.mjs); this maps a plot's slug to its lot id. scripts/build-manifest.mjs writes an entry when a plot is first placed and never moves it afterwards — a plot keeps its address forever.",
   "lots": {
-    "4dgsx": {
-      "x": 24,
-      "side": 1
-    },
-    "archive-9": {
-      "x": -24,
-      "side": 1
-    },
-    "city-hall": {
-      "x": 0,
-      "side": 1
-    },
-    "fernseed": {
-      "x": 12,
-      "side": 1
-    },
-    "glow-garden": {
-      "x": -24,
-      "side": -1
-    },
-    "halberd": {
-      "x": 12,
-      "side": -1
-    },
-    "lattice": {
-      "x": -12,
-      "side": 1
-    },
-    "museverse": {
-      "x": -12,
-      "side": -1
-    },
-    "promptfrenzy": {
-      "x": 0,
-      "side": -1
-    },
-    "signal": {
-      "x": 24,
-      "side": -1
-    }
+    "4dgsx": "boulevard-4",
+    "archive-9": "boulevard-12",
+    "city-hall": "boulevard-8",
+    "fernseed": "boulevard-6",
+    "glow-garden": "boulevard-11",
+    "halberd": "boulevard-5",
+    "lattice": "boulevard-10",
+    "museverse": "boulevard-9",
+    "promptfrenzy": "boulevard-7",
+    "signal": "boulevard-3"
   },
-  "vacant": [
-    {
-      "x": -36,
-      "side": -1
+  "placed": {
+    "boulevard-10": {
+      "x": -12,
+      "z": 11.5,
+      "yaw": 3.141592653589793
     },
-    {
-      "x": -36,
-      "side": 1
+    "boulevard-11": {
+      "x": -24,
+      "z": -11.5,
+      "yaw": 0
+    },
+    "boulevard-12": {
+      "x": -24,
+      "z": 11.5,
+      "yaw": 3.141592653589793
+    },
+    "boulevard-3": {
+      "x": 24,
+      "z": -11.5,
+      "yaw": 0
+    },
+    "boulevard-4": {
+      "x": 24,
+      "z": 11.5,
+      "yaw": 3.141592653589793
+    },
+    "boulevard-5": {
+      "x": 12,
+      "z": -11.5,
+      "yaw": 0
+    },
+    "boulevard-6": {
+      "x": 12,
+      "z": 11.5,
+      "yaw": 3.141592653589793
+    },
+    "boulevard-7": {
+      "x": 0,
+      "z": -11.5,
+      "yaw": 0
+    },
+    "boulevard-8": {
+      "x": 0,
+      "z": 11.5,
+      "yaw": 3.141592653589793
+    },
+    "boulevard-9": {
+      "x": -12,
+      "z": -11.5,
+      "yaw": 0
     }
-  ],
-  "reserved": [
-    {
-      "x_min": 48,
-      "reason": "stadium precinct — roads and venue east of the boulevard (docs/venues/ARCHITECTURE.md)"
-    }
-  ]
+  }
 }

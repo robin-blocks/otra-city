@@ -139,6 +139,7 @@
     <div id="stats">loading…</div>
     <div class="controls"><span class="kbd"><span class="keys"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span> or arrows to walk · <span class="key">Shift</span> to run · drag to orbit · scroll to zoom</span><span class="touch">stick to walk (push to the rim to run) · drag to look · pinch to zoom</span></div>
     <div class="dim meta"><span class="kbd">doors are automatic · click an info board, then the pill, to visit a project ·</span><span class="touch">doors are automatic · tap an info board, then the pill, to visit a project ·</span>
+      <a href="/map">map</a> ·
       <a href="/stadium">stadium</a> ·
       <a href="https://github.com/robin-blocks/otra-city" target="_blank" rel="noopener">github ↗</a></div>
   </div>
@@ -167,7 +168,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createAvatar } from '/js/avatar.js';
 import { PlayerController } from '/js/player.js';
 import { createJoystick } from '/js/joystick.js';
-import { loadStreet, FRONT_LINE } from '/js/street.js';
+import { loadStreet } from '/js/street.js';
+import { standingPoint } from '/js/city-map.mjs';
 import { createMediaSystem } from '/js/media.js';
 import { createAnimSystem } from '/js/anims.js';
 import { createPresence } from '/js/presence.js';
@@ -192,6 +194,10 @@ addEventListener('unhandledrejection', (e) => errors.push('unhandled: ' + String
 const embed = params.get('embed') === '1' || location.pathname.replace(/\/$/, '') === '/embed';
 if (embed) document.body.classList.add('embed');
 const spawnPlot = params.get('plot') || (location.pathname.startsWith('/s/') ? location.pathname.split('/')[2] : null);
+// /lot/<id> (or ?lot=) lands you outside that lot whether it is claimed or
+// vacant: the address on a board, on the claim page and in the manifest is a
+// place you can be sent to.
+const spawnLot = params.get('lot') || (location.pathname.startsWith('/lot/') ? location.pathname.split('/')[2] : null);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: headless });
 renderer.setSize(innerWidth, innerHeight);
@@ -334,9 +340,12 @@ renderer.domElement.addEventListener('pointerdown', (e) => {
   clickRay.far = 30;
   const hit = clickRay.intersectObjects(interactables, true)[0];
   if (!hit) { dismiss(); return; }   // clicking the world puts the offer away
-  let o = hit.object;
-  while (o && !o.userData.link) o = o.parent;
-  if (o && o.userData.link.url) armLink(o.userData.link);
+  // Every vacant lot's board is ONE mesh (js/street.js), which answers with
+  // the link of the face that was hit; a plot's own board or link fixture
+  // carries its link on the object, or on a parent.
+  let link = hit.object.userData.linkAt ? hit.object.userData.linkAt(hit.faceIndex) : null;
+  for (let o = hit.object; !link && o; o = o.parent) link = o.userData.link || null;
+  if (link && link.url) armLink(link);
   else dismiss();
 });
 
@@ -348,11 +357,10 @@ const loader = new GLTFLoader().setDRACOLoader(
 const street = await loadStreet(scene);
 interactables.push(...street.interactables);
 for (const s of street.sources) lights.add(s);
-// The world beyond the boulevard: roads, venues, the walkable fence and the
-// fog line that lets a stadium read from the spawn. The boulevard's own half
-// length is the street's, which derives it from the manifest — so a street
-// that has grown past its launch size stays walkable and keeps its ground.
-const world = await loadWorld({ street });
+// The world: the map (roads, roundabouts, plazas), the plat (every lot),
+// venues, the walkable fence over all of them and the fog line that lets a
+// stadium read from the spawn. See docs/map/ARCHITECTURE.md.
+const world = await loadWorld();
 window.__world = world;
 player.setBounds(world.contains);
 const groundSize = Math.max(300, world.reach * 2 + 60);
@@ -393,12 +401,25 @@ function placeAt(x, z, yaw, { camDist = 4.6, camHeight = 2.4, camSide = 0.6 } = 
   player.followPos.set(x, 1.15, z);   // no chase-camera sweep across the city
   controls.target.copy(avatar.group.position).add(new THREE.Vector3(0, 1.3, 0));
 }
-const outsideLot = (l) => [l.x, l.side * 4.8, l.side > 0 ? 0 : Math.PI, { camDist: 10, camHeight: 2.7, camSide: 0 }];
+// on the pavement in front of the lot, facing it — the same point for a
+// claimed lot and a vacant one, so /lot/<id> works for both
+const outsideLot = (l) => { const s = standingPoint(l); return [s.x, s.z, s.yaw, { camDist: 10, camHeight: 2.7, camSide: 0 }]; };
+const lotHere = spawnLot && !lot ? world.lotById(spawnLot) : null;
+if (spawnLot && !lot && !lotHere) setTimeout(() => toast(`no lot called "${spawnLot}" — this is the boulevard; the map is at otra.city/map`), 600);
 if (lot) {
   placeAt(...outsideLot(lot));
   document.getElementById('tagline').textContent = `${lot.name} — ${lot.tagline}`;
   const out = document.getElementById('outlink');
   out.href = `https://otra.city/s/${lot.slug}`;
+  out.textContent = 'open in otra.city ↗';
+} else if (lotHere) {
+  placeAt(...outsideLot(lotHere));
+  const holder = street.manifest.lots.find((l) => l.lot === lotHere.id);
+  document.getElementById('tagline').textContent = holder
+    ? `${holder.name} — ${holder.tagline}`
+    : `${lotHere.address} — vacant · claim it at otra.city/claim?lot=${lotHere.id}`;
+  const out = document.getElementById('outlink');
+  out.href = `https://otra.city/lot/${lotHere.id}`;
   out.textContent = 'open in otra.city ↗';
 } else if (venueRoute) {
   // a venue permalink (/stadium, /v/<id>) arrives on its forecourt, facing it
@@ -409,7 +430,7 @@ if (lot) {
   out.href = `https://otra.city${venueRoute.route || `/v/${venueRoute.id}`}`;
   out.textContent = 'open in otra.city ↗';
 } else {
-  placeAt(-20, 0, Math.PI / 2);
+  placeAt(world.spawn.x, world.spawn.z, world.spawn.yaw);
 }
 
 let loaded = 0;
@@ -419,8 +440,8 @@ const bust = '?v=' + Date.now();
 Promise.all(street.manifest.lots.map((p) => new Promise((resolve) => {
   loader.load(p.glb + bust, (gltf) => {
     const container = new THREE.Group();
-    container.position.set(p.x, 0, p.side * (FRONT_LINE + 5));
-    container.rotation.y = p.side > 0 ? Math.PI : 0;
+    container.position.set(p.x, 0, p.z);   // the lot's centre and facing, from the plat
+    container.rotation.y = p.yaw;
     container.add(gltf.scene);
     container.updateMatrixWorld(true);
     const LIGHT_CAP = 30;
@@ -560,11 +581,14 @@ window.__city = {
   resume() { renderer.setAnimationLoop(frame); },
   get ready() { return cityReady; },
   get lots() { return street.manifest.lots; },
+  get vacant() { return street.manifest.vacant || []; },
+  get spawn() { return world.spawn; },
+  lotById: (id) => world.lotById(id),
   walk: (x, y) => player.setStick(x, y),
-  // a slug (the permalink spawn outside that lot) or { x, z, yaw }
+  // a slug or a lot id (the spawn outside that lot) or { x, z, yaw }
   teleport(target) {
     if (typeof target === 'string') {
-      const l = street.manifest.lots.find((q) => q.slug === target);
+      const l = street.manifest.lots.find((q) => q.slug === target) || world.lotById(target);
       if (!l) return false;
       placeAt(...outsideLot(l));
       return true;

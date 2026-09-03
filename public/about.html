@@ -121,7 +121,8 @@
   // link comes back to this page.
   const list = document.getElementById('lots');
   fetch('/plots/index.json').then((r) => r.json()).then((m) => {
-    const lots = (m.lots || []).slice().sort((a, b) => (a.x - b.x) || (b.side - a.side));
+    // by address: road, then number (odd one side, even the other)
+    const lots = (m.lots || []).slice().sort((a, b) => (a.road || '').localeCompare(b.road || '') || (a.n - b.n));
     list.replaceChildren(...lots.map((p) => {
       const li = document.createElement('li');
       let host = '';
@@ -134,7 +135,7 @@
       li.querySelector('b').textContent = p.name;
       li.querySelector('.tag').textContent = p.tagline || '';
       li.querySelector('.by').textContent =
-        `built by ${p.builder || 'unknown'}` + (home ? '' : ` · ${host}`);
+        `built by ${p.builder || 'unknown'}` + (home ? '' : ` · ${host}`) + (p.address ? ` · ${p.address}` : '');
       return li;
     }));
     if (!lots.length) list.innerHTML = '<li><span class="dim">no lots yet</span></li>';

@@ -4,16 +4,23 @@
 // visitor gets, driven through window.__city (see the comment beside it).
 //
 // Why this exists: `validate plots` is path-filtered to public/plots/**, so
-// until now a change to the client, to lib/ or to scripts/ reached main with
-// nothing but the docs check green. window.__step has been sitting in the page
-// since launch with nothing driving it.
+// until this did, a change to the client, to lib/ or to scripts/ reached main
+// with nothing but the docs check green. window.__step had been sitting in
+// the page since launch with nothing driving it.
 //
 // Two rules the checks live by:
-//   * every expectation comes from /plots/index.json, never from a constant
-//     here — the city gains lots without anyone editing this file
+//   * every expectation comes from the city's own data — /plots/index.json,
+//     /city/map.json, /city/lots.json — never from a constant here. The city
+//     gains lots and roads without anyone editing this file.
 //   * assertions are numeric or structural, never pixels. Software WebGL,
 //     bloom and a running clock make image diffing permanently flaky;
 //     screenshots here are evidence for a human, not a test.
+//
+// What the map added (docs/map/PROJECT.md §5): every road is walked end to
+// end by a real PlayerController, not just the boulevard; every lot on the
+// plat — claimed or vacant — is stood in front of and stepped onto; a vacant
+// board offers its own claim url; /lot/<id> lands outside that lot; and the
+// plan page (/map) renders as the fixture it is.
 //
 // Usage: node scripts/qa-walkthrough.mjs [--out=qa-out] [--keep]
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
@@ -21,6 +28,7 @@ import { join } from 'node:path';
 import { serve } from '../lib/static-server.mjs';
 import { launchChrome } from '../lib/headless-chrome.mjs';
 import { BUDGETS, limit } from '../lib/qa-budgets.mjs';
+import { roadSegments, standingPoint, lotToWorld, BOARD_LOCAL, namePlates } from '../public/js/city-map.mjs';
 
 const argv = process.argv.slice(2);
 const arg = (k, d) => (argv.find((a) => a.startsWith(`--${k}=`)) || `--${k}=${d}`).slice(k.length + 3);
@@ -91,8 +99,8 @@ async function check(label, fn, { picture = false } = {}) {
 }
 
 // --------------------------------------------------------------- page helpers
-const open = async (query = '') => {
-  await page.goto(`${origin}/?${SOLO}${query ? `&${query}` : ''}`);
+const open = async (query = '', path = '/') => {
+  await page.goto(`${origin}${path}?${SOLO}${query ? `&${query}` : ''}`);
   const load = await evx(`(async () => {
     const t0 = Date.now();
     while (!document.getElementById('stats')?.dataset.load && Date.now() - t0 < 90000) {
@@ -112,6 +120,13 @@ const open = async (query = '') => {
     // drifts with test order. The poster renderer turns it off for the same
     // reason: a measurement must not depend on the journey to it.
     window.__city.controls.enableDamping = false;
+    // Venues stay impostors for the whole walk. This is the city's check, not
+    // the stadium's (that is `npm run venue:check`): a lot on the ring stands
+    // inside the stadium's load radius, and on a software renderer mounting
+    // it — 1.3 MB, six new lights, every material recompiled — inside a
+    // 60 s evaluate is how the 34-lot check died on a runner with "Internal
+    // error" while passing on a laptop.
+    for (const v of window.__city.venues.state()) window.__city.venues.forceTier(v.id, 0);
   });
   return load;
 };
@@ -134,20 +149,20 @@ const teleport = (x, z, yaw, dist = 5, height = 2.2) => call((a) => {
 const walk = (seconds, sx = 0, sy = 1) => call((a) => {
   const p = window.__player;
   const before = { x: p.pos.x, z: p.pos.z };
-  let minZ = p.pos.z, maxZ = p.pos.z, bad = 0;
+  let minY = p.pos.y, bad = 0;
   p.setStick(a.sx, a.sy);
   const frames = Math.round(a.seconds * 60);
   for (let i = 0; i < frames; i += 30) {
     window.__city.step(Math.min(30, frames - i), 1 / 60);
-    minZ = Math.min(minZ, p.pos.z); maxZ = Math.max(maxZ, p.pos.z);
+    minY = Math.min(minY, p.pos.y);
     if (!Number.isFinite(p.pos.x) || !Number.isFinite(p.pos.y) || !Number.isFinite(p.pos.z)) bad += 1;
   }
   p.setStick(0, 0);
   return {
     from: [+before.x.toFixed(2), +before.z.toFixed(2)],
     to: [+p.pos.x.toFixed(2), +p.pos.z.toFixed(2)],
-    dx: +(p.pos.x - before.x).toFixed(2),
-    zRange: [+minZ.toFixed(2), +maxZ.toFixed(2)],
+    moved: +Math.hypot(p.pos.x - before.x, p.pos.z - before.z).toFixed(2),
+    minY: +minY.toFixed(2),
     nonFinite: bad,
   };
 }, { seconds, sx, sy });
@@ -168,14 +183,20 @@ const measure = () => call(() => {
   return { calls: i.calls, tris: i.triangles, lights, kinds, peers: window.__presence.count };
 });
 
+// the avatar faces (sin yaw, cos yaw); a lot's front is its local +z
+const faceYaw = (ux, uz) => Math.atan2(ux, uz);
+const near = (a, b, tol) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= tol;
+
 // ------------------------------------------------------------------- the walk
 const load = await open();
-const man = await evx('(async () => (await (await fetch("/plots/index.json")).json()))()');
+const [man, map, plat] = await Promise.all(['/plots/index.json', '/city/map.json', '/city/lots.json']
+  .map((u) => evx(`(async () => (await (await fetch("${u}")).json()))()`)));
 const lots = man.lots;
 const vacant = man.vacant || [];
 const shops = lots.filter((l) => l.type === 'shop');
-const east = lots.reduce((a, b) => (b.x > a.x ? b : a));
-console.log(`\ncity: ${lots.length} lots (${shops.length} shops), ${vacant.length} vacant, outermost lot x=${east.x}\n`);
+const everyLot = Object.values(plat.lots);
+const roads = map.roads.filter((r) => r.name);
+console.log(`\ncity: ${lots.length} lots (${shops.length} shops), ${vacant.length} vacant of ${everyLot.length}, ${roads.length} named roads\n`);
 
 await check(`every plot loads (${lots.length} in the manifest)`, () =>
   ({ ok: new RegExp(`^${lots.length}/${lots.length} plots`).test(load || ''), load }), { picture: true });
@@ -189,14 +210,22 @@ await check('graphics pinned, guard frozen — so the numbers mean something', a
 await check('analytics never reached the network', async () =>
   ({ ok: (await evx('typeof window.google_tag_manager')) === 'undefined', gtm: await evx('typeof window.google_tag_manager') }));
 
-await check('spawn is on the boulevard, on the ground', async () => {
+await check('spawn is where the map says, on the ground', async () => {
   const s = await call(() => ({ pos: window.__player.pos.toArray().map((v) => +v.toFixed(2)) }));
-  return { ok: Math.abs(s.pos[0] + 20) < 1 && Math.abs(s.pos[2]) < 1 && Math.abs(s.pos[1]) < 0.5, ...s };
+  return { ok: near([s.pos[0], s.pos[2]], [map.spawn.x, map.spawn.z], 1) && Math.abs(s.pos[1]) < 0.5, ...s, spawn: map.spawn };
 });
 
-await check('an info board for every lot and every vacant plot', async () => {
-  const n = await call(() => window.__city.street.interactables.length);
-  return { ok: n === lots.length + vacant.length, boards: n, expected: lots.length + vacant.length };
+await check(`an info board for every plot, and one that answers for every vacant lot (${vacant.length})`, async () => {
+  const r = await call((a) => {
+    const c = window.__city;
+    const claimed = c.street.interactables.filter((o) => o.userData.link).length;
+    const merged = c.street.interactables.filter((o) => o.userData.linkAt);
+    // the k-th vacant lot is quads k of the atlas that holds it: two triangles each
+    const per = 64;
+    const answers = a.vacant.map((v, i) => merged[Math.floor(i / per)]?.userData.linkAt(2 * (i % per))?.url === v.claim);
+    return { claimed, meshes: merged.length, answered: answers.filter(Boolean).length };
+  }, { vacant });
+  return { ok: r.claimed === lots.length && r.answered === vacant.length, ...r, expected: { claimed: lots.length, vacant: vacant.length } };
 });
 
 await check(`a door controller for every shop (${shops.length})`, async () => {
@@ -204,132 +233,183 @@ await check(`a door controller for every shop (${shops.length})`, async () => {
   return { ok: n >= shops.length, doors: n, shops: shops.length };
 });
 
-await check('the whole boulevard is walkable end to end', async () => {
-  await teleport(-east.x, 0, Math.PI / 2);
-  const r = await walk(20);
-  return { ok: r.to[0] >= east.x && r.nonFinite === 0 && Math.abs(r.zRange[0]) < 8 && Math.abs(r.zRange[1]) < 8, ...r, outermostLot: east.x };
-}, { picture: true });
+await check(`a street name plate at both ends of every segment of every named road (${namePlates(map).length})`, async () => {
+  const r = await call(() => ({ plates: window.__city.roads.plates, meshes: window.__city.roads.group.children.filter((o) => o.name.startsWith('plates:')).length }));
+  return { ok: r.plates === namePlates(map).length && r.meshes === roads.length, ...r, roads: roads.length };
+});
+
+// --- every road, end to end, on foot ----------------------------------------
+// A real PlayerController at a full stick, along each segment's axis from one
+// trimmed end to the other. This is what catches an invisible wall (a fence
+// seam) and anything standing on the road, which a flood fill of the fence
+// alone cannot see.
+for (const road of map.roads) {
+  const segs = roadSegments(map, road.id);
+  await check(`${road.name || road.id} is walkable end to end (${segs.length} segment${segs.length === 1 ? '' : 's'})`, async () => {
+    const legs = [];
+    let ok = true;
+    for (const s of segs) {
+      const a = [s.a[0] + s.ux * (s.trimA + 1), s.a[1] + s.uz * (s.trimA + 1)];
+      const b = [s.a[0] + s.ux * (s.L - s.trimB - 1.5), s.a[1] + s.uz * (s.L - s.trimB - 1.5)];
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      await teleport(a[0], a[1], faceYaw(s.ux, s.uz));
+      const r = await walk(L / 5.6 + 1.5);   // run speed, plus a margin to arrive
+      // Progress ALONG the road: the avatar keeps running past the end into
+      // the roundabout (or up to the dead end's kerb), so "near the end point"
+      // would fail on a road that is perfectly walkable.
+      const progress = (r.to[0] - a[0]) * s.ux + (r.to[1] - a[1]) * s.uz;
+      const arrived = progress >= L - 0.5 && r.nonFinite === 0 && r.minY > -0.2;
+      ok &&= arrived;
+      legs.push({ segment: s.id, metres: +L.toFixed(1), progressed: +progress.toFixed(1), arrived, to: r.to });
+    }
+    return { ok, legs };
+  }, { picture: road.lots != null });
+}
 
 await check('the stick dead zone holds, and full deflection walks', async () => {
   await teleport(0, 0, Math.PI / 2);
   const still = await walk(2, 0.05, 0);
   await teleport(0, 0, Math.PI / 2);
   const moved = await walk(2, 0, 1);
-  return { ok: Math.hypot(still.dx, 0) < 0.05 && Math.abs(moved.dx) > 2, deadZone: still.dx, full: moved.dx };
+  return { ok: still.moved < 0.05 && moved.moved > 2, deadZone: still.moved, full: moved.moved };
 });
 
-await check('every lot is standing ground, not clamped away', async () => {
+// --- every lot on the plat, claimed or vacant ------------------------------
+// Stand where /lot/<id> puts a visitor and step onto the lot: the standing
+// point is clear, the frontage is walkable, and nothing is clamped away.
+await check(`every lot's standing point is clear and its frontage is walkable (${everyLot.length} lots)`, async () => {
   const bad = [];
-  for (const l of lots) {
-    const r = await teleport(l.x, l.side * 5.5, l.side > 0 ? 0 : Math.PI);
-    if (Math.abs(r.x - l.x) > 0.5) bad.push({ slug: l.slug, want: l.x, got: r.x });
+  for (const l of everyLot) {
+    const sp = standingPoint(l);
+    const at = await teleport(sp.x, sp.z, sp.yaw);
+    const r = await walk(1.2);
+    const toward = lotToWorld(l, 0, 3);            // 3 m in front of the centre: the frontage
+    const progressed = Math.hypot(r.to[0] - at.x, r.to[1] - at.z) > 1.0;
+    const closer = Math.hypot(r.to[0] - toward.x, r.to[1] - toward.z) < Math.hypot(at.x - toward.x, at.z - toward.z);
+    if (!(progressed && closer && r.nonFinite === 0 && r.minY > -0.2)) bad.push({ lot: l.id, from: [at.x, at.z], to: r.to, moved: r.moved });
   }
-  return { ok: bad.length === 0, unreachable: bad };
+  return { ok: bad.length === 0, blocked: bad.slice(0, 6), blockedCount: bad.length };
 });
 
 const door = shops[0];
+const inFront = (l, d, dist = 5, height = 2.2) => { const p = lotToWorld(l, 0, d); return teleport(p.x, p.z, l.yaw + Math.PI, dist, height); };
 await check(`doors open on approach (${door.slug})`, async () => {
-  await teleport(door.x, door.side * 5.0, door.side > 0 ? 0 : Math.PI);
+  await inFront(door, 6.5);
   const open = await call(() => { window.__city.step(90, 1 / 60); return Math.max(...window.__city.doors.state().map((d) => d.open)); });
   return { ok: open > 0.95, open01: +open.toFixed(2) };
 }, { picture: true });
 
 await check('and close again behind you', async () => {
-  await teleport(door.x, door.side * 2.0, door.side > 0 ? 0 : Math.PI);
+  await inFront(door, 9.5);   // 4.9 m from the door: past its 3.1 m close radius, still on the pavement
   const shut = await call(() => { window.__city.step(120, 1 / 60); return Math.max(...window.__city.doors.state().map((d) => d.open)); });
   return { ok: shut < 0.05, open01: +shut.toFixed(2) };
 });
 
-const board = lots[Math.floor(lots.length / 2)];
-await check(`clicking a board offers the link without leaving (${board.slug})`, async () => {
-  await teleport(board.x + 3.4, board.side * 3.0, board.side > 0 ? 0 : Math.PI, 5, 1.6);
-  return call((a) => {
-    window.__opened = null;
-    window.open = (...args) => { window.__opened = args; return null; };
-    const c = window.__city;
-    const b = c.interactables.find((o) => o.userData.link && o.userData.link.name === a.name);
-    if (!b) return { ok: false, reason: 'no board for that lot' };
-    const v = b.getWorldPosition(new b.position.constructor());
-    v.project(c.camera);
-    const x = ((v.x + 1) / 2) * window.innerWidth, y = ((1 - v.y) / 2) * window.innerHeight;
-    c.renderer.domElement.dispatchEvent(new PointerEvent('pointerdown', { clientX: x, clientY: y, bubbles: true }));
-    const armed = window.__armed();
-    return {
-      ok: !!armed && armed.name === a.name && window.__opened === null,
-      armed: armed && armed.name,
-      navigatedEarly: window.__opened !== null,
-      at: [Math.round(x), Math.round(y)],
-    };
-  }, { name: board.name });
-}, { picture: true });
-
-await check('a click on empty sky and Escape both put the offer away', async () => call((a) => {
+// --- boards: a plot's, then a vacant lot's -----------------------------------
+const aim = (name) => call((a) => {
   const c = window.__city;
   const b = c.interactables.find((o) => o.userData.link && o.userData.link.name === a.name);
-  const aim = () => {
-    const v = b.getWorldPosition(new b.position.constructor());
-    v.project(c.camera);
-    return [((v.x + 1) / 2) * window.innerWidth, ((1 - v.y) / 2) * window.innerHeight];
-  };
-  const fire = (x, y) => c.renderer.domElement.dispatchEvent(new PointerEvent('pointerdown', { clientX: x, clientY: y, bubbles: true }));
-  fire(...aim());
-  const armedOnce = !!window.__armed();
-  fire(window.innerWidth / 2, 4);                       // a patch of empty sky
-  const afterSky = window.__armed();
-  fire(...aim());
-  const armedTwice = !!window.__armed();
-  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-  return {
-    ok: armedOnce && afterSky === null && armedTwice && window.__armed() === null,
-    armedOnce, afterSky, armedTwice, afterEsc: window.__armed(),
-  };
-}, { name: board.name }));
-
-await check('and the pill is the only thing that leaves', async () => call((a) => {
-  const c = window.__city;
-  const b = c.interactables.find((o) => o.userData.link && o.userData.link.name === a.name);
+  if (!b) return null;
   const v = b.getWorldPosition(new b.position.constructor());
   v.project(c.camera);
-  c.renderer.domElement.dispatchEvent(new PointerEvent('pointerdown', {
-    clientX: ((v.x + 1) / 2) * window.innerWidth, clientY: ((1 - v.y) / 2) * window.innerHeight, bubbles: true,
-  }));
-  window.__opened = null;
-  document.getElementById('toast').click();
-  return {
-    ok: Array.isArray(window.__opened) && window.__opened[0] === a.url && window.__armed() === null,
-    opened: window.__opened && window.__opened[0],
-    expected: a.url,
-  };
-}, { url: board.url, name: board.name }));
+  return [((v.x + 1) / 2) * window.innerWidth, ((1 - v.y) / 2) * window.innerHeight];
+}, { name });
+const fire = (xy) => call((a) => {
+  window.__city.renderer.domElement.dispatchEvent(new PointerEvent('pointerdown', { clientX: a[0], clientY: a[1], bubbles: true }));
+  return window.__armed();
+}, xy);
+
+const board = lots[Math.floor(lots.length / 2)];
+const boardStand = (l) => { const p = lotToWorld(l, BOARD_LOCAL[0], BOARD_LOCAL[1] + 3); return teleport(p.x, p.z, l.yaw + Math.PI, 4, 1.6); };
+await check(`clicking a board offers the link without leaving (${board.slug})`, async () => {
+  await boardStand(board);
+  await call(() => { window.__opened = null; window.open = (...args) => { window.__opened = args; return null; }; });
+  const xy = await aim(board.name);
+  if (!xy) return { ok: false, reason: 'no board for that lot' };
+  const armed = await fire(xy);
+  const opened = await evx('window.__opened');
+  return { ok: !!armed && armed.name === board.name && opened === null, armed: armed && armed.name, navigatedEarly: opened !== null, at: xy.map(Math.round) };
+}, { picture: true });
+
+await check('a click on empty sky and Escape both put the offer away', async () => {
+  const xy = await aim(board.name);
+  const armedOnce = !!(await fire(xy));
+  const afterSky = await fire([640, 4]);          // a patch of empty sky
+  const armedTwice = !!(await fire(xy));
+  const afterEsc = await call(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); return window.__armed(); });
+  return { ok: armedOnce && afterSky === null && armedTwice && afterEsc === null, armedOnce, afterSky, armedTwice, afterEsc };
+});
+
+await check('and the pill is the only thing that leaves', async () => {
+  await fire(await aim(board.name));
+  return call((a) => {
+    window.__opened = null;
+    document.getElementById('toast').click();
+    return { ok: Array.isArray(window.__opened) && window.__opened[0] === a.url && window.__armed() === null, opened: window.__opened && window.__opened[0], expected: a.url };
+  }, { url: board.url });
+});
+
+if (vacant.length) {
+  const v = vacant[0];
+  await check(`a vacant lot's board offers its own claim url (${v.lot})`, async () => {
+    await boardStand(v);
+    const xy = await call((a) => {
+      // the board face sits at the board frame's origin, 1.34 m up
+      const c = window.__city;
+      const p = a.at;
+      const vv = new c.camera.position.constructor(p.x, 1.34, p.z);
+      vv.project(c.camera);
+      return [((vv.x + 1) / 2) * window.innerWidth, ((1 - vv.y) / 2) * window.innerHeight];
+    }, { at: lotToWorld(v, BOARD_LOCAL[0], BOARD_LOCAL[1]) });
+    const armed = await fire(xy);
+    const afterEsc = await call(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); return window.__armed(); });
+    return { ok: !!armed && armed.url === v.claim && afterEsc === null, armed, expected: v.claim, at: xy.map(Math.round) };
+  }, { picture: true });
+}
 
 // --- the budget, at two fixed vantage points -------------------------------
+// On a fresh page: the walks above took the visitor round the stadium, which
+// streams in at tier 1 and stays resident for its 20 s grace — a budget
+// measured then would be a fact about the venue streamer, not the street.
+await open();
 for (const [name, pose] of Object.entries(BUDGETS.poses)) {
   await check(`draw budget: ${name}`, async () => {
     await teleport(pose.x, pose.z, pose.yaw, pose.dist, pose.height);
     await call(() => window.__city.step(30, 1 / 60));
     const m = await measure();
     await call(() => window.__city.resume());
-    const cap = { calls: limit(pose.calls, lots.length), tris: limit(pose.tris, lots.length) };
+    const cap = { calls: limit(pose.calls, lots.length, vacant.length), tris: limit(pose.tris, lots.length, vacant.length) };
     const lightCap = limit(BUDGETS.lights, lots.length);
     return {
       ok: m.peers === 0 && m.calls <= cap.calls && m.tris <= cap.tris
         && m.lights <= lightCap && m.lights >= BUDGETS.lights.floor,
       ...m,
       limits: { ...cap, lights: `${BUDGETS.lights.floor}..${lightCap}` },
-      lots: lots.length,
+      lots: lots.length, vacant: vacant.length,
     };
   }, { picture: true });
 }
+
+await check(`vacant lots are cheap by construction (${vacant.length} lots, ≤ ${BUDGETS.vacantCalls} draw calls between them)`, async () => {
+  const r = await call(() => {
+    const c = window.__city;
+    const kinds = c.street.group.children.filter((o) => o.isInstancedMesh || o.name.startsWith('vacant_boards')).map((o) => o.name);
+    return { calls: kinds.length, kinds };
+  });
+  return { ok: r.calls <= BUDGETS.vacantCalls, ...r };
+});
 
 // --- the light pool --------------------------------------------------------
 // The pool exists so the number of visible lights never changes, because that
 // number is a shader define: a light switched off mid-street recompiles every
 // material under the visitor's feet. Both halves of that promise are testable
 // without a GPU, so they are tested.
+const blvd = roadSegments(map, 'boulevard')[0];
 await check('walking the street never changes the light count or recompiles', async () => {
-  await teleport(-east.x, 0, Math.PI / 2);
+  const west = [blvd.a[0] + blvd.ux * (blvd.L - 2), blvd.a[1] + blvd.uz * (blvd.L - 2)];
+  await teleport(west[0], west[1], faceYaw(-blvd.ux, -blvd.uz));
   await walk(20);                                  // warm pass: everything compiles once
-  await teleport(east.x, 0, -Math.PI / 2);
+  await teleport(blvd.a[0] + blvd.ux * (blvd.trimA + 1), blvd.a[1] + blvd.uz * (blvd.trimA + 1), faceYaw(blvd.ux, blvd.uz));
   return call(() => {
     const c = window.__city, p = window.__player;
     c.pause();
@@ -358,7 +438,7 @@ await check('walking the street never changes the light count or recompiles', as
 
 await check('standing on a lot, its own fixtures hold their slots', async () => {
   const lot = lots.find((l) => l.type === 'shop') || lots[0];
-  await teleport(lot.x, lot.side * 11.5, lot.side > 0 ? 0 : Math.PI);
+  await inFront(lot, 0);
   return call(() => {
     const c = window.__city;
     c.pause();
@@ -406,26 +486,42 @@ await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720
 
 // --- arrival modes ---------------------------------------------------------
 const perma = lots[0];
+const permaSpot = standingPoint(perma);
 await check(`a permalink lands you outside its plot (?plot=${perma.slug})`, async () => {
   await open(`plot=${perma.slug}`);
-  const s = await call((a) => ({
+  const s = await call(() => ({
     pos: window.__player.pos.toArray().map((v) => +v.toFixed(2)),
     tagline: document.getElementById('tagline').textContent,
     outlink: document.getElementById('outlink').getAttribute('href'),
-    want: [a.x, a.side * 4.8],
-  }), perma);
+  }));
   return {
-    ok: Math.abs(s.pos[0] - perma.x) < 0.5 && Math.abs(s.pos[2] - perma.side * 4.8) < 0.5
+    ok: near([s.pos[0], s.pos[2]], [permaSpot.x, permaSpot.z], 0.5)
       && s.tagline.includes(perma.name) && s.outlink === `https://otra.city/s/${perma.slug}`,
-    ...s,
+    ...s, want: [+permaSpot.x.toFixed(2), +permaSpot.z.toFixed(2)],
   };
 }, { picture: true });
+
+if (vacant.length) {
+  const v = vacant[Math.min(1, vacant.length - 1)];
+  const spot = standingPoint(v);
+  await check(`/lot/<id> lands you outside that lot, vacant included (${v.lot})`, async () => {
+    await open(`lot=${v.lot}`);
+    const s = await call(() => ({
+      pos: window.__player.pos.toArray().map((v) => +v.toFixed(2)),
+      tagline: document.getElementById('tagline').textContent,
+    }));
+    return {
+      ok: near([s.pos[0], s.pos[2]], [spot.x, spot.z], 0.5) && s.tagline.includes(v.address) && /vacant/i.test(s.tagline) && s.tagline.includes(v.lot),
+      ...s, want: [+spot.x.toFixed(2), +spot.z.toFixed(2)],
+    };
+  }, { picture: true });
+}
 
 await check('embed keeps the title and the movement hint, drops the housekeeping', async () => {
   await open(`plot=${perma.slug}&embed=1`);
   const r = await call(() => { window.__city.step(30, 1 / 60); return { a: window.__city.audit(), pos: window.__player.pos.toArray() }; });
   const a = r.a;
-  const outside = Math.abs(r.pos[0] - perma.x) < 0.6 && Math.abs(r.pos[2] - perma.side * 4.8) < 0.6;
+  const outside = near([r.pos[0], r.pos[2]], [permaSpot.x, permaSpot.z], 0.6);
   return {
     ok: a.embed && a.hud && a.controls && /walk/i.test(a.controlsText) && !a.stats && !a.meta && !a.overflowX
       && !!a.outlink && a.outlink.href === `https://otra.city/s/${perma.slug}` && a.tagline.startsWith(perma.name) && outside,
@@ -439,7 +535,7 @@ const withScreen = lots.find((l) => (l.media?.screens || []).length > 0);
 if (withScreen) {
   await check(`a video screen decodes and runs (${withScreen.slug})`, async () => {
     await open();
-    await teleport(withScreen.x, withScreen.side * 6.0, withScreen.side > 0 ? 0 : Math.PI);
+    await inFront(withScreen, 5.5);
     return call(async () => {
       // Decoding is real work on a software stack, so this waits on the clock
       // rather than on a frame count: stepping is what asks media.js to start
@@ -460,13 +556,25 @@ if (withScreen) {
   console.log('SKIP  no plot on the street declares a screen');
 }
 
+// --- the plan page: the map's fixture ---------------------------------------
+await check('the map page renders every lot and knows which are vacant', async () => {
+  await page.goto(`${origin}/map.html?fence=1`);
+  const r = await evx(`(async () => {
+    const t0 = Date.now();
+    while (!window.__map?.ready && Date.now() - t0 < 30000) await new Promise((r) => setTimeout(r, 100));
+    const m = window.__map;
+    return m ? { ready: true, lots: Object.keys(m.plat.lots).length, vacant: m.manifest.vacant.length, rows: document.querySelectorAll('#vacant tr').length } : { ready: false };
+  })()`);
+  return { ok: r.ready && r.lots === everyLot.length && r.vacant === vacant.length && r.rows === vacant.length, ...r };
+}, { picture: true });
+
 await check('the console stayed quiet for the whole walk', () =>
   ({ ok: consoleErrors.length === 0, errors: consoleErrors.slice(0, 8) }));
 
 // ---------------------------------------------------------------------------
 const failed = results.filter((r) => !r.ok);
 writeFileSync(join(OUT, 'report.json'), JSON.stringify({
-  city: { lots: lots.length, vacant: vacant.length, shops: shops.length, segment: man.segment },
+  city: { lots: lots.length, vacant: vacant.length, plat: everyLot.length, shops: shops.length, roads: roads.map((r) => r.name) },
   passed: results.length - failed.length, failed: failed.length, results, consoleErrors,
 }, null, 1));
 
