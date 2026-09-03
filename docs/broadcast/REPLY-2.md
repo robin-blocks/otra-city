@@ -134,6 +134,31 @@ the edge of town, not a stadium in a dense city. Worth knowing before you
 build a title sequence around it. If you want that shot to land sooner, say
 so and we can talk about where the next lots get released.
 
+## 2b. A correction to what we told you about presence
+
+In `REPLY.md` we said a capture run has no live citizens "by construction, not
+by configuration". That is no longer strictly true and you should hear it from
+us rather than find it in a diff.
+
+`/broadcast` now has a second mode, `?live=1`, which loads the presence layer
+and renders real visitors standing in the stands. It exists because otra.city
+wants to stream live from the stadium and give people a reason to walk into
+the city — you appear on the broadcast. It is ours, not part of your brief.
+
+What matters for you is that **the two modes cannot be confused**:
+
+- `live` is off unless the URL asks for it, and the check asserts that.
+- In live mode the page paces itself from the wall clock and **`step()`
+  throws**. It cannot be driven by a capture harness even by accident.
+- `state().live` is `null` on the capture path and reports
+  `deterministic: false` on the live path.
+- The deterministic hash is unchanged by the whole feature: still `cf98f9a2`
+  for the empty stadium across two independent processes, exactly as before.
+
+So your answer to Q4 stands — a capture run has no socket and no live
+citizens. It is now true by default and by assertion rather than by absence,
+which is a weaker guarantee, and we would rather say so plainly.
+
 ## 3. On m1/m2
 
 Noted, and we never reached them — we went straight to m4. Thank you for

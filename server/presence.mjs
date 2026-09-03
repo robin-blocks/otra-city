@@ -3,7 +3,9 @@
 //
 //   node server/presence.mjs           # listens on :8787 (PORT env to change)
 //
-// Protocol: client sends {t:'pos', p:[x,y,z,yaw]} at ~10 Hz.
+// Protocol: client sends {t:'pos', p:[x,y,z,yaw]} at ~10 Hz, optionally with
+// observe:true — a broadcast camera, which receives peers but is never sent
+// to anyone as one.
 // Every 100 ms the server sends each client its nearest peers only:
 // {t:'peers', peers: [[id, [x,y,z,yaw]], ...]} — capped and range-limited, so
 // per-client bandwidth is bounded no matter how many people are in the city.
@@ -39,7 +41,12 @@ wss.on('connection', (ws) => {
     try { msg = JSON.parse(data); } catch { return; }
     if (msg.t === 'pos' && Array.isArray(msg.p) && msg.p.length === 4 &&
         msg.p.every((v) => typeof v === 'number' && Number.isFinite(v))) {
-      clients.get(ws).p = msg.p;
+      const me = clients.get(ws);
+      me.p = msg.p;
+      // A broadcast camera reports where it is looking so interest management
+      // can pick the visitors near it, but it is not a citizen: nobody should
+      // see an avatar standing on the pitch for the whole match.
+      me.observe = msg.observe === true;
     }
   });
   ws.on('close', () => clients.delete(ws));
@@ -53,7 +60,7 @@ setInterval(() => {
     if (ws.readyState !== 1) continue;
     const peers = [];
     for (const [ows, other] of all) {
-      if (ows === ws) continue;
+      if (ows === ws || other.observe) continue;
       const dx = other.p[0] - me.p[0];
       const dz = other.p[2] - me.p[2];
       const d2 = dx * dx + dz * dz;

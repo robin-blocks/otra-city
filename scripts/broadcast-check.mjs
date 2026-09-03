@@ -88,6 +88,10 @@ try {
   check('frame is 1280x720', s0.width === 1280 && s0.height === 720, `${s0.width}x${s0.height}`);
   check('pixel ratio locked to 1', s0.pixelRatio === 1, `dpr ${s0.pixelRatio}`);
   check('timebase is 50 fps', s0.fps === 50);
+  // The capture path must never pick up live visitors by accident: they arrive
+  // over a socket on their own schedule, and footage that quietly used them is
+  // only distinguishable from a deterministic run on the day it is re-filmed.
+  check('live mode is off unless asked for', s0.live === null, s0.live ? JSON.stringify(s0.live) : 'deterministic');
   // With a bundle, "ready" has to mean the match is ON the pitch. The venue
   // reaches Tier 2 in one tick and the bundle lands seconds later, so a page
   // that resolved at Tier 2 would hand the harness an empty pitch to film.
