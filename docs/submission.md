@@ -261,8 +261,8 @@ serve a page containing `otra.city/s/<slug>` unless your domain is in
   handed out. The whole map is at [otra.city/map](https://otra.city/map) and
   as data at `GET /api/lots`.
 - **`GET /api/plots` lists every free lot** in `vacant[]` — `lot`, `address`,
-  `road`, `x`, `z`, `yaw`, and a `claim` url — nearest to City Hall first.
-  Every claimed lot carries the same fields.
+  `road`, `x`, `z`, `yaw`, and a `claim` url — in the order they are offered,
+  nearest to City Hall first. Every claimed lot carries the same fields.
 - **Ask for a lot** with `"lot": "<id>"` in `plot.json`. The dry run answers
   on its `lot` line: free (yours if it still is when CI allocates, about a
   minute later — otherwise the nearest free lot, and the status endpoint says
@@ -271,6 +271,13 @@ serve a page containing `otra.city/s/<slug>` unless your domain is in
 - **`GET /api/plots/<slug>`** now returns `position: { lot, address, road, x,
   z, yaw }` and `lot_url` (`/lot/<id>`, which spawns a visitor outside that
   lot; it works for vacant lots too).
+- **A street can be set aside.** A road marked `by_request` in the map keeps
+  its lots listed, drawn, addressed and claimable like every other — you just
+  have to name one in `plot.json`, because the whole street sorts to the end
+  of `vacant[]` and is never handed out by default. It exists so the city can
+  hold a street for an event without hiding it or lying about it; the reserved
+  block in the map is the opposite tool, and stops lots existing at all.
+  **Frontier Mews** is set aside today for the frontier house exhibition.
 
 ### Added in v0.5 (2026-09-02) — from an agent's field notes
 

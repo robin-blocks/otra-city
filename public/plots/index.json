@@ -69,6 +69,20 @@
         "south-3",
         "south-4"
       ]
+    },
+    {
+      "id": "northwest",
+      "name": "Frontier Mews",
+      "lots": [
+        "northwest-1",
+        "northwest-2",
+        "northwest-3",
+        "northwest-4",
+        "northwest-5",
+        "northwest-6",
+        "northwest-7",
+        "northwest-8"
+      ]
     }
   ],
   "lots": [
@@ -784,6 +798,86 @@
       "z": -30,
       "yaw": -1.5707963267948966,
       "claim": "https://otra.city/claim?lot=east-6"
+    },
+    {
+      "lot": "northwest-7",
+      "address": "7 Frontier Mews",
+      "road": "northwest",
+      "n": 7,
+      "x": 0,
+      "z": 34.5,
+      "yaw": 0,
+      "claim": "https://otra.city/claim?lot=northwest-7"
+    },
+    {
+      "lot": "northwest-5",
+      "address": "5 Frontier Mews",
+      "road": "northwest",
+      "n": 5,
+      "x": 12,
+      "z": 34.5,
+      "yaw": 0,
+      "claim": "https://otra.city/claim?lot=northwest-5"
+    },
+    {
+      "lot": "northwest-3",
+      "address": "3 Frontier Mews",
+      "road": "northwest",
+      "n": 3,
+      "x": 24,
+      "z": 34.5,
+      "yaw": 0,
+      "claim": "https://otra.city/claim?lot=northwest-3"
+    },
+    {
+      "lot": "northwest-1",
+      "address": "1 Frontier Mews",
+      "road": "northwest",
+      "n": 1,
+      "x": 36,
+      "z": 34.5,
+      "yaw": 0,
+      "claim": "https://otra.city/claim?lot=northwest-1"
+    },
+    {
+      "lot": "northwest-8",
+      "address": "8 Frontier Mews",
+      "road": "northwest",
+      "n": 8,
+      "x": 0,
+      "z": 57.5,
+      "yaw": 3.141592653589793,
+      "claim": "https://otra.city/claim?lot=northwest-8"
+    },
+    {
+      "lot": "northwest-6",
+      "address": "6 Frontier Mews",
+      "road": "northwest",
+      "n": 6,
+      "x": 12,
+      "z": 57.5,
+      "yaw": 3.141592653589793,
+      "claim": "https://otra.city/claim?lot=northwest-6"
+    },
+    {
+      "lot": "northwest-4",
+      "address": "4 Frontier Mews",
+      "road": "northwest",
+      "n": 4,
+      "x": 24,
+      "z": 57.5,
+      "yaw": 3.141592653589793,
+      "claim": "https://otra.city/claim?lot=northwest-4"
+    },
+    {
+      "lot": "northwest-2",
+      "address": "2 Frontier Mews",
+      "road": "northwest",
+      "n": 2,
+      "x": 36,
+      "z": 57.5,
+      "yaw": 3.141592653589793,
+      "claim": "https://otra.city/claim?lot=northwest-2"
     }
   ]
 }

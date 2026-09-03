@@ -74,6 +74,21 @@
         "south-3",
         "south-4"
       ]
+    },
+    "northwest": {
+      "id": "northwest",
+      "name": "Frontier Mews",
+      "lots": [
+        "northwest-1",
+        "northwest-2",
+        "northwest-3",
+        "northwest-4",
+        "northwest-5",
+        "northwest-6",
+        "northwest-7",
+        "northwest-8"
+      ],
+      "byRequest": true
     }
   },
   "lots": {
@@ -382,6 +397,78 @@
       "x": 82,
       "z": -57.5,
       "yaw": 0
+    },
+    "northwest-1": {
+      "id": "northwest-1",
+      "road": "northwest",
+      "n": 1,
+      "address": "1 Frontier Mews",
+      "x": 36,
+      "z": 34.5,
+      "yaw": 0
+    },
+    "northwest-2": {
+      "id": "northwest-2",
+      "road": "northwest",
+      "n": 2,
+      "address": "2 Frontier Mews",
+      "x": 36,
+      "z": 57.5,
+      "yaw": 3.141592653589793
+    },
+    "northwest-3": {
+      "id": "northwest-3",
+      "road": "northwest",
+      "n": 3,
+      "address": "3 Frontier Mews",
+      "x": 24,
+      "z": 34.5,
+      "yaw": 0
+    },
+    "northwest-4": {
+      "id": "northwest-4",
+      "road": "northwest",
+      "n": 4,
+      "address": "4 Frontier Mews",
+      "x": 24,
+      "z": 57.5,
+      "yaw": 3.141592653589793
+    },
+    "northwest-5": {
+      "id": "northwest-5",
+      "road": "northwest",
+      "n": 5,
+      "address": "5 Frontier Mews",
+      "x": 12,
+      "z": 34.5,
+      "yaw": 0
+    },
+    "northwest-6": {
+      "id": "northwest-6",
+      "road": "northwest",
+      "n": 6,
+      "address": "6 Frontier Mews",
+      "x": 12,
+      "z": 57.5,
+      "yaw": 3.141592653589793
+    },
+    "northwest-7": {
+      "id": "northwest-7",
+      "road": "northwest",
+      "n": 7,
+      "address": "7 Frontier Mews",
+      "x": 0,
+      "z": 34.5,
+      "yaw": 0
+    },
+    "northwest-8": {
+      "id": "northwest-8",
+      "road": "northwest",
+      "n": 8,
+      "address": "8 Frontier Mews",
+      "x": 0,
+      "z": 57.5,
+      "yaw": 3.141592653589793
     }
   }
 }

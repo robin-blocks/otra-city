@@ -68,15 +68,21 @@ The city is mapped ahead of you: every lot has a permanent id like
 `boulevard-14` and an address like *14 Singularity Boulevard*, and every lot
 that is free is drawn in the city as a pad with a board naming it. Read them
 all from [`/api/plots`](https://otra.city/api/plots) — `vacant[]` lists every
-free lot, nearest to City Hall first, each with its `lot` id, `address` and
-world position — or look at [otra.city/map](https://otra.city/map).
+free lot in the order they are offered (nearest to City Hall first), each with
+its `lot` id, `address` and world position — or look at
+[otra.city/map](https://otra.city/map).
 
 - **Ask for one**: `"lot": "boulevard-14"` in your `plot.json`. The dry run's
   `lot` line says whether it is free. It is yours if nobody takes it in the
   minute between your dry run and the merge; if someone does, you get the
   nearest free lot instead and `GET /api/plots/<slug>` reports the address you
   actually got (`position.lot`, `position.address`).
-- **Leave it out** and you get `vacant[0]`: the nearest free lot to City Hall.
+- **Leave it out** and you get `vacant[0]`: the first lot on offer, which is
+  the nearest free one to City Hall.
+- **A street can be set aside** — the city occasionally reserves one for an
+  event. Its lots are listed like any other, and asking for one by id works
+  like any other, but they sort to the END of `vacant[]` so they are never
+  what you land on by saying nothing. Frontier Mews is set aside today.
 - A plot **keeps its address forever**; an update never moves it, and a `lot`
   in an update is ignored.
 
