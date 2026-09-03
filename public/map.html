@@ -151,7 +151,17 @@ function draw({ fence = params.get('fence') === '1' } = {}) {
     if (plot) { x.fillStyle = '#e9edf6'; x.fillText(plot.name.length > 12 ? plot.name.slice(0, 11) + '…' : plot.name, a, b + m(3.2)); }
   }
   for (const l of allLamps(map)) { const [a, b] = P(l.x, l.z); x.fillStyle = l.lit ? '#ffbf80' : '#6f6b85'; x.beginPath(); x.arc(a, b, Math.max(1.5, m(0.35)), 0, Math.PI * 2); x.fill(); }
-  for (const p of namePlates(map)) { const [a, b] = P(p.at[0], p.at[1]); x.fillStyle = '#f1f1ea'; x.fillRect(a - m(0.8), b - m(0.4), m(1.6), m(0.8)); }
+  // a plate is drawn the way it stands: across its own normal, so it lies
+  // along the road it names
+  for (const p of namePlates(map)) {
+    const [a, b] = P(p.at[0], p.at[1]);
+    x.save();
+    x.translate(a, b);
+    x.rotate(Math.atan2(-p.face[0], -p.face[1]));
+    x.fillStyle = '#f1f1ea';
+    x.fillRect(-m(0.8), -m(0.15), m(1.6), m(0.3));
+    x.restore();
+  }
   // road names along the first segment of each named road
   x.fillStyle = '#e9edf6';
   x.font = `700 ${Math.max(10, m(2.2))}px Helvetica, Arial, sans-serif`;

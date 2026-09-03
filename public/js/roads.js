@@ -17,7 +17,10 @@
 // with the city's light pool (js/lights.js) rather than owning a PointLight;
 // the pool lights whichever sources the visitor is nearest.
 import * as THREE from 'three';
-import { roadSegments, roadLamps, roundaboutArcs, roundaboutLamps, bayLamps, baySigns, bayOpensSouth, namePlates, deadEnds } from '/js/city-map.mjs';
+import {
+  roadSegments, roadLamps, roundaboutArcs, roundaboutLamps, bayLamps, baySigns, bayOpensSouth,
+  namePlates, deadEnds, PLATE, SIGN, postsOf, plateYaw,
+} from '/js/city-map.mjs';
 import { createInstancer, mergedQuads } from '/js/geom.js';
 
 const mat = (color, opts = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.92, ...opts });
@@ -31,7 +34,8 @@ const ROAD_TOP = 0.01;   // asphalt top (box at y -0.05, 0.12 thick)
 // jam against the planter, instead of flowing around it the way a roundabout
 // is meant to be walked. Dead-end kerb blocks use the same height.
 const ISLAND_H = 0.45;
-const PLATE = { w: 1.6, h: 0.3, y: 0.95, post: 1.15, spread: 0.62 };
+// PLATE and SIGN (their sizes, and where their two posts stand) come from
+// js/city-map.mjs, so the map check measures the posts this file builds.
 
 // Directional boards and the roundabout totem: the city's neon style.
 function boardTexture(lines, color) {
@@ -173,13 +177,16 @@ export function buildRoads(scene, world) {
   }
   function sign(at, yaw, lines, color) {
     const [x, z] = at;
-    box('sign_post', x, 1.2, z, 0, 0.12, 2.4, 0.12);
-    const face = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.8),
+    // posts at the board's ends, set back behind it: nothing in front of the text
+    for (const p of postsOf(SIGN, at, yaw)) {
+      box('sign_post', p.x, SIGN.post / 2, p.z, yaw, 2 * SIGN.r, SIGN.post, 2 * SIGN.r);
+    }
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(SIGN.w, SIGN.h),
       new THREE.MeshBasicMaterial({ map: boardTexture(lines, color) }));
-    face.position.set(x, 2.0, z);
+    face.position.set(x, SIGN.y, z);
     face.rotation.y = yaw;
     g.add(face);
-    const back = new THREE.Mesh(new THREE.BoxGeometry(1.68, 0.88, 0.06), M.dark);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(SIGN.w + 0.08, SIGN.h + 0.08, 0.06), M.dark);
     back.position.copy(face.position);
     back.rotation.y = yaw;
     back.translateZ(-0.04);
@@ -312,11 +319,9 @@ export function buildRoads(scene, world) {
   const quadsByRoad = new Map();
   const dummy = new THREE.Object3D();
   for (const p of plates) {
-    const yaw = Math.atan2(p.face[0], p.face[1]);   // a plane's +z faces `face`
-    const wx = Math.cos(yaw);
-    const wz = -Math.sin(yaw);                       // the plate's width axis
-    for (const s of [-PLATE.spread, PLATE.spread]) {
-      box('plate_post', p.at[0] + wx * s, PLATE.post / 2, p.at[1] + wz * s, yaw, 0.06, PLATE.post, 0.06);
+    const yaw = plateYaw(p);                         // a plane's +z faces `face`
+    for (const q of postsOf(PLATE, p.at, yaw)) {
+      box('plate_post', q.x, PLATE.post / 2, q.z, yaw, 2 * PLATE.r, PLATE.post, 2 * PLATE.r);
     }
     box('plate_body', p.at[0], PLATE.y, p.at[1], yaw, PLATE.w, PLATE.h, 0.03);
     const list = quadsByRoad.get(p.road) || quadsByRoad.set(p.road, []).get(p.road);

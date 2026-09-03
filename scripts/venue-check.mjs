@@ -147,6 +147,11 @@ for (const id of ids) {
       check('walkability: spawn stands on ground', !!w.ok && w.reachable <= w.walkable, w.reason || `${w.reachable} of ${w.walkable} walkable cells reachable (${w.nodes} surfaces, cell ${w.cell} m)`);
       check('walkability: gates passable', (w.gates || []).every((g) => g.reachable), (w.gates || []).map((g) => `${g.id}:${g.reachable ? 'ok' : 'BLOCKED'}`).join(', ') || 'no gates');
       check('walkability: seats reachable', w.seatsReachable >= (def.capacity || 0) && w.seatsReachable === w.seatsTotal, `${w.seatsReachable}/${w.seatsTotal} (capacity ${def.capacity || 0})`);
+      // Getting in is half of it. A terrace a visitor can walk down into and
+      // never climb out of passed every check here for a week: the fill only
+      // ever went downhill, so it never met the step it could not take.
+      check('walkability: and every seat can be left again', w.seatsReturnable === w.seatsTotal,
+        `${w.seatsReturnable}/${w.seatsTotal} can walk back to the spawn (body radius ${w.bodyRadius} m)`);
       if (flag('match') && (def.modules || []).some((m) => m.type === 'match-4dgsx')) {
         // a second fixture: a real replay bundle mounted through the SDK, from
         // tier 0 (memory baseline) to tier 2 (match) and back to tier 0 (clean)

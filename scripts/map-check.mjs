@@ -22,7 +22,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import {
   LOT_HALF, BOARD_LOCAL, lotToWorld, lotRect, rectsOverlap, rectContains, roadSegments, fenceShapes, fenceContains,
-  standingPoint, allLamps, namePlates, baySigns, platLots, rankFree,
+  standingPoint, allLamps, namePlates, baySigns, platLots, rankFree, PLATE, SIGN, postsOf, plateYaw,
 } from '../public/js/city-map.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
@@ -237,20 +237,23 @@ const fmtGaps = (g) => g.slice(0, 3).map((q) => `[${q.from}]..[${q.to}]`).join('
 
 // ---- nothing stands in anyone's way ----------------------------------------
 {
-  // a plate is two posts 0.62 m either side of its centre plus the plate
-  // between them; a directional sign and a bay lamp are posts the renderer
-  // places from map.json (js/roads.js), so they are counted here too
-  const plateParts = (p, i) => {
-    const yaw = Math.atan2(p.face[0], p.face[1]);
-    const wx = Math.cos(yaw);
-    const wz = -Math.sin(yaw);
-    return [-0.62, 0, 0.62].map((s) => ({ what: `plate ${p.road}`, plate: i, x: p.at[0] + wx * s, z: p.at[1] + wz * s, r: s ? 0.05 : 0.8 }));
+  // A plate or a board is its two posts AND the panel between them, at the
+  // dimensions js/city-map.mjs gives the renderer; a directional sign and a
+  // bay lamp are placed from map.json too, so they are counted here as well.
+  // A group is skipped against itself but not against another of the same road.
+  let group = 0;
+  const assembly = (spec, what, at, yaw) => {
+    const g = group++;
+    return [
+      ...postsOf(spec, at, yaw).map((q) => ({ what, group: g, x: q.x, z: q.z, r: q.r })),
+      { what, group: g, x: at[0], z: at[1], r: spec.w / 2 },
+    ];
   };
   const posts = [
     ...allLamps(map).map((l) => ({ what: `lamp ${l.road || l.roundabout || l.bay}`, x: l.x, z: l.z, r: 0.1 })),
-    ...namePlates(map).flatMap(plateParts),
-    ...(map.signs || []).map((s) => ({ what: `sign "${(s.lines || [])[0]}"`, x: s.at[0], z: s.at[1], r: 0.1 })),
-    ...baySigns(map).map((s) => ({ what: `sign "${s.label}"`, x: s.at[0], z: s.at[1], r: 0.1 })),
+    ...namePlates(map).flatMap((p) => assembly(PLATE, `plate ${p.road}`, p.at, plateYaw(p))),
+    ...(map.signs || []).flatMap((s) => assembly(SIGN, `sign "${(s.lines || [])[0]}"`, s.at, s.yaw ?? 0)),
+    ...baySigns(map).flatMap((s) => assembly(SIGN, `sign "${s.label}"`, s.at, s.yaw)),
     ...(map.bollards || []).map(([x, z]) => ({ what: 'bollard', x, z, r: 0.12 })),
     ...lots.map((l) => { const b = lotToWorld(l, ...BOARD_LOCAL); return { what: `board ${l.id}`, x: b.x, z: b.z, r: 0.1 }; }),
   ];
@@ -276,7 +279,7 @@ const fmtGaps = (g) => g.slice(0, 3).map((q) => `[${q.from}]..[${q.to}]`).join('
   const clash = [];
   for (let i = 0; i < posts.length; i++) {
     for (let j = i + 1; j < posts.length; j++) {
-      if (posts[i].plate !== undefined && posts[i].plate === posts[j].plate) continue;   // a plate's own parts
+      if (posts[i].group !== undefined && posts[i].group === posts[j].group) continue;   // one assembly's own parts
       const d = Math.hypot(posts[i].x - posts[j].x, posts[i].z - posts[j].z);
       if (d < posts[i].r + posts[j].r + 0.5) clash.push(`${posts[i].what} / ${posts[j].what} ${f1(d)} m`);
     }

@@ -202,7 +202,7 @@ function stats() {
 // gangway under a screen frame), so the fill walks (cell, floor) nodes rather
 // than assuming the first surface seen from above is the ground. Gate panels
 // are ignored: the doors open for a visitor.
-function walkability({ cell = 0.5, maxStep = 0.35, headroom = 2.0, margin = 14, points = [] } = {}) {
+function walkability({ cell = 0.5, maxStep = 0.35, headroom = 2.0, margin = 14, bodyRadius = 0.28, points = [] } = {}) {
   if (!V?.near) return { ok: false, reason: 'venue not loaded' };
   const b = def.bounds;
   const min = [b.min[0] - margin, b.min[1] - margin];
@@ -240,53 +240,87 @@ function walkability({ cell = 0.5, maxStep = 0.35, headroom = 2.0, margin = 14, 
   }
   const cellOf = (x, z) => [Math.floor((x - min[0]) / cell), Math.floor((z - min[1]) / cell)];
   const idx = (i, j) => (i >= 0 && j >= 0 && i < nx && j < nz ? i * nz + j : -1);
+  // A STEP UP needs a landing the avatar can stand on. The fill walks cell
+  // CENTRES, so on its own it cannot see a step too shallow to hold a 0.28 m
+  // radius — and it did not: the stand's half steps were 0.25 m deep, the
+  // next riser blocked every ray before a visitor could rise onto one, and
+  // this reported 600/600 seats reachable on a terrace that could be walked
+  // down but never up. So a landing must continue at the same height for
+  // more than one body radius in the direction of travel.
+  const landingCells = Math.max(1, Math.ceil(bodyRadius / cell) - 1);
+  const standable = (i, j, di, dj, y) => {
+    for (let k = 1; k <= landingCells; k++) {
+      const kk = idx(i + di * k, j + dj * k);
+      if (kk < 0 || !floors[kk].some((v) => Math.abs(v - y) <= 0.05)) return false;
+    }
+    return true;
+  };
   const key = (k, l) => k * 8 + l;
   const s = toWorld(def.spawn.x, def.spawn.z);
   const [si, sj] = cellOf(s.x, s.z);
   const sk = idx(si, sj);
   let startLayer = -1;
   if (sk >= 0) { let bd = Infinity; floors[sk].forEach((y, l) => { if (Math.abs(y) < bd) { bd = Math.abs(y); startLayer = l; } }); }
-  const seen = new Set();
-  const queue = [];
-  const reachedAt = new Map();   // cell -> reached floor heights
-  if (startLayer >= 0) { seen.add(key(sk, startLayer)); queue.push([si, sj, startLayer]); }
-  // Two counts, because a cell can hold several floors (a gangway under a
-  // screen frame): `nodes` is how much surface the fill walked, `reachable`
-  // is how many CELLS it got to — the one that compares with `walkable`.
-  let nodes = 0;
-  while (queue.length) {
-    const [i, j, l] = queue.shift();
-    nodes += 1;
-    const k = idx(i, j);
-    const y = floors[k][l];
-    if (!reachedAt.has(k)) reachedAt.set(k, []);
-    reachedAt.get(k).push(y);
-    for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const kk = idx(i + di, j + dj);
-      if (kk < 0) continue;
-      const ls = floors[kk];
-      for (let m = 0; m < ls.length; m++) {
-        if (Math.abs(ls[m] - y) > maxStep) continue;
-        const kid = key(kk, m);
-        if (seen.has(kid)) continue;
-        seen.add(kid);
-        queue.push([i + di, j + dj, m]);
+  // The fill, run twice. FORWARDS it answers "can a visitor get there"; and
+  // BACKWARDS — every edge tested in the direction it would really be walked
+  // — it answers "can they get back", which is the question a stand you can
+  // walk down into but never out of does not survive. A one-way trip is a
+  // bug even when every seat is technically reachable.
+  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const fill = (reverse) => {
+    const seen = new Set();
+    const queue = [];
+    const reached = new Map();
+    let nodes = 0;
+    if (startLayer >= 0) { seen.add(key(sk, startLayer)); queue.push([si, sj, startLayer]); }
+    while (queue.length) {
+      const [i, j, l] = queue.shift();
+      nodes += 1;
+      const k = idx(i, j);
+      const y = floors[k][l];
+      if (!reached.has(k)) reached.set(k, []);
+      reached.get(k).push(y);
+      for (const [di, dj] of DIRS) {
+        const kk = idx(i + di, j + dj);
+        if (kk < 0) continue;
+        const ls = floors[kk];
+        for (let m = 0; m < ls.length; m++) {
+          const yy = ls[m];
+          if (Math.abs(yy - y) > maxStep) continue;
+          // forwards the step is (i,j) -> (i+di,j+dj); backwards the walk it
+          // stands for is the other way, so the landing is tested at (i,j)
+          const ok = reverse
+            ? (y - yy <= 0.05 || standable(i, j, -di, -dj, y))
+            : (yy - y <= 0.05 || standable(i + di, j + dj, di, dj, yy));
+          if (!ok) continue;
+          const kid = key(kk, m);
+          if (seen.has(kid)) continue;
+          seen.add(kid);
+          queue.push([i + di, j + dj, m]);
+        }
       }
     }
-  }
+    return { reached, nodes };
+  };
+  const forward = fill(false);
+  const back = fill(true);
+  const reachedAt = forward.reached;
+  const nodes = forward.nodes;
+
   // reached within r metres, and (when y is given) within dy of that height
-  const near = (x, z, r = 0.6, y = null, dy = 0.6) => {
+  const near = (x, z, r = 0.6, y = null, dy = 0.6, from = reachedAt) => {
     const [ci, cj] = cellOf(x, z);
     const n = Math.ceil(r / cell);
     for (let i = ci - n; i <= ci + n; i++) {
       for (let j = cj - n; j <= cj + n; j++) {
-        const ys = reachedAt.get(idx(i, j));
+        const ys = from.get(idx(i, j));
         if (ys && (y === null || ys.some((v) => Math.abs(v - y) <= dy))) return true;
       }
     }
     return false;
   };
   const seats = (def.seats || []).map(([x, y, z]) => { const w = toWorld(x, z); return near(w.x, w.z, 0.6, y, 0.6); });
+  const seatsBack = (def.seats || []).map(([x, y, z]) => { const w = toWorld(x, z); return near(w.x, w.z, 0.6, y, 0.6, back.reached); });
   const gates = (def.gates || []).map((g) => { const w = toWorld(g.at[0], g.at[2]); return { id: g.id, reachable: near(w.x, w.z, 1.2) }; });
   const probes = points.map(([x, z]) => {
     const [i, j] = cellOf(x, z);
@@ -294,8 +328,9 @@ function walkability({ cell = 0.5, maxStep = 0.35, headroom = 2.0, margin = 14, 
     return { x, z, floors: k >= 0 ? floors[k].map((v) => +v.toFixed(2)) : null, reached: k >= 0 ? (reachedAt.get(k) || []).map((v) => +v.toFixed(2)) : [] };
   });
   return {
-    ok: startLayer >= 0, cell, cells: nx * nz, walkable, reachable: reachedAt.size, nodes,
-    seatsTotal: seats.length, seatsReachable: seats.filter(Boolean).length, gates, probes,
+    ok: startLayer >= 0, cell, bodyRadius, maxStep, walkable, cells: nx * nz, reachable: reachedAt.size, nodes,
+    seatsTotal: seats.length, seatsReachable: seats.filter(Boolean).length,
+    seatsReturnable: seatsBack.filter(Boolean).length, returnable: back.reached.size, gates, probes,
     spawn: { x: s.x, z: s.z, ground: startLayer >= 0 ? +floors[sk][startLayer].toFixed(2) : null },
   };
 }
