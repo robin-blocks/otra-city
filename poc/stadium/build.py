@@ -312,16 +312,30 @@ glass = MB("stadium_glass", [mat_glass])
 for i in range(-5, 5):
     x0 = i * 2.0
     opaque.box((x0, -PITCH_Y, -0.05), (x0 + 2.0, PITCH_Y, -0.005), "pitch" if i % 2 else "pitch_lt")
+# Markings are strips at one depth on one plane, so wherever two of them cross
+# they put two faces in that plane and the line crawls. The touchlines BUTT
+# against the goal lines (and so does the halfway line) instead of running
+# through them, the same repair the outer wall's ring needed.
+LINE_TOP = -0.002
 for (mn, mx) in (((-PLAY_X, -PLAY_Y), (PLAY_X, -PLAY_Y + 0.08)), ((-PLAY_X, PLAY_Y - 0.08), (PLAY_X, PLAY_Y)),
-                 ((-PLAY_X, -PLAY_Y), (-PLAY_X + 0.08, PLAY_Y)), ((PLAY_X - 0.08, -PLAY_Y), (PLAY_X, PLAY_Y)),
-                 ((-0.04, -PLAY_Y), (0.04, PLAY_Y))):
-    opaque.box((mn[0], mn[1], -0.03), (mx[0], mx[1], -0.002), "e_white_soft")
-for k in range(24):   # centre circle
+                 ((-PLAY_X, -PLAY_Y + 0.08), (-PLAY_X + 0.08, PLAY_Y - 0.08)),
+                 ((PLAY_X - 0.08, -PLAY_Y + 0.08), (PLAY_X, PLAY_Y - 0.08)),
+                 ((-0.04, -PLAY_Y + 0.08), (0.04, PLAY_Y - 0.08))):
+    opaque.box((mn[0], mn[1], -0.03), (mx[0], mx[1], LINE_TOP), "e_white_soft")
+# The centre circle is 24 chords, and a chord's axis-aligned box necessarily
+# overlaps its neighbours' near the ends — there is no way to tile a circle
+# with boxes that do not. So alternate segments sit 2 mm lower and lose the
+# overlap outright: both are the same white, the join is invisible, and 24 is
+# even so the ring closes on a change of parity. Two millimetres is more than
+# twice the export's 0.8 mm position grid over this mesh, which is the number
+# that has to be cleared (see PROUD).
+for k in range(24):
     a0, a1 = 2 * math.pi * k / 24, 2 * math.pi * (k + 1) / 24
     r = 1.8
     x0, y0 = r * math.cos(a0), r * math.sin(a0)
     x1, y1 = r * math.cos(a1), r * math.sin(a1)
-    opaque.box((min(x0, x1) - 0.04, min(y0, y1) - 0.04, -0.03), (max(x0, x1) + 0.04, max(y0, y1) + 0.04, -0.002), "e_white_soft")
+    top = LINE_TOP - (k % 2) * 0.002
+    opaque.box((min(x0, x1) - 0.04, min(y0, y1) - 0.04, -0.03), (max(x0, x1) + 0.04, max(y0, y1) + 0.04, top), "e_white_soft")
 # apron between the tile and the hoardings, and the gangway ring
 opaque.box((-HOARD_X, -HOARD_Y, -0.05), (HOARD_X, HOARD_Y, 0.0), "apron", skip=("top",))
 opaque.box((-HOARD_X, -HOARD_Y, -0.02), (-PITCH_X, HOARD_Y, 0.0), "apron")

@@ -25,7 +25,12 @@
 import * as THREE from 'three';
 
 export const DEPTH = {
-  step: 8,          // sample every Nth pixel each way
+  // Sample every Nth pixel each way. 12 is a deliberate coarseness: the whole
+  // sweep of the stadium's thirteen cameras costs 148 s at 10 and 74 s at 14
+  // on a software renderer, and the worst reading is the same to three
+  // decimals — a defect worth catching covers percent of a frame, not pixels
+  // of it. Finer only buys resolution on the residue, which is noise.
+  step: 12,
   gap: 0.0008,      // metres: under one depth step at the range a city is seen
   far: 400,
   // What the city read the day this landed, once the four defects it found in

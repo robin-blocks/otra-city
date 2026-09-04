@@ -310,7 +310,7 @@ await check(`nothing shimmers: no two surfaces share a depth (spawn + ${lots.len
     await teleport(x, z, yaw);
     const r = await call(() => {
       window.__city.step(20, 1 / 60);
-      return window.__city.coplanar({ step: 10 });
+      return window.__city.coplanar();
     });
     seen.push({ where: label, percent: r.percent });
     if (!r.ok) bad.push({ where: label, percent: r.percent, budget: r.budget, worst: r.worst.slice(0, 2) });

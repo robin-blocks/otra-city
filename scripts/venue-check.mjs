@@ -143,8 +143,8 @@ for (const id of ids) {
       let fizz = { percent: 0, cam: null, worst: [] };
       for (const cam of cams) {
         await fx.setCam(cam);
-        await fx.step(5);
-        const r = await fx.coplanar({ step: 10 });
+        await fx.step(2);
+        const r = await fx.coplanar();
         if (r.percent > fizz.percent) fizz = { percent: r.percent, cam, budget: r.budget, worst: r.worst.slice(0, 2) };
       }
       check('nothing shimmers (worst camera)', fizz.percent <= DEPTH.budget,
