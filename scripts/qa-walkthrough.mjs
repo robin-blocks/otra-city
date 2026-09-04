@@ -310,7 +310,12 @@ await check(`nothing shimmers: no two surfaces share a depth (spawn + ${lots.len
     await teleport(x, z, yaw);
     const r = await call(() => {
       window.__city.step(20, 1 / 60);
-      return window.__city.coplanar();
+      // A coarser stride than the venue check's: that one sweeps thirteen
+      // fixed cameras and does not grow, this one probes every claimed lot
+      // and grows with the city. A defect worth catching covers percent of a
+      // frame — the stadium's were 2%, and 16 still lands eighty samples on
+      // one of those.
+      return window.__city.coplanar({ step: 16 });
     });
     seen.push({ where: label, percent: r.percent });
     if (!r.ok) bad.push({ where: label, percent: r.percent, budget: r.budget, worst: r.worst.slice(0, 2) });
