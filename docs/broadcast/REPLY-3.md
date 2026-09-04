@@ -136,6 +136,36 @@ things wrong before it read correctly (fans sitting 33 cm too high, and legs
 pushing through the front wall of the terrace's first row), both found by
 looking rather than by testing, which is why we would rather you looked too.
 
+## 4a. `HELI` was wrong the first time, and here is what it is now
+
+Worth flagging because you asked for "believable handheld/turbulence shake"
+and the first version only delivered the "seeded, not random" half of it.
+
+Measured, that version came out at **0.08 Hz and 3 mm of movement per frame,
+with no roll at all** — which is a crane on a calm day, not an aircraft. It
+would have passed every determinism test we have and looked wrong on air.
+
+Rebuilt around three things:
+
+- **Aim wander is angular, not positional.** At 60 m, sliding the body a metre
+  barely moves the frame; turning the aim a quarter of a degree moves it eight
+  pixels. It is specified in radians now, so it reads the same at any radius.
+- **Two bands** — slow airframe wander (~0.3 Hz, the wind) and a small 5–7 Hz
+  component (the machine the camera is bolted to). Either alone reads wrong:
+  the first as a drone, the second as a broken mount.
+- **Roll**, which was simply absent. The camera banks into the turn, and the
+  angle is physics rather than taste: a coordinated turn at `v² / rg` is
+  **1.68°** at the default radius and period, with the operator's horizon
+  wandering on top of it (measured range 1.05°–2.17°).
+
+The default is a **gyro-stabilised aerial** — smooth, slow bank, gentle drift
+— because that is what a broadcast helicopter actually delivers; visible rotor
+buzz in a Cineflex shot would be a fault, not realism. `turbulence` scales it
+up if you want a rougher mount, and `bank: 0` levels the horizon.
+
+This is exactly the kind of thing footage settles faster than we can. Tell us
+if you want it looser.
+
 ## 5. `timeofday` — read the caveat
 
 It works, and it is a **lighting shift, not an art pass.** otra.city is

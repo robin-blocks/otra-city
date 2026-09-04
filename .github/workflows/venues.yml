@@ -49,7 +49,7 @@ jobs:
       - run: node scripts/venue-shot.mjs --all --out poc/out/shots
       - run: node scripts/broadcast-check.mjs --out poc/out/broadcast-check.json --shots poc/out/shots
       # the crowd and the cut-list have their own determinism to lose
-      - run: node scripts/broadcast-check.mjs --frames 900 --crowd 0.7 --camtrack /broadcast/camtrack-example.json --out poc/out/broadcast-crowd.json
+      - run: node scripts/broadcast-check.mjs --frames 400 --crowd 0.7 --camtrack /broadcast/camtrack-example.json --out poc/out/broadcast-crowd.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

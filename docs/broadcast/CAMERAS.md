@@ -44,10 +44,27 @@ every run that nothing otra.city builds obstructs the marked 14 × 9 area from
 it. Params: `x`, `back_m`, `height_m`, `vfov_deg`.
 
 ### `heli`
-Orbit with turbulence. Params: `radius_m` (60), `height_m` (45), `period_s`
-(90), `phase` (0), `turbulence` (1), `vfov_deg` (42). Turbulence scales with
-height, and the look-at wanders less than the airframe — the operator is
-correcting.
+Orbiting aircraft. Params: `radius_m` (60), `height_m` (45), `period_s` (90 —
+negative orbits the other way), `phase` (0), `turbulence` (1), `bank` (1),
+`vfov_deg` (42).
+
+Three things make it read as an aircraft rather than a crane, and they are
+worth knowing because they are what `turbulence` scales:
+
+- **Aim wander is angular, not positional.** At 60 m, sliding the body a metre
+  barely moves the frame; turning the aim a quarter of a degree moves it eight
+  pixels. Wander is specified in radians and converted by distance, so it reads
+  the same from 20 m or 200 m.
+- **Two bands.** Slow airframe wander around 0.3 Hz is the wind; a small
+  5–7 Hz component is the machine the camera is bolted to.
+- **Roll.** The camera banks into the turn, and the angle is physics rather
+  than taste: a coordinated turn at `v² / rg` gives about **1.7°** at the
+  default radius and period. The operator's own horizon wanders on top, so the
+  measured roll runs about 1.05°–2.17°. `bank: 0` levels it.
+
+The default look is a **gyro-stabilised aerial** — smooth, slow bank, gentle
+drift — because that is what a broadcast helicopter actually delivers. Raise
+`turbulence` for a rougher, more hand-held mount.
 
 ### `stands`
 A slow push toward a cluster of spectators. Params: `side` (0 = west, 1 = east,
