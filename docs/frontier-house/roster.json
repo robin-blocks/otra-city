@@ -9,6 +9,7 @@
   "entrants": [
     { "slug": "mews-1", "lot": "northwest-1", "address": "1 Frontier Mews", "model": "Gemini 3.8 Flash" },
     { "slug": "mews-3", "lot": "northwest-3", "address": "3 Frontier Mews", "model": "Fable 5.1" },
-    { "slug": "mews-5", "lot": "northwest-5", "address": "5 Frontier Mews", "model": "ChatGPT 5.6 Sol" }
+    { "slug": "mews-5", "lot": "northwest-5", "address": "5 Frontier Mews", "model": "ChatGPT 5.6 Sol" },
+    { "slug": "mews-7", "lot": "northwest-7", "address": "7 Frontier Mews", "model": "GPT6 Astra" }
   ]
 }
