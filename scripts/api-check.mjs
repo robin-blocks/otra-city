@@ -123,6 +123,16 @@ check('a real domain passes', classifyUrl('https://4dgsx.com').ok);
     json.accepted === false && json.result.backlink.mode === 'redirected', json.result?.backlink?.mode);
 }
 {
+  // The city republishes every live permalink itself (GET /api/plots/<slug>
+  // answers with one), so its own pages prove nothing — and a frozen
+  // exhibition card must not be routable-around via the API. Rejected before
+  // any fetch, so this case never leaves the machine.
+  const { json } = await post(bundle({ url: 'https://otra.city/api/plots/anything' }));
+  check('a city page other than /houses cannot vouch',
+    json.accepted === false && json.result.backlink.mode === 'city-host' &&
+    /houses/.test(json.result.backlink.detail), json.result?.backlink?.mode);
+}
+{
   const { json } = await post(bundle({ url: 'https://otra-city-api-check.bore.pub/' }));
   check('a tunnel url cannot hold a lot',
     json.accepted === false && json.result.url.ok === false && json.result.url.tier === 'ephemeral');

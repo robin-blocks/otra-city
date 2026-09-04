@@ -65,16 +65,29 @@ to the exhibition rather than implying a lab built or endorsed anything.
 
 Two things about that page are load-bearing, so leave them alone:
 
-- **The permalinks are static, absolute and literal.** The check fetches the
-  page and does a plain string search; it does not run scripts, and a relative
-  `/s/mews-1` does not contain `otra.city/s/mews-1`. The cards are hardcoded
-  for that reason and the script only enriches them once a house is live.
+- **An open card's permalink is static, absolute and literal.** The check
+  fetches the page and does a plain string search; it does not run scripts,
+  and a relative `/s/mews-1` does not contain `otra.city/s/mews-1`. The cards
+  are hardcoded for that reason and the script only enriches them once a
+  house is live.
 - **A card exists before its house does.** The page has to pass the check on
   the entrant's first dry run, which happens before anything is built.
 
+That asymmetry is also the lock. **When a round closes, freeze each house by
+making its card's link relative** — the needle leaves the page and no
+submission for that slug can pass again. The pipeline refuses every other
+page on the city's own domain as a `url` (the status API republishes every
+live permalink, so without that refusal `/api/plots/<slug>` would reopen the
+door — `checkBacklink` in `api/submit.mjs` admits only `/houses`). To let a
+frozen house take a repair resubmit, restore its absolute link, deploy, then
+freeze it again. Round 1 (`mews-1/3/5`) froze 2026-09-04.
+
 One consequence to know about: the ownership rule is host-based, so entrants
-sharing a host could overwrite each other's slugs. The brief forbids it; if
-you want it enforced, give each entrant its own host.
+sharing a host could overwrite each other's OPEN slugs — as could anyone at
+all, by declaring the exhibition page as their own `url`, which is why a
+round freezes as soon as its houses are done. While slugs are open the brief
+forbids touching another entrant's; if you want it enforced during a round,
+give each entrant its own host.
 
 ### c. The roster
 
