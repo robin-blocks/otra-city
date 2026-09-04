@@ -306,17 +306,28 @@ await check(`every lot's standing point is clear and its frontage is walkable ($
 await check(`nothing shimmers: no two surfaces share a depth (spawn + ${lots.length} lots)`, async () => {
   const seen = [];
   const bad = [];
+  // Its OWN evaluate budget, and only four settle frames. Thousands of rays
+  // is CPU work that has nothing to do with how fast the runner's renderer is,
+  // and `call` gives Chrome a 60 s `Runtime.evaluate` timeout — which Chrome
+  // enforces by TERMINATING the script and reporting `Internal error
+  // (-32603)`, an error that says nothing about what it was doing. That is how
+  // this check went red on main while every check after it passed. The venue
+  // sweep was given the same headroom when it landed; this one was not.
+  //
+  // Twenty settle frames were twenty renders on a software renderer for
+  // nothing: the camera does not move after a teleport and no animation moves
+  // a surface in depth.
   const at = async (label, x, z, yaw) => {
     await teleport(x, z, yaw);
-    const r = await call(() => {
-      window.__city.step(20, 1 / 60);
+    const r = await evx(`(() => {
+      window.__city.step(4, 1 / 60);
       // A coarser stride than the venue check's: that one sweeps thirteen
       // fixed cameras and does not grow, this one probes every claimed lot
       // and grows with the city. A defect worth catching covers percent of a
       // frame — the stadium's were 2%, and 16 still lands eighty samples on
       // one of those.
       return window.__city.coplanar({ step: 16 });
-    });
+    })()`, 240000);
     seen.push({ where: label, percent: r.percent });
     if (!r.ok) bad.push({ where: label, percent: r.percent, budget: r.budget, worst: r.worst.slice(0, 2) });
   };
