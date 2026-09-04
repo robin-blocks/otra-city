@@ -43,7 +43,12 @@ concurrency:
 jobs:
   walkthrough:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 15 was not enough before this was raised: three of the eight runs before
+    # it were CANCELLED at the limit and the successes came in at 11-13 min.
+    # The walk grows with the city — every lot is stood in front of, every road
+    # walked end to end — so the budget has to have room in it, not be a coin
+    # toss the next plot loses.
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:

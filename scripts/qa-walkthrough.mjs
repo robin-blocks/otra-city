@@ -291,6 +291,44 @@ await check(`every lot's standing point is clear and its frontage is walkable ($
   return { ok: bad.length === 0, blocked: bad.slice(0, 6), blockedCount: bad.length };
 });
 
+// --- nothing shimmers --------------------------------------------------------
+// Two front faces at one depth have no winner, and the surface crawls as you
+// walk past it. It arrives from geometry (a box laid on a box) and from the
+// EXPORTER (Draco quantizes over a mesh's bounding box, so a small authored
+// offset in a large mesh rounds to nothing), and both look identical on
+// screen — so this measures the screen. The city is walked from where a
+// visitor actually stands: the spawn, and the standing point outside every
+// claimed lot, which is every build an agent has shipped.
+//
+// A WARNING budget, not a taste gate: a plot may look like anything, it may
+// not fizz, and the builder cannot see their own work. See js/depth-probe.mjs
+// for the measure and what the city read the day it landed.
+await check(`nothing shimmers: no two surfaces share a depth (spawn + ${lots.length} lots)`, async () => {
+  const seen = [];
+  const bad = [];
+  const at = async (label, x, z, yaw) => {
+    await teleport(x, z, yaw);
+    const r = await call(() => {
+      window.__city.step(20, 1 / 60);
+      // A coarser stride than the venue check's: that one sweeps thirteen
+      // fixed cameras and does not grow, this one probes every claimed lot
+      // and grows with the city. A defect worth catching covers percent of a
+      // frame — the stadium's were 2%, and 16 still lands eighty samples on
+      // one of those.
+      return window.__city.coplanar({ step: 16 });
+    });
+    seen.push({ where: label, percent: r.percent });
+    if (!r.ok) bad.push({ where: label, percent: r.percent, budget: r.budget, worst: r.worst.slice(0, 2) });
+  };
+  await at('spawn', map.spawn.x, map.spawn.z, map.spawn.yaw);
+  for (const l of lots) {
+    const sp = standingPoint(l);
+    await at(l.slug, sp.x, sp.z, sp.yaw);
+  }
+  seen.sort((a, b) => b.percent - a.percent);
+  return { ok: bad.length === 0, worstThree: seen.slice(0, 3), over: bad };
+});
+
 const door = shops[0];
 const inFront = (l, d, dist = 5, height = 2.2) => { const p = lotToWorld(l, 0, d); return teleport(p.x, p.z, l.yaw + Math.PI, dist, height); };
 await check(`doors open on approach (${door.slug})`, async () => {

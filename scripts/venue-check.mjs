@@ -13,6 +13,7 @@ import { spawnSync } from 'node:child_process';
 import { validateVenue } from '../lib/venue-schema.mjs';
 import { inspectGlb } from '../lib/venue-glb.mjs';
 import { openFixture, PUBLIC_DIR } from '../lib/venue-harness.mjs';
+import { DEPTH } from '../public/js/depth-probe.mjs';
 
 const argv = process.argv.slice(2);
 const arg = (name, fallback = null) => { const i = argv.indexOf(`--${name}`); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : fallback; };
@@ -132,6 +133,23 @@ for (const id of ids) {
       }
       check('tier 1 draw calls (worst camera)', worst.calls <= SCENE_CALLS, `${worst.calls} at ${worst.cam} (max ${SCENE_CALLS})`);
       check('tier 1 triangles (worst camera)', worst.tris <= SCENE_TRIS, `${worst.tris} at ${worst.cam} (max ${SCENE_TRIS})`);
+      // Nothing shimmers, from every camera the venue names. Two front faces
+      // at one depth have no winner and the surface crawls as you walk past
+      // it — it arrives from geometry (a box laid on a box) and from the
+      // EXPORTER (Draco quantizes over a mesh's bounding box, so a small
+      // authored offset in a large mesh rounds to nothing), and both look the
+      // same on screen, so the screen is what is measured. See
+      // public/js/depth-probe.mjs.
+      let fizz = { percent: 0, cam: null, worst: [] };
+      for (const cam of cams) {
+        await fx.setCam(cam);
+        await fx.step(2);
+        const r = await fx.coplanar();
+        if (r.percent > fizz.percent) fizz = { percent: r.percent, cam, budget: r.budget, worst: r.worst.slice(0, 2) };
+      }
+      check('nothing shimmers (worst camera)', fizz.percent <= DEPTH.budget,
+        `${fizz.percent}% at ${fizz.cam || cams[0]} (budget ${DEPTH.budget}%)` +
+        (fizz.percent > DEPTH.budget ? ` — ${fizz.worst.map((w) => `${w.who.join(' + ')} at ${w.at}`).join('; ')}` : ''));
       await fx.setTier(2);
       const s2 = await fx.step(30);
       const st2 = (await fx.state()).venues.find((v) => v.id === id);

@@ -51,6 +51,7 @@ import { createAvatar } from '/js/avatar.js';
 import { createMediaSystem } from '/js/media.js';
 import { createAnimSystem } from '/js/anims.js';
 import { loadStreet } from '/js/street.js';
+import { probeCoplanar, describeCoplanar } from '/js/depth-probe.mjs';
 import { loadWorld } from '/js/world.js';
 import { buildRoads } from '/js/roads.js';
 import { createVenues } from '/js/venues.js';
@@ -393,6 +394,12 @@ window.__venue = {
   id, def, world, venues, scene, camera, renderer, controls, media, anims, doors, probe, roads, street, mannequin,
   setPos, setLocal, setTier, setCam, step, stats, walkability, spawnClearance, routeFromCity,
   whenLoaded: () => venues.whenLoaded(id),
+  // Does anything in this camera's frame fizz? js/depth-probe.mjs — the same
+  // measure the city's own walkthrough runs from every lot.
+  coplanar: (opts = {}) => {
+    const r = probeCoplanar(scene, camera, { width: innerWidth, height: innerHeight, ...opts });
+    return { ...r, text: describeCoplanar(r) };
+  },
   state: () => ({ venues: venues.state(), doors: doors.state(), media: media.state, errors: errors.slice() }),
   errors,
 };

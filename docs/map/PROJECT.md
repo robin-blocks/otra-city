@@ -121,9 +121,9 @@ Every completion claim below names its evidence.
 
 | check | tool | evidence |
 |---|---|---|
-| plat current, ids unique, lots front their road, no overlaps, registry/manifest consistent, fence continuous along every road and from the spawn to every lot, no post in any spawn | `npm run map:check` | its PASS/FAIL table |
+| plat current, ids unique, lots front their road, no overlaps, registry/manifest consistent, fence continuous along every road and from the spawn to every lot, an alley behind every lot and rows that back onto each other meet, no post in any spawn | `npm run map:check` | its PASS/FAIL table |
 | the whole map, top-down, deterministic | `public/map.html` (`/map`) | a screenshot; `window.__map.ready` |
-| the rendered city: plots load, every road walkable end to end by a real `PlayerController`, every lot's standing point reachable, boards offer links, vacant boards offer their claim url, `/lot/<id>` spawns, budgets, HUD | `npm run qa` | `qa-out/report.json` + screenshots |
+| the rendered city: plots load, every road walkable end to end by a real `PlayerController`, every lot's standing point reachable, boards offer links, vacant boards offer their claim url, `/lot/<id>` spawns, budgets, HUD, nothing shimmers from the spawn or outside any lot | `npm run qa` | `qa-out/report.json` + screenshots |
 | a submission naming a lot: dry run reports it, CI assigns it | `scripts/dev-api.mjs` + `npm run validate` on a doctored plot | the report lines |
 | the stadium is still reachable and its checks pass | `npm run venue:check` | `poc/out/venue-check.json` |
 

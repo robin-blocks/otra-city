@@ -29,20 +29,76 @@ const emat = (color, intensity, base = 0x0d0a14) =>
 // Draw one board into a context at (ox, oy), 512 x 320.
 //
 // The layout is a table rather than a stack of guessed baselines: a header
-// strip carrying the ADDRESS, a hairline, the name, the tagline (two lines,
-// clamped), then two footer lines. Every row auto-fits its own width, so a
-// long road name or a long builder shrinks instead of running under the
-// border — the address used to be squeezed into the top-right corner against
-// the name, which is what it looked like: squeezed.
+// strip carrying the ADDRESS, a hairline, the name, the tagline, then two
+// footer lines. Every row auto-fits its own width, so a long road name or a
+// long builder shrinks instead of running under the border — the address used
+// to be squeezed into the top-right corner against the name, which is what it
+// looked like: squeezed.
+//
+// The tagline gets a BOX rather than a row: `y` is its first baseline and
+// `bottom` the last one it may use, and `drawBlock` picks the largest size
+// that fits the wrap inside it. Two fixed lines at one fixed size held about
+// 62 characters while the spec lets a tagline be 80, so the board was cutting
+// sentences the city had accepted — the two numbers now agree by construction.
 const ROW = {
   padX: 30, right: 482,
   address: { y: 44, px: 20, min: 13 },
   rule: 62,
   title: { y: 116, px: 46, min: 22 },
-  subtitle: { y: 160, px: 24, min: 24, lead: 34, lines: 2 },
+  subtitle: { y: 158, bottom: 224, px: 24, min: 16, lead: 1.34 },
   foot1: { y: 250, px: 20, min: 14 },
   foot2: { y: 288, px: 22, min: 15 },
 };
+
+// Greedy word wrap at the context's current font. A word too long for a line
+// of its own is broken rather than allowed to run off the board: a tagline is
+// free text, and one 90-character url would otherwise overhang the border.
+function wrapText(x, text, W) {
+  const lines = [];
+  let cur = '';
+  for (let word of String(text || '').trim().split(/\s+/).filter(Boolean)) {
+    while (x.measureText(word).width > W) {
+      let cut = word.length;
+      while (cut > 1 && x.measureText(word.slice(0, cut)).width > W) cut -= 1;
+      if (cur) { lines.push(cur); cur = ''; }
+      lines.push(word.slice(0, cut));
+      word = word.slice(cut);
+    }
+    const test = cur ? `${cur} ${word}` : word;
+    if (cur && x.measureText(test).width > W) { lines.push(cur); cur = word; }
+    else cur = test;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+// Fit `text` into the block `spec` describes: the largest size at or below
+// `px` whose wrap fits between the first baseline and `bottom`. Smaller type
+// buys lines as well as width, so the search is over both at once. Only if
+// even `min` overruns is the last line cut with an ellipsis — for a tagline
+// inside the spec's 80-character cap that never happens.
+function drawBlock(x, text, spec, W, fill) {
+  let px = spec.px;
+  let lead = 0;
+  let max = 1;
+  let lines = [];
+  for (;;) {
+    x.font = `${px}px Menlo, monospace`;
+    lead = Math.round(px * spec.lead);
+    max = 1 + Math.max(0, Math.floor((spec.bottom - spec.y) / lead));
+    lines = wrapText(x, text, W);
+    if (lines.length <= max || px <= spec.min) break;
+    px -= 2;
+  }
+  if (lines.length > max) {
+    lines = lines.slice(0, max);
+    let last = lines[max - 1];
+    while (last && x.measureText(`${last}…`).width > W) last = last.slice(0, -1);
+    lines[max - 1] = `${last}…`;
+  }
+  x.fillStyle = fill;
+  lines.forEach((t, i) => x.fillText(t, ROW.padX, spec.y + i * lead));
+}
 
 function drawBoard(x, ox, oy, { address, title, subtitle, foot1, foot2, color }) {
   const W = ROW.right - ROW.padX;
@@ -84,34 +140,9 @@ function drawBoard(x, ox, oy, { address, title, subtitle, foot1, foot2, color })
 
   line(title, '700 ', ROW.title, color);
 
-  // the tagline wraps to at most two lines and is cut with an ellipsis, so
-  // the footer never moves and never collides with it
-  const spec = ROW.subtitle;
-  x.font = `${spec.px}px Menlo, monospace`;
-  const words = String(subtitle || '').split(' ');
-  const lines = [];
-  let cur = '';
-  for (const w of words) {
-    const test = cur ? `${cur} ${w}` : w;
-    if (x.measureText(test).width > W && cur) {
-      lines.push(cur);
-      cur = w;
-      if (lines.length === spec.lines) break;
-    } else {
-      cur = test;
-    }
-  }
-  if (lines.length < spec.lines && cur) lines.push(cur);
-  if (lines.length === spec.lines) {
-    const rest = words.slice(lines.join(' ').split(' ').length);
-    if (rest.length) {
-      let last = lines[spec.lines - 1];
-      while (last && x.measureText(`${last}…`).width > W) last = last.slice(0, -1);
-      lines[spec.lines - 1] = `${last}…`;
-    }
-  }
-  x.fillStyle = '#e9edf6';
-  lines.forEach((t, i) => x.fillText(t, ROW.padX, spec.y + i * spec.lead));
+  // the tagline fills its box and stops at `bottom`, so the footer never
+  // moves and never collides with it
+  drawBlock(x, subtitle, ROW.subtitle, W, '#e9edf6');
 
   line(foot1, '', ROW.foot1, '#8a86a0');
   line(foot2, '', ROW.foot2, '#2fe0f8');

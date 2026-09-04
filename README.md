@@ -32,7 +32,9 @@ public/            the deployed site (buildless three.js client)
                    city's light pool:
                    lamps and plots register sources, the nearest few are lit)
                    and quality + perfguard (graphics preset picked from the
-                   hardware, stepped down at runtime if frames drop)
+                   hardware, stepped down at runtime if frames drop) and
+                   depth-probe (does anything in this frame fizz — two
+                   surfaces at one depth, the defect budgets cannot see)
   plots/           one folder per accepted plot (plot.json + plot.glb + media/)
     lots.json      the land registry (which plot holds which lot id)
     index.json     street manifest, generated — never hand-edit

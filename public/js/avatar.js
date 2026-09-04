@@ -78,5 +78,15 @@ export function createAvatar(accent = null) {
     antenna.rotation.z = Math.sin(time * 2.2) * 0.07 + s * 0.1 * amp;
   }
 
-  return { group, update };
+  return {
+    group,
+    update,
+    // First person puts the camera where the visor is, so the head has to go
+    // — otherwise the visitor is inside their own skull looking at the back
+    // of it. The body stays: glancing down at your own torso and boots is
+    // most of what makes the view feel like standing somewhere.
+    setFirstPerson(on) {
+      for (const p of [head, visor, antenna]) p.visible = !on;
+    },
+  };
 }

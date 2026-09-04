@@ -283,6 +283,24 @@ STAND_DEPTH = ROWS * ROW_D + REAR_GANG + 0.5   # rows + rear gangway + back wall
 SEATS = []                           # exported for the walkability check
 SEAT_COL = {"W": "seat_d", "E": "seat_b", "N": "seat_a", "S": "seat_c"}
 
+# How far a sign, an advert or a trim strip stands off the surface it is
+# mounted on. Not a taste decision — a depth-buffer one, and it has to clear
+# TWO limits at once:
+#
+#   * Draco. The exporter quantizes positions over each mesh's own bounding
+#     box, and the bowl is 52 m across; every offset in this file is rounded
+#     to that grid on the way out. At the 14 bits this used to ship that grid
+#     was 3.2 mm, so the 2 mm the hoardings, the block letters, the gate signs
+#     and the crests were authored at rounded to ZERO about half the time —
+#     an exactly coplanar pair the GPU has no way to order, which is what the
+#     pitch-side boards were doing when they fizzed. The export below is 16
+#     bits, a 0.8 mm grid, so this survives with room to spare.
+#   * The depth buffer. A stadium is looked at from across itself: at 40 m,
+#     with the city's 0.1 m near plane, one depth step is about a millimetre.
+#     2 mm was two steps even when it did survive the encoder. 10 mm is ten,
+#     and is still invisible on a 300 mm hoarding.
+PROUD = 0.01
+
 opaque = MB("stadium_bowl", [mat_voxel, mat_tile])
 art = MB("stadium_signs", [mat_art])
 glass = MB("stadium_glass", [mat_glass])
@@ -294,16 +312,30 @@ glass = MB("stadium_glass", [mat_glass])
 for i in range(-5, 5):
     x0 = i * 2.0
     opaque.box((x0, -PITCH_Y, -0.05), (x0 + 2.0, PITCH_Y, -0.005), "pitch" if i % 2 else "pitch_lt")
+# Markings are strips at one depth on one plane, so wherever two of them cross
+# they put two faces in that plane and the line crawls. The touchlines BUTT
+# against the goal lines (and so does the halfway line) instead of running
+# through them, the same repair the outer wall's ring needed.
+LINE_TOP = -0.002
 for (mn, mx) in (((-PLAY_X, -PLAY_Y), (PLAY_X, -PLAY_Y + 0.08)), ((-PLAY_X, PLAY_Y - 0.08), (PLAY_X, PLAY_Y)),
-                 ((-PLAY_X, -PLAY_Y), (-PLAY_X + 0.08, PLAY_Y)), ((PLAY_X - 0.08, -PLAY_Y), (PLAY_X, PLAY_Y)),
-                 ((-0.04, -PLAY_Y), (0.04, PLAY_Y))):
-    opaque.box((mn[0], mn[1], -0.03), (mx[0], mx[1], -0.002), "e_white_soft")
-for k in range(24):   # centre circle
+                 ((-PLAY_X, -PLAY_Y + 0.08), (-PLAY_X + 0.08, PLAY_Y - 0.08)),
+                 ((PLAY_X - 0.08, -PLAY_Y + 0.08), (PLAY_X, PLAY_Y - 0.08)),
+                 ((-0.04, -PLAY_Y + 0.08), (0.04, PLAY_Y - 0.08))):
+    opaque.box((mn[0], mn[1], -0.03), (mx[0], mx[1], LINE_TOP), "e_white_soft")
+# The centre circle is 24 chords, and a chord's axis-aligned box necessarily
+# overlaps its neighbours' near the ends — there is no way to tile a circle
+# with boxes that do not. So alternate segments sit 2 mm lower and lose the
+# overlap outright: both are the same white, the join is invisible, and 24 is
+# even so the ring closes on a change of parity. Two millimetres is more than
+# twice the export's 0.8 mm position grid over this mesh, which is the number
+# that has to be cleared (see PROUD).
+for k in range(24):
     a0, a1 = 2 * math.pi * k / 24, 2 * math.pi * (k + 1) / 24
     r = 1.8
     x0, y0 = r * math.cos(a0), r * math.sin(a0)
     x1, y1 = r * math.cos(a1), r * math.sin(a1)
-    opaque.box((min(x0, x1) - 0.04, min(y0, y1) - 0.04, -0.03), (max(x0, x1) + 0.04, max(y0, y1) + 0.04, -0.002), "e_white_soft")
+    top = LINE_TOP - (k % 2) * 0.002
+    opaque.box((min(x0, x1) - 0.04, min(y0, y1) - 0.04, -0.03), (max(x0, x1) + 0.04, max(y0, y1) + 0.04, top), "e_white_soft")
 # apron between the tile and the hoardings, and the gangway ring
 opaque.box((-HOARD_X, -HOARD_Y, -0.05), (HOARD_X, HOARD_Y, 0.0), "apron", skip=("top",))
 opaque.box((-HOARD_X, -HOARD_Y, -0.02), (-PITCH_X, HOARD_Y, 0.0), "apron")
@@ -332,7 +364,7 @@ def hoarding(facing, at, a0, a1, name_i):
         else:
             mn, mx = ((s0, at - 0.15, 0.0), (s0 + step, at + 0.15, BOARD_H))
         opaque.box(mn, mx, "board")
-        inner = at - 0.152 if facing == '-x' or facing == '-y' else at + 0.152
+        inner = at - (0.15 + PROUD) if facing == '-x' or facing == '-y' else at + (0.15 + PROUD)
         art.quad(facing, inner, s0 + 0.05, s0 + step - 0.05, 0.08, BOARD_H - 0.08,
                  region_uvs(boards[(name_i + k) % 4]))
 hoarding('-x', HOARD_X, -HOARD_Y, HOARD_Y, 0)      # east boards face the pitch (-x)
@@ -391,8 +423,16 @@ def stand(side):
     B(0, 0.5, -half, half, 0.0, BASE_H, "wall")
     for r in range(ROWS):
         z = BASE_H + r * ROW_H
+        # The bottom row starts BEHIND the front wall, not on top of it. Run it
+        # from depth 0 and its front face lands in the wall's front plane and
+        # its top in the wall's top plane, same side out — two pairs of exactly
+        # coplanar faces, the full 16 m length of all four stands, and no way
+        # for the GPU to order them. That was the fizz along the stand fronts
+        # and the base kerb, and it is the whole of what a visitor could see
+        # of this defect: everything else the bowl doubles up is buried inside
+        # another box. Every other row meets its neighbours edge to edge.
         d0 = r * ROW_D
-        B(d0, d0 + TREAD, -half, half, z - 0.5 if r == 0 else z - ROW_H, z, "terrace")
+        B(0.5 if r == 0 else d0, d0 + TREAD, -half, half, z - 0.5 if r == 0 else z - ROW_H, z, "terrace")
         B(d0 + TREAD, d0 + ROW_D, -half, half, z - ROW_H, z + 0.25, "riser")          # the half step
         # The half step is 0.25 m DEEP, and an avatar has a 0.28 m radius: it
         # could never stand on one, so the next row's face always blocked it
@@ -446,7 +486,7 @@ def stand(side):
             mx = (end if end < 0 else end + 0.25, max(sign * front, sign * (front + STAND_DEPTH)), TOP_H + 1.1)
         opaque.box(mn, mx, "wall")
     # block letter facing the concourse on the back wall
-    letter_at = sign * (front + STAND_DEPTH) + sign * 0.002
+    letter_at = sign * (front + STAND_DEPTH) + sign * PROUD
     back_facing = {'W': '-x', 'E': '+x', 'N': '-y', 'S': '+y'}[side]
     art.quad(back_facing, letter_at, -1.5, 1.5, 1.2, 4.2, region_uvs("block_" + side))
     # rear stair along the back wall: from the concourse up to the rear gangway
@@ -517,12 +557,19 @@ for s in ("W", "E", "N", "S"):
 # ---- gates + outer wall ----------------------------------------------------------
 GATE_W, GATE_H = 4.0, 3.2
 wall_col = MB("col_walls", [mat_voxel])
+# The four sides BUTT at the corners rather than run through each other. Four
+# strips laid corner to corner overlap in eight little volumes and put three
+# faces in each corner plane — a defect the depth probe found at 1.99% of the
+# mast_night camera. The north and south walls keep the full width; the west
+# and east ones stop short of them. Collision is unaffected: the corner square
+# is inside the north/south proxy either way.
+WALL_END = FOOT_Y - 0.5
 for m in (opaque, wall_col):
     sw = "wall" if m is opaque else "ink"
     # west and east walls with the gate openings
     for x0, x1 in ((-FOOT_X, -FOOT_X + 0.5), (FOOT_X - 0.5, FOOT_X)):
-        m.box((x0, -FOOT_Y, 0.0), (x1, -GATE_W / 2, WALL_H), sw)
-        m.box((x0, GATE_W / 2, 0.0), (x1, FOOT_Y, WALL_H), sw)
+        m.box((x0, -WALL_END, 0.0), (x1, -GATE_W / 2, WALL_H), sw)
+        m.box((x0, GATE_W / 2, 0.0), (x1, WALL_END, WALL_H), sw)
         m.box((x0, -GATE_W / 2, GATE_H), (x1, GATE_W / 2, WALL_H), sw)     # lintel
     m.box((-FOOT_X, -FOOT_Y, 0.0), (FOOT_X, -FOOT_Y + 0.5, WALL_H), sw)
     m.box((-FOOT_X, FOOT_Y - 0.5, 0.0), (FOOT_X, FOOT_Y, WALL_H), sw)
@@ -547,22 +594,24 @@ for wy in [v * 6.0 for v in range(-3, 4)]:
 
 # wall trims and corner pylons
 for x0, x1 in ((-FOOT_X, -FOOT_X + 0.5), (FOOT_X - 0.5, FOOT_X)):
-    opaque.box((x0 + 0.2, -FOOT_Y, WALL_H), (x0 + 0.3, FOOT_Y, WALL_H + 0.1), "e_cyan_dim")
+    opaque.box((x0 + 0.2, -WALL_END, WALL_H), (x0 + 0.3, WALL_END, WALL_H + 0.1), "e_cyan_dim")
 for y0 in (-FOOT_Y, FOOT_Y - 0.5):
     opaque.box((-FOOT_X, y0 + 0.2, WALL_H), (FOOT_X, y0 + 0.3, WALL_H + 0.1), "e_cyan_dim")
 for sx in (-1, 1):
     for sy in (-1, 1):
         cx, cy = sx * (FOOT_X - 0.5), sy * (FOOT_Y - 0.5)
-        opaque.box((cx - 0.5, cy - 0.5, 0.0), (cx + 0.5, cy + 0.5, WALL_H + 1.5), "pier")
+        # proud of the wall it caps, so its faces are not in the wall's planes
+        opaque.box((cx - 0.5 - PROUD, cy - 0.5 - PROUD, 0.0),
+                   (cx + 0.5 + PROUD, cy + 0.5 + PROUD, WALL_H + 1.5), "pier")
         opaque.box((cx - 0.3, cy - 0.3, WALL_H + 1.5), (cx + 0.3, cy + 0.3, WALL_H + 1.7), "e_cyan_soft")
 
 # gate signs above each gate, and the main sign over the west gate
-for x_face, facing, sign_r in ((-FOOT_X - 0.002, '-x', "sign_gate_w"), (FOOT_X + 0.002, '+x', "sign_gate_e")):
+for x_face, facing, sign_r in ((-FOOT_X - PROUD, '-x', "sign_gate_w"), (FOOT_X + PROUD, '+x', "sign_gate_e")):
     art.quad(facing, x_face, -2.0, 2.0, GATE_H + 0.1, GATE_H + 0.1 + 1.25, region_uvs(sign_r))
 opaque.box((-FOOT_X + 0.1, -6.2, WALL_H), (-FOOT_X + 0.4, -5.9, WALL_H + 3.2), "steel")
 opaque.box((-FOOT_X + 0.1, 5.9, WALL_H), (-FOOT_X + 0.4, 6.2, WALL_H + 3.2), "steel")
 opaque.box((-FOOT_X + 0.05, -6.1, WALL_H + 0.5), (-FOOT_X + 0.45, 6.1, WALL_H + 2.75), "board")
-art.quad('-x', -FOOT_X + 0.048, -6.0, 6.0, WALL_H + 0.6, WALL_H + 0.6 + 2.25, region_uvs("sign_main"))
+art.quad('-x', -FOOT_X + 0.05 - PROUD, -6.0, 6.0, WALL_H + 0.6, WALL_H + 0.6 + 2.25, region_uvs("sign_main"))
 # The stair sign belongs at the stair, on the wall a visitor walks toward:
 # each side stand's back wall, clear of the balustrade, facing its gate.
 for (wall_x, facing, sgn) in ((-(FRONT_X + STAND_DEPTH) - 0.01, '-x', -1), ((FRONT_X + STAND_DEPTH) + 0.01, '+x', 1)):
@@ -596,8 +645,14 @@ for sx in (-1, 1):
         opaque.box((mx - 0.6, my - 0.6, DECK_H), (mx + 0.6, my + 0.6, 1.2), "mast_dk")
         for (ox, oy) in ((-0.35, -0.35), (0.35, -0.35), (0.35, 0.35), (-0.35, 0.35)):
             opaque.box((mx + ox - 0.1, my + oy - 0.1, 1.2), (mx + ox + 0.1, my + oy + 0.1, MAST_H), "mast")
+        # A collar RINGS the four legs, so it has to stand proud of them: the
+        # legs' outer faces are at 0.45 and a collar flush with them put four
+        # more faces in each of those planes, five collars up every mast.
+        # 2.06% of the mast_night camera, and invisible from the street, which
+        # is exactly the kind of thing a measure is for.
         for z in range(3, int(MAST_H), 3):
-            opaque.box((mx - 0.45, my - 0.45, z), (mx + 0.45, my + 0.45, z + 0.12), "steel_dk")
+            r = 0.45 + PROUD
+            opaque.box((mx - r, my - r, z), (mx + r, my + r, z + 0.12), "steel_dk")
         # head: a bank of lamps on a bracket leaning toward the pitch
         hx, hy = mx - sx * 0.9, my - sy * 0.9
         opaque.box((hx - 1.6, hy - 0.35, MAST_H - 0.2), (hx + 1.6, hy + 0.35, MAST_H + 0.15), "steel")
@@ -638,13 +693,22 @@ for side in ("W", "E", "N", "S"):
         far.box((-half, min(sign * lo, sign * hi), 0.0), (half, max(sign * lo, sign * hi), TOP_H + 1.1), "ink")
 # The impostor is what the boulevard sees: four glowing heads alone read as
 # dots, so the wall carries its lit top edge too — a stadium's shape.
-for (mn, mx) in (((-FOOT_X, -FOOT_Y), (FOOT_X, -FOOT_Y + 0.5)), ((-FOOT_X, FOOT_Y - 0.5), (FOOT_X, FOOT_Y)),
-                 ((-FOOT_X, -FOOT_Y), (-FOOT_X + 0.5, FOOT_Y)), ((FOOT_X - 0.5, -FOOT_Y), (FOOT_X, FOOT_Y))):
-    far_glow.box((mn[0], mn[1], WALL_H - 0.12), (mx[0], mx[1], WALL_H), "ink")
-far.box((-FOOT_X, -FOOT_Y, 0.0), (FOOT_X, -FOOT_Y + 0.5, WALL_H), "ink")
-far.box((-FOOT_X, FOOT_Y - 0.5, 0.0), (FOOT_X, FOOT_Y, WALL_H), "ink")
-far.box((-FOOT_X, -FOOT_Y, 0.0), (-FOOT_X + 0.5, FOOT_Y, WALL_H), "ink")
-far.box((FOOT_X - 0.5, -FOOT_Y, 0.0), (FOOT_X, FOOT_Y, WALL_H), "ink")
+#
+# The four sides BUTT rather than overlap, and the lit edge is a collar PROUD
+# of the wall it rides rather than flush with it. Both matter for the same
+# reason the bowl's bottom terrace row did: strips that run corner to corner
+# double up their faces where they cross, and a band flush with a wall puts
+# its outward face in the wall's plane. The city's depth probe caught this one
+# from Frontier Mews, 68 m away — the impostor is small and far, and it still
+# had the defect (js/depth-probe.mjs).
+WALL_RING = (((-FOOT_X, -FOOT_Y), (FOOT_X, -FOOT_Y + 0.5)),
+             ((-FOOT_X, FOOT_Y - 0.5), (FOOT_X, FOOT_Y)),
+             ((-FOOT_X, -FOOT_Y + 0.5), (-FOOT_X + 0.5, FOOT_Y - 0.5)),
+             ((FOOT_X - 0.5, -FOOT_Y + 0.5), (FOOT_X, FOOT_Y - 0.5)))
+for (mn, mx) in WALL_RING:
+    far.box((mn[0], mn[1], 0.0), (mx[0], mx[1], WALL_H), "ink")
+    far_glow.box((mn[0] - PROUD, mn[1] - PROUD, WALL_H - 0.12),
+                 (mx[0] + PROUD, mx[1] + PROUD, WALL_H + PROUD), "ink")
 far.finish()
 far_glow.finish()
 
@@ -662,7 +726,7 @@ def screen_frame(y_back, facing_sign, cx, w, h, z0):
         opaque.box((lx - 0.15, yb - 0.15, TOP_H - 0.5), (lx + 0.15, yb + 0.15, z0 + h + 0.3), "steel")
     opaque.box((cx - w / 2 - 0.2, yb - 0.25, z0 - 0.2), (cx + w / 2 + 0.2, yb + 0.25, z0 + h + 0.2), "board")
     opaque.box((cx - w / 2 - 0.25, yb - 0.3, z0 + h + 0.2), (cx + w / 2 + 0.25, yb + 0.3, z0 + h + 0.32), "e_cyan_dim")
-    return yb + facing_sign * 0.252
+    return yb + facing_sign * (0.25 + PROUD)
 
 z_scr = TOP_H + 1.6
 y_face = screen_frame(north_back, 1, 0.0, SCR_W, SCR_H, z_scr)
@@ -689,7 +753,7 @@ for sx in (-1, 1):
     for sy in (-1, 1):
         mx, my = sx * 22.0, sy * 19.0
         facing = '-x' if sx > 0 else '+x'
-        at = mx - sx * 0.602
+        at = mx - sx * (0.6 + PROUD)
         art.quad(facing, at, my - 0.5, my + 0.5, DECK_H + 0.1, DECK_H + 1.1, region_uvs("crest"))
 
 # ---- concourse lighting: two warm points at the gates ----------------------------------
@@ -789,7 +853,7 @@ def export(collection, path, lights):
         "export_cameras": False, "export_extras": False, "export_animations": False,
         "export_skins": False, "export_morph": False, "export_image_format": 'AUTO',
         "export_draco_mesh_compression_enable": True, "export_draco_mesh_compression_level": 6,
-        "export_draco_position_quantization": 14, "export_draco_texcoord_quantization": 12,
+        "export_draco_position_quantization": 16, "export_draco_texcoord_quantization": 12,
         "export_unused_images": False, "export_unused_textures": False,
     }
     for k, v in optional.items():

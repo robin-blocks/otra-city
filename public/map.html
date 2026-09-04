@@ -56,7 +56,7 @@
     <a href="/api/lots">lots.json</a> · <a href="/api/plots">plots.json</a></footer>
 </main>
 <script type="module">
-import { roadSegments, allLamps, namePlates, lotToWorld, fenceShapes, fenceContains, fenceReach, standingPoint } from '/js/city-map.mjs';
+import { roadSegments, allLamps, namePlates, lotToWorld, fenceShapes, fenceContains, fenceReach, shapeBounds, standingPoint } from '/js/city-map.mjs';
 
 const params = new URLSearchParams(location.search);
 const J = async (u) => { const r = await fetch(u, { cache: 'no-cache' }); if (!r.ok) throw new Error(`${u}: ${r.status}`); return r.json(); };
@@ -74,9 +74,14 @@ const H = canvas.height;
 // one fixed frame: the world's reach, centred on the origin — the same
 // picture whatever the viewport, so two renders can be compared
 const reach = fenceReach(shapes) + 8;
+// The frame is what the city is BUILT on, so the infill grid — which carries
+// a working margin around everything (js/city-map.mjs) — is left out of it;
+// it is still sampled below, it just does not decide the picture.
 const bounds = shapes.reduce((b, s) => {
-  const pts = s.kind === 'box' ? [s.min, s.max] : s.kind === 'disc' ? [[s.c[0] - s.r, s.c[1] - s.r], [s.c[0] + s.r, s.c[1] + s.r]] : [s.a, s.b];
-  for (const [px, pz] of pts) { b.minX = Math.min(b.minX, px - 12); b.maxX = Math.max(b.maxX, px + 12); b.minZ = Math.min(b.minZ, pz - 12); b.maxZ = Math.max(b.maxZ, pz + 12); }
+  if (s.kind === 'mask') return b;
+  const [x0, z0, x1, z1] = shapeBounds(s);
+  b.minX = Math.min(b.minX, x0 - 12); b.maxX = Math.max(b.maxX, x1 + 12);
+  b.minZ = Math.min(b.minZ, z0 - 12); b.maxZ = Math.max(b.maxZ, z1 + 12);
   return b;
 }, { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity });
 const scale = Math.min(W / (bounds.maxX - bounds.minX), H / (bounds.maxZ - bounds.minZ));

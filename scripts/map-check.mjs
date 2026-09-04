@@ -21,8 +21,9 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import {
-  LOT_HALF, BOARD_LOCAL, lotToWorld, lotRect, rectsOverlap, rectContains, roadSegments, fenceShapes, fenceContains,
-  standingPoint, allLamps, namePlates, baySigns, platLots, rankFree, PLATE, SIGN, postsOf, plateYaw,
+  LOT_HALF, LOT_SIZE, LOT_YARD, FENCE_FILL, BOARD_LOCAL, lotToWorld, lotRect, rectsOverlap, rectContains, roadSegments,
+  fenceShapes, fenceContains, standingPoint, allLamps, namePlates, baySigns, platLots, rankFree,
+  PLATE, SIGN, postsOf, plateYaw,
 } from '../public/js/city-map.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
@@ -233,6 +234,62 @@ const fmtGaps = (g) => g.slice(0, 3).map((q) => `[${q.from}]..[${q.to}]`).join('
     if (g.length) bad.push(`${l.id}: ${fmtGaps(g)}`);
   }
   check(`fence: a route from the spawn to every lot's standing point and centre (longest ${f1(longest)} m by road)`, bad.length === 0, bad.slice(0, 3).join('; '));
+}
+
+// ---- the way through --------------------------------------------------------
+{
+  // Two rows of buildings that back onto each other can be WALKED between.
+  //
+  // A lot carries a yard behind it, and the point of the yard is that a gap
+  // between two buildings is a route to the next street rather than a metre of
+  // alley and an invisible wall. That only pays off where two yards MEET, so
+  // the test is exactly that: for every pair of lots whose backs face each
+  // other close enough that their yards should overlap, and that stand
+  // opposite rather than merely near, the straight line between their back
+  // edges is walkable the whole way. A pair further apart than two yards is
+  // not expected to meet and is not tested — how far the rows are is the map's
+  // business; whether the ones that should meet do is this file's.
+  // Two promises, and both are read off the CONSTANTS rather than off
+  // `map.lot_yard` / `map.fence_fill`: a map that shortened its own yard or
+  // turned the infill off would otherwise mark its own homework — the pair
+  // test would find no rows close enough to be expected to meet, and both
+  // checks would go quiet rather than red. A map may be MORE generous.
+  //
+  // The reach is the yard behind a lot plus the closing radius, on each side.
+  const backOf = (l) => lotToWorld(l, 0, -LOT_HALF);
+  {
+    const shallow = lots.filter((l) => {
+      const p = lotToWorld(l, 0, -LOT_HALF - LOT_YARD + 0.5);
+      return !inside(p.x, p.z);
+    });
+    check(`fence: ${LOT_YARD} m of walkable yard behind every lot (${lots.length})`,
+      shallow.length === 0, shallow.slice(0, 3).map((l) => l.id).join(', '));
+  }
+  const awayOf = (l) => { const a = lotToWorld(l, 0, -LOT_HALF); const b = lotToWorld(l, 0, -LOT_HALF - 1); return [b.x - a.x, b.z - a.z]; };
+  const bad = [];
+  let pairs = 0;
+  for (let i = 0; i < lots.length; i++) for (let j = i + 1; j < lots.length; j++) {
+    const A = lots[i];
+    const B = lots[j];
+    if (A.road === B.road) continue;
+    const pa = backOf(A);
+    const pb = backOf(B);
+    const dx = pb.x - pa.x;
+    const dz = pb.z - pa.z;
+    const d = Math.hypot(dx, dz);
+    if (d > 2 * (LOT_YARD + FENCE_FILL) || d < 1e-6) continue;
+    const na = awayOf(A);
+    const nb = awayOf(B);
+    if (na[0] * dx + na[1] * dz <= 0) continue;      // B is not behind A
+    if (nb[0] * -dx + nb[1] * -dz <= 0) continue;    // nor A behind B
+    // opposite, not merely near: the lateral offset has to be inside a lot
+    if (Math.abs(-na[1] * dx + na[0] * dz) > LOT_HALF) continue;
+    pairs += 1;
+    const g = gapsAlong([[pa.x, pa.z], [pb.x, pb.z]]);
+    if (g.length) bad.push(`${A.id} <-> ${B.id}: ${fmtGaps(g)}`);
+  }
+  check(`fence: rows that back onto each other can be walked between (${pairs} pairs within ${2 * (LOT_YARD + FENCE_FILL)} m)`,
+    bad.length === 0, bad.slice(0, 3).join('; '));
 }
 
 // ---- nothing stands in anyone's way ----------------------------------------

@@ -43,6 +43,34 @@ export const plateYaw = (p) => Math.atan2(p.face[0], p.face[1]);
 export const LOT_SIZE = 10;
 export const LOT_HALF = LOT_SIZE / 2;
 export const LOT_PITCH = 12;
+// Walkable ground BEHIND a lot: an alley, so a visitor who steps off the
+// pavement between two buildings can get round the back of them. The lot fence
+// used to be a metre wider than the lot on all four sides, which is not enough
+// ground to stand on. `lot_yard` in map.json overrides it.
+//
+// This is NOT what connects one street to the next — see FENCE_FILL.
+export const LOT_YARD = 2.5;
+
+// The city is not a union of strips with the space between them out of bounds.
+//
+// That is what it was, and it is why walking behind a building met an
+// invisible wall: the fence was road corridors, roundabouts, plazas, lots and
+// venues, and the ground between any two of them belonged to nothing. The
+// obvious repair — one outer boundary around everything — is worse, because
+// this city is a long boulevard meeting a ring and not a blob: a hull would
+// hand a visitor forty metres of blank ground south of the boulevard where
+// there is nothing to walk to, and put the edge of the world somewhere
+// arbitrary.
+//
+// So the fence is the union CLOSED: dilate it by this radius and erode it
+// back. A gap between two built things narrower than twice this fills in and
+// becomes walkable; a straight edge with nothing beyond it does not move.
+// That is exactly "if there is a route through, you can walk it", and it needs
+// no rule about which rows face which — the boulevard's north side and
+// Frontier Mews' south side connect because they are close, not because
+// anybody said so.
+export const FENCE_FILL = 8;
+export const FILL_CELL = 0.5;   // the grid the closing is computed on
 export const BOARD_LOCAL = [3.4, 5.45];   // the info board, in lot metres: beside the frontage, on the pavement
 
 const round = (v) => Math.round(v * 1e4) / 1e4;
@@ -263,17 +291,126 @@ export function fenceShapes(map, plat, venues = []) {
   for (const b of map.bays || []) {
     shapes.push({ kind: 'box', id: b.id, min: [b.min[0] - 2, b.min[1] - 2], max: [b.max[0] + 2, b.max[1] + 2] });
   }
+  // A lot and the ground around it: a metre proud at the sides and the front
+  // (which puts the front edge on the pavement), and LOT_YARD behind. An obb
+  // is symmetric about its own line, so an asymmetric band is the line pushed
+  // back by half the difference and the half-extent grown by the same.
+  const yard = map.lot_yard ?? LOT_YARD;
+  const off = (1 - yard) / 2;
   for (const lot of Object.values(plat?.lots || {})) {
-    const A = lotToWorld(lot, -LOT_HALF, 0);
-    const B = lotToWorld(lot, LOT_HALF, 0);
-    shapes.push({ kind: 'obb', id: `lot:${lot.id}`, a: [A.x, A.z], b: [B.x, B.z], half: LOT_HALF + 1, ja: 1, jb: 1 });
+    const A = lotToWorld(lot, -LOT_HALF, off);
+    const B = lotToWorld(lot, LOT_HALF, off);
+    shapes.push({ kind: 'obb', id: `lot:${lot.id}`, a: [A.x, A.z], b: [B.x, B.z], half: LOT_HALF + (yard + 1) / 2, ja: 1, jb: 1 });
   }
   for (const v of venues) shapes.push({ kind: 'box', id: `venue:${v.id}`, min: v.bounds.min, max: v.bounds.max });
+  const fill = map.fence_fill ?? FENCE_FILL;
+  if (fill > 0) shapes.push(fenceInfill(shapes, fill, map.fence_cell ?? FILL_CELL));
   return shapes;
+}
+
+/** The axis-aligned bounds of one shape, [minX, minZ, maxX, maxZ]. */
+export function shapeBounds(s) {
+  if (s.kind === 'box') return [s.min[0], s.min[1], s.max[0], s.max[1]];
+  if (s.kind === 'disc') return [s.c[0] - s.r, s.c[1] - s.r, s.c[0] + s.r, s.c[1] + s.r];
+  if (s.kind === 'mask') return [s.x0, s.z0, s.x0 + s.w * s.cell, s.z0 + s.h * s.cell];
+  const ux = (s.b[0] - s.a[0]);
+  const uz = (s.b[1] - s.a[1]);
+  const L = Math.hypot(ux, uz) || 1;
+  const pad = s.half + Math.max(s.ja ?? 0.5, s.jb ?? 0.5);
+  return [Math.min(s.a[0], s.b[0]) - pad, Math.min(s.a[1], s.b[1]) - pad,
+    Math.max(s.a[0], s.b[0]) + pad, Math.max(s.a[1], s.b[1]) + pad];
+}
+
+// Two-pass 3-4 chamfer distance, in thirds of a cell. Exact enough for a fill
+// radius — it errs by about 8% on a diagonal, which here is half a metre of
+// where a courtyard's corner stops being walkable — and it is O(cells), which
+// a radius-16 dilation done honestly is not.
+function chamfer(seed, w, h) {
+  const INF = 1 << 28;
+  const d = new Int32Array(w * h);
+  for (let i = 0; i < d.length; i++) d[i] = seed[i] ? 0 : INF;
+  const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? INF : d[y * w + x]);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const v = Math.min(d[i], at(x - 1, y) + 3, at(x, y - 1) + 3, at(x - 1, y - 1) + 4, at(x + 1, y - 1) + 4);
+      d[i] = v;
+    }
+  }
+  for (let y = h - 1; y >= 0; y--) {
+    for (let x = w - 1; x >= 0; x--) {
+      const i = y * w + x;
+      const v = Math.min(d[i], at(x + 1, y) + 3, at(x, y + 1) + 3, at(x + 1, y + 1) + 4, at(x - 1, y + 1) + 4);
+      d[i] = v;
+    }
+  }
+  return d;
+}
+
+/**
+ * The closing of `shapes`, as one more shape: a grid of the ground that is
+ * walkable because it lies in a gap between built things, rather than because
+ * anything was built on it. Deterministic — an integer grid, no floating
+ * boundary to drift — and O(1) to test, which is why it goes at the END of the
+ * shape list: the road you are standing on answers first.
+ */
+export function fenceInfill(shapes, radius = FENCE_FILL, cell = FILL_CELL) {
+  let x0 = Infinity; let z0 = Infinity; let x1 = -Infinity; let z1 = -Infinity;
+  for (const s of shapes) {
+    const b = shapeBounds(s);
+    x0 = Math.min(x0, b[0]); z0 = Math.min(z0, b[1]);
+    x1 = Math.max(x1, b[2]); z1 = Math.max(z1, b[3]);
+  }
+  // a margin of the radius plus a cell, so "outside" really is outside and the
+  // erosion cannot lean on the edge of the grid
+  const pad = radius + cell * 2;
+  x0 = Math.floor((x0 - pad) / cell) * cell;
+  z0 = Math.floor((z0 - pad) / cell) * cell;
+  const w = Math.ceil((x1 + pad - x0) / cell);
+  const h = Math.ceil((z1 + pad - z0) / cell);
+  const solid = new Uint8Array(w * h);
+  // rasterise each shape over its own bounds, not the whole grid over every
+  // shape: the difference is a hundred thousand tests and ten million
+  for (const s of shapes) {
+    const b = shapeBounds(s);
+    const i0 = Math.max(0, Math.floor((b[0] - x0) / cell));
+    const j0 = Math.max(0, Math.floor((b[1] - z0) / cell));
+    const i1 = Math.min(w - 1, Math.ceil((b[2] - x0) / cell));
+    const j1 = Math.min(h - 1, Math.ceil((b[3] - z0) / cell));
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        const k = j * w + i;
+        if (solid[k]) continue;
+        if (shapeContains(s, x0 + (i + 0.5) * cell, z0 + (j + 0.5) * cell)) solid[k] = 1;
+      }
+    }
+  }
+  const R = Math.round((radius / cell) * 3);
+  const d1 = chamfer(solid, w, h);
+  const dilated = new Uint8Array(w * h);
+  for (let k = 0; k < dilated.length; k++) dilated[k] = d1[k] <= R ? 1 : 0;
+  const outside = new Uint8Array(w * h);
+  for (let k = 0; k < outside.length; k++) outside[k] = dilated[k] ? 0 : 1;
+  const d2 = chamfer(outside, w, h);
+  // the closing minus what was already solid: this shape only has to answer
+  // for the ground the union does not
+  const bits = new Uint8Array(w * h);
+  let filled = 0;
+  for (let k = 0; k < bits.length; k++) {
+    if (solid[k] || d2[k] <= R) continue;
+    bits[k] = 1;
+    filled += 1;
+  }
+  return { kind: 'mask', id: 'infill', cell, x0, z0, w, h, bits, filled, radius };
 }
 
 export function shapeContains(s, x, z) {
   if (s.kind === 'box') return x >= s.min[0] && x <= s.max[0] && z >= s.min[1] && z <= s.max[1];
+  if (s.kind === 'mask') {
+    const i = Math.floor((x - s.x0) / s.cell);
+    const j = Math.floor((z - s.z0) / s.cell);
+    return i >= 0 && j >= 0 && i < s.w && j < s.h && s.bits[j * s.w + i] === 1;
+  }
   if (s.kind === 'disc') return Math.hypot(x - s.c[0], z - s.c[1]) <= s.r;
   const dx = s.b[0] - s.a[0];
   const dz = s.b[1] - s.a[1];
@@ -291,10 +428,14 @@ export const fenceContains = (shapes, x, z) => shapes.some((s) => shapeContains(
 // How far the world reaches from the origin, over every shape — sizes the
 // ground plane and the far plane.
 export function fenceReach(shapes) {
-  return shapes.reduce((m, s) => Math.max(m,
-    s.kind === 'disc' ? Math.hypot(s.c[0], s.c[1]) + s.r
-      : s.kind === 'obb' ? Math.max(Math.hypot(...s.a), Math.hypot(...s.b)) + s.half + Math.max(s.ja ?? 0, s.jb ?? 0)
-        : Math.max(Math.abs(s.min[0]), Math.abs(s.max[0]), Math.abs(s.min[1]), Math.abs(s.max[1]))), 0);
+  return shapes.reduce((m, s) => {
+    if (s.kind === 'disc') return Math.max(m, Math.hypot(s.c[0], s.c[1]) + s.r);
+    if (s.kind === 'obb') return Math.max(m, Math.max(Math.hypot(...s.a), Math.hypot(...s.b)) + s.half + Math.max(s.ja ?? 0, s.jb ?? 0));
+    // the infill never reaches past what it was closed from, so its grid
+    // bounds (which carry the working margin) would overstate the world
+    if (s.kind === 'mask') return m;
+    return Math.max(m, Math.abs(s.min[0]), Math.abs(s.max[0]), Math.abs(s.min[1]), Math.abs(s.max[1]));
+  }, 0);
 }
 
 // ---- furniture placement -------------------------------------------------
