@@ -14,11 +14,29 @@ track file authored against their arena needs no translation.
 The page converts to world space exactly once, when it points the camera. The
 stadium's placement in the city (`x = 100`) never appears in a track file.
 
+## Two modes
+
+**`/broadcast` is a LIVE FEED by default.** Realtime, a looping cut-list, and
+every visitor standing in the stadium right now is in shot. It is not
+reproducible and does not pretend to be.
+
+**Deterministic capture must be asked for: `?capture=1`.** That is the mode
+this document's guarantees apply to — fixed timestep, no wall clock, no live
+visitors, same inputs and seed giving the same pixels.
+
+The ordering is deliberate. A harness that forgets `capture=1` gets live mode,
+where **`step()` throws on the first call** with a message naming the flag —
+loud, before a single frame is filmed. The opposite default would have failed
+silently: hours of footage that simply never repeats.
+
+`?live=0` is accepted as a synonym for `?capture=1`.
+
 ## Parameters
 
 | parameter | meaning |
 |---|---|
-| `camera=<name>` | one named camera for the whole capture (default `gantry`) |
+| `capture=1` | deterministic capture mode; **required** for anything below that mentions frames |
+| `camera=<name>` | one named camera for the whole run (default `gantry` in capture mode) |
 | `camtrack=<https url>` | a camera track file; overrides `camera` |
 | `bundle=<https url>` | a 4DGSX bundle to play on the pitch; absent means an empty pitch |
 | `crowd=0..1` | how full the stands are; `0` (default) is empty |
@@ -27,7 +45,7 @@ stadium's placement in the city (`x = 100`) never appears in a track file.
 | `timeofday=0..24` | shift the lighting; see the caveat below |
 | `street=0` | drop the city's plots (they load by default) |
 | `venue=<id>` | which venue to film (default `stadium`) |
-| `live=1` \| `live=<cap>` | **not for capture** — a realtime stream with live visitors; `step()` throws |
+| `live=<cap>` | in live mode, how many visitors to draw at once (default 32, max 256) |
 
 Anything the page cannot honour is reported in `state().unimplemented` and
 shown on the page rather than silently ignored.
@@ -81,6 +99,18 @@ Camera state supplied per frame by the track file. See below.
 Every other name in `venue.json` (`approach`, `concourse`, `aerial`,
 `stand_high`, `scoreboard`, …) also works as a static view.
 
+## The live cut-list
+
+With no `camera` and no `camtrack`, the live feed runs
+`/broadcast/live-cutlist.json`: a wide orbit of the bowl, two pushes into the
+stands where the visitors actually are, a pitch-level shot, and the gantry.
+It loops every **140 seconds**.
+
+It is deliberately unhurried. This runs for days, and a feed that cuts every
+few seconds is exhausting rather than alive.
+
+Capture mode is never given a default cut-list — a harness says what it wants.
+
 ## Camera track file
 
 A worked example ships at `/broadcast/camtrack-example.json` and is used as
@@ -96,6 +126,10 @@ the CI fixture, so it cannot drift from what the page actually consumes.
   ] }
 ```
 
+- `"loop": true` at the top level wraps back to the start instead of running
+  off the end — required for an ambient feed, which otherwise holds its last
+  framing for ever. Every named camera's own clock restarts with the wrap, so
+  a looped feed repeats exactly rather than drifting.
 - `frames` is `[start, end)` in absolute frames, end exclusive.
 - `explicit` is either an array of per-frame `[pos_xyz, lookat_xyz, vfov_deg]`
   or an **https URL** returning one. Its frames are indexed from the **start of
@@ -113,6 +147,10 @@ the CI fixture, so it cannot drift from what the page actually consumes.
 `crowd=0..1` fills that fraction of the venue's declared seats (600 in the
 stadium), chosen by a seeded partial shuffle so density 0.3 and 0.6 agree on
 the first 30% rather than reshuffling the stand.
+
+**It defaults to 0 in both modes**, so the live feed shows only real visitors
+and nobody has to wonder which of the figures in the stands is a person. Add
+`?crowd=0.3` if a fuller ground matters more than that.
 
 Each fan's seat, clothing, resting posture, idle rate and stand-up schedule
 come from the seed. Poses are a pure function of simulated time, so the crowd

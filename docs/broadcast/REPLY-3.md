@@ -13,6 +13,30 @@ deterministic.** Reference: `docs/broadcast/CAMERAS.md`.
 
 ---
 
+## 0. One change to the URL your harness will use
+
+**Add `?capture=1`.** `/broadcast` is now a live feed by default — realtime,
+a looping cut-list, and any visitor standing in the stadium in shot — because
+that is what the URL promises to a person who opens it, and because otra.city
+wants people to visit and appear on it.
+
+Deterministic capture is now the mode you ask for rather than the one you get:
+
+```
+https://otra.city/broadcast?capture=1&bundle=…&camtrack=…
+```
+
+Everything else about the contract is unchanged. `?live=0` works as a synonym
+if that reads better in your config.
+
+We would not normally move a default under you. It is safe here because the
+two modes fail in opposite directions: **a harness that forgets the flag gets
+live mode, where `step()` throws on the first call** with a message naming it
+— loud, before a single frame is filmed. The reverse mistake, which the old
+default allowed, was the silent one: hours of footage that never repeats.
+
+Our own gate depends on the flag now, so if we ever break it, CI stops.
+
 ## 1. What is live now
 
 `otra.city/broadcast` is deployed. Everything below is on it today.

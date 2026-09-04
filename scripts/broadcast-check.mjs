@@ -43,7 +43,11 @@ async function openBroadcast({ width = 1280, height = 720 } = {}) {
   const chrome = await launchChrome({ width, height, gpu: flag('gpu') });
   const problems = [];
   chrome.onConsole((type, text) => { if (type === 'error') problems.push(text); });
-  const q = new URLSearchParams({ camera: CAMERA });
+  // `capture=1` is not optional here: /broadcast is a live feed by default,
+  // and a harness that omits it gets live visitors and a wall clock. That is
+  // exactly the mistake this flag is meant to make loud, so the gate proves it
+  // by depending on it.
+  const q = new URLSearchParams({ camera: CAMERA, capture: '1' });
   if (BUNDLE) q.set('bundle', BUNDLE);
   if (CROWD) q.set('crowd', CROWD);
   if (CAMTRACK) q.set('camtrack', CAMTRACK.startsWith('http') ? CAMTRACK : `${origin}${CAMTRACK}`);

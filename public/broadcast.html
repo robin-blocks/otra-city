@@ -31,32 +31,35 @@
 }
 </script>
 <script type="module">
-// A page built to be filmed, not visited.
-//
-// The RFL broadcast brief (docs/broadcast/REPLY.md) asks for a deterministic
-// surface a headless capture can drive: fixed timestep, no wall clock, same
-// inputs and seed giving the same pixels. This is the bare version of it —
-// the stadium, one static camera, `step()` and `frame()` — the step the brief
-// itself proposes so both sides iterate from footage instead of specs.
+// The stadium, live — and the same stadium, filmable.
 //
 // It runs the client's real pipeline (world, venues, doors, anims, media), so
-// what is filmed is the city visitors walk.
+// what you see is the city visitors walk, not a diorama of it.
 //
 // The page has TWO modes, and they want opposite things:
 //
-//   default    deterministic capture. Nothing renders on its own: one frame
-//              when `ready` resolves so a human sees the pitch, and after that
-//              only `step()` moves time. Three things are left out because
-//              each is a determinism bug — presence (visitors arrive over a
-//              socket on their own schedule), perfguard (quality that steps
-//              down mid-capture changes the pixels), and rAF stepping (a
-//              render loop advances the scene off the wall clock).
-//   ?live=1    a live stream from the stadium with real visitors in the
-//              stands. Paced by the wall clock, presence on, `step()` refused.
-//              Not reproducible, and it does not pretend to be.
+//   default      a LIVE FEED. Realtime, presence on, a looping cut-list, and
+//                every visitor standing in the stadium right now is in shot.
+//                Paced by the wall clock, so it is not reproducible — and does
+//                not pretend to be. `step()` refuses.
+//   ?capture=1   deterministic capture, for RFL's headless harness
+//                (docs/broadcast/REPLY.md): fixed timestep, no wall clock, same
+//                inputs and seed giving the same pixels. Nothing renders on its
+//                own; only `step()` moves time. Three things are left out
+//                because each is a determinism bug — presence (visitors arrive
+//                over a socket on their own schedule), perfguard (quality that
+//                steps down mid-capture changes the pixels), and rAF stepping
+//                (a render loop advances the scene off the wall clock).
 //
-// The modes are kept far apart on purpose. Footage from the wrong one is
-// indistinguishable until the day someone tries to re-film it.
+// Live is the default because that is what the URL promises: open /broadcast
+// and see the stadium as it is. It is also what makes "go to otra.city and you
+// are on the broadcast" true.
+//
+// The modes are kept far apart on purpose, and the ordering is deliberate.
+// Footage from the wrong mode is indistinguishable until the day someone tries
+// to re-film it — so the mistake that must never be silent is a capture that
+// quietly used live data. It cannot be: `step()` throws in live mode, on the
+// first call, naming the flag. The opposite mistake is merely a still frame.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
@@ -114,22 +117,32 @@ const t0 = Math.max(0, num('t0', 0));
 // between filming otra.city and filming a stadium that happens to sit in it.
 const withStreet = params.get('street') !== '0';
 
-// ---- live mode ------------------------------------------------------------
-// `?live=1` (or `?live=<cap>`) is the other half of this page, and it wants
-// the opposite of everything above. A live stream from the stadium shows real
-// visitors, who arrive over a socket at their own pace: it is paced by the
-// wall clock, it cannot be stepped, and it is not reproducible. That is fine —
-// nobody re-films a live stream. What matters is that the two modes never get
-// confused for each other, so live mode refuses `step()` outright and says so
-// in `state()` rather than quietly producing footage that will not repeat.
+// ---- which mode ------------------------------------------------------------
+// LIVE IS THE DEFAULT. Opening /broadcast should show the stadium as it is
+// right now, with whoever happens to be standing in it — that is what the URL
+// promises and what makes "go to otra.city and you are on the broadcast" true.
+// Deterministic capture is the specialist mode and has to be asked for.
+//
+// Getting this round the right way is safe because the two modes fail in
+// opposite directions. A capture harness that forgets `capture=1` gets live
+// mode, where `step()` throws immediately with a message naming the flag —
+// loud, on the first call, before a single frame is filmed. The reverse
+// mistake would have been silent: hours of footage that simply never repeats.
 const liveParam = params.get('live');
-const live = liveParam !== null && liveParam !== '0';
+const capture = params.get('capture') === '1' || liveParam === '0';
+const live = !capture;
 const liveCap = Math.max(1, Math.min(256, Number(liveParam) > 1 ? Number(liveParam) : 32));
 
 const crowdDensity = params.has('crowd') ? Math.max(0, Math.min(1, num('crowd', 0))) : 0;
 const timeofday = params.has('timeofday') ? Math.max(0, Math.min(24, num('timeofday', 0))) : null;
-const camtrackUrl = params.get('camtrack') ? httpsOnly(params.get('camtrack')) : null;
+let camtrackUrl = params.get('camtrack') ? httpsOnly(params.get('camtrack')) : null;
 if (params.get('camtrack') && !camtrackUrl) fail('camtrack', 'must be an https URL; ignored');
+// A live feed with no direction is a frozen frame of an empty pitch, which is
+// what /broadcast used to be and why it read as broken. Unless a camera or a
+// track is asked for by name, the live feed runs a looping cut-list: the bowl
+// from the air, then the stands where the visitors actually are, then the
+// pitch. Capture mode is never given a default — a harness says what it wants.
+if (live && !camtrackUrl && !params.get('camera')) camtrackUrl = '/broadcast/live-cutlist.json';
 
 // Anything the brief names that this build still does not honour is reported
 // rather than ignored — a capture that silently got an empty crowd would be
@@ -293,7 +306,10 @@ async function startLive() {
     last = now;
     advance(dt);
     presence.update(dt, simT);
-    frame += 1;
+    // Frames come from elapsed time, not from how often the browser painted:
+    // one rAF is not one frame at 50 fps, and a cut-list keyed to the frame
+    // number would run 20% fast on a 60 Hz screen and stall in a background tab.
+    frame = Math.round(simT * FPS);
     draw();
   });
 }
@@ -468,7 +484,7 @@ window.rflBroadcast = {
    */
   async step(n) {
     await ready;
-    if (live) throw new Error('live mode paces itself from the wall clock; step() is for deterministic capture (drop ?live= to use it)');
+    if (live) throw new Error('/broadcast is a live feed by default and paces itself from the wall clock. For deterministic capture add ?capture=1 to the URL, which turns off live visitors and hands the clock to step().');
     const target = n === undefined ? frame + 1 : Math.round(n);
     if (target < frame) throw new Error(`step(${target}) is behind the current frame ${frame}; reload with ?t0= to rewind`);
     while (frame < target) { advance(1 / FPS); frame += 1; }
