@@ -176,13 +176,22 @@ export function createTrack(doc, { fetchJson } = {}) {
     return api;
   }
 
+  // `loop: true` wraps the frame back to the start of the cut-list instead of
+  // running off the end. An ambient feed runs for days; without this it would
+  // hold the last framing for ever, which is a photograph, not a broadcast.
+  const loop = doc.loop === true;
+  const span = segments.length ? segments[segments.length - 1].to : 0;
+
   function segmentAt(frame) {
     for (const s of segments) if (frame >= s.from && frame < s.to) return s;
     return null;
   }
 
-  /** The camera for an absolute frame, or null past the end of the track. */
-  function at(frame) {
+  /** The camera for an absolute frame, or null past the end of a non-looping track. */
+  function at(absolute) {
+    // Wrap first, so every named camera's own clock restarts with the cut-list
+    // and a looped feed repeats exactly rather than drifting.
+    const frame = loop && span > 0 ? ((absolute % span) + span) % span : absolute;
     const s = segmentAt(frame);
     if (!s) return null;
     if (s.explicit) {
@@ -197,7 +206,7 @@ export function createTrack(doc, { fetchJson } = {}) {
     return { ...c, fov: c.fov ?? 50, segment: s.index, camera: s.camera };
   }
 
-  const api = { at, resolve, fps, get segments() { return segments; },
-                get lastFrame() { return segments.length ? segments[segments.length - 1].to : 0; } };
+  const api = { at, resolve, fps, loop, get segments() { return segments; },
+                get lastFrame() { return span; } };
   return api;
 }
