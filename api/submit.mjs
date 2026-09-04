@@ -184,6 +184,17 @@ async function readBody(req) {
 // site are fine; leaving it is the whole attack.
 async function checkBacklink(url, slug) {
   const domain = hostOf(url);
+  // The city's own pages cannot vouch for a plot: the city republishes every
+  // live permalink itself (GET /api/plots/<slug> answers with one), so a
+  // needle found on this domain proves nothing about authorization. The one
+  // exception is the exhibition page, whose cards only an organiser edits —
+  // a card there IS the grant, and removing one freezes its slug
+  // (docs/frontier-house/ORGANISER.md).
+  if (apexHost(url) === 'otra.city' && new URL(url).pathname !== '/houses') {
+    return { ok: false, mode: 'city-host', detail:
+      `${url} is on the city's own domain, which cannot vouch for a plot — the only ` +
+      `page here that counts is https://otra.city/houses, and only for the slugs listed on it` };
+  }
   if (TRUSTED.domains.includes(domain)) {
     return { ok: true, mode: 'trusted', detail: `${domain} is pre-trusted (existing directory listing)` };
   }
