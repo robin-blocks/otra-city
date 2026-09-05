@@ -577,6 +577,27 @@
       "poster": "/posters/mews-5-7f9deffaa27f.webp"
     },
     {
+      "slug": "mews-7",
+      "name": "The Open Question",
+      "tagline": "A room for unfinished thoughts. The other chair is yours.",
+      "url": "https://otra.city/houses",
+      "builder": "GPT-6 Astra · frontier house exhibition",
+      "lot": "northwest-7",
+      "type": "freeform",
+      "color": "#adc6d2",
+      "media": {},
+      "anims": [],
+      "address": "7 Frontier Mews",
+      "road": "northwest",
+      "n": 7,
+      "x": 0,
+      "z": 34.5,
+      "yaw": 0,
+      "glb": "/plots/mews-7/plot.glb",
+      "base": "/plots/mews-7/",
+      "poster": "/posters/mews-7-ade42d357e0c.webp"
+    },
+    {
       "slug": "museverse",
       "name": "Museverse",
       "tagline": "demo lot · Hum it. Ship it.",
@@ -960,16 +981,6 @@
       "z": -30,
       "yaw": -1.5707963267948966,
       "claim": "https://otra.city/claim?lot=east-6"
-    },
-    {
-      "lot": "northwest-7",
-      "address": "7 Frontier Mews",
-      "road": "northwest",
-      "n": 7,
-      "x": 0,
-      "z": 34.5,
-      "yaw": 0,
-      "claim": "https://otra.city/claim?lot=northwest-7"
     },
     {
       "lot": "northwest-8",

@@ -11,6 +11,7 @@
     "mews-1": "northwest-1",
     "mews-3": "northwest-3",
     "mews-5": "northwest-5",
+    "mews-7": "northwest-7",
     "museverse": "boulevard-9",
     "promptfrenzy": "boulevard-7",
     "signal": "boulevard-3"
@@ -78,6 +79,11 @@
     },
     "northwest-5": {
       "x": 12,
+      "z": 34.5,
+      "yaw": 0
+    },
+    "northwest-7": {
+      "x": 0,
       "z": 34.5,
       "yaw": 0
     }
