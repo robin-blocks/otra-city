@@ -4,9 +4,19 @@
     {
       "name": "viewer",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["scripts/serve-public.mjs"],
+      "runtimeArgs": [
+        "scripts/serve-public.mjs"
+      ],
       "port": 5173,
       "autoPort": true
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/dev-api.mjs"
+      ],
+      "port": 8788
     }
   ]
 }

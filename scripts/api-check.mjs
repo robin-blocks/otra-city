@@ -21,6 +21,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import handler, { buildListing, deriveTagline } from '../api/submit.mjs';
 import { parseSiteMeta, imageKind } from '../lib/site-meta.mjs';
+import { renderLot, renderRoad, renderDirectory, esc } from '../api/pages.mjs';
 import { pickLot } from '../public/js/city-map.mjs';
 import drain, { selectRecords, parseBatch } from '../api/log-drain.mjs';
 import { apexHost, sameSite, ownerKey, classifyUrl } from '../lib/submitter-host.mjs';
@@ -212,6 +213,34 @@ const listing = (over = {}) => ({
     plot.media.pictures.map((p) => p.node).join(',') === 'pic_1,pic_2' && Object.keys(built.media)[0] === 'pic-1.png');
   check('a non-image url is skipped with a note, not an error', built.notes.length === 1 && /not a png/.test(built.notes[0]));
   check('images[] is consumed, not published', plot.images === undefined);
+}
+// --- the readable pages -------------------------------------------------------
+{
+  const manifest = JSON.parse(readFileSync(join(root, 'public/plots/index.json')));
+  const plat = JSON.parse(readFileSync(join(root, 'public/city/lots.json')));
+  const demo = manifest.lots.find((l) => l.slug === 'listing-demo');
+  const html = renderLot(demo.lot, manifest, plat);
+  check('a listing page carries a plain link to the site',
+    html.includes(`<a href="${esc(demo.url)}">`) && html.includes('application/ld+json'), demo.url);
+  check('the page names the address and the walk path',
+    html.includes(demo.address) && html.includes(`/lot/${demo.lot}/walk`));
+  // what an attacker would send as a name: it must come out as text
+  const hostile = { ...manifest, lots: manifest.lots.map((l) => (l.slug === 'listing-demo'
+    ? { ...l, name: '<script>alert(1)</script>', description: '"><img src=x onerror=alert(1)>', url: 'javascript:alert(1)', tags: ['<b>'] } : l)) };
+  const h2 = renderLot(demo.lot, hostile, plat);
+  check('a hostile listing is text on the page, never markup',
+    !h2.includes('<script>alert') && !h2.includes('<img src=x') && !h2.includes('href="javascript:') && h2.includes('&lt;script&gt;'));
+  const vacant = manifest.vacant[0];
+  const hv = renderLot(vacant.lot, manifest, plat);
+  check('a vacant lot page says which categories land there and how',
+    hv.includes(vacant.address) && /vacant/i.test(hv) && hv.includes('/api/plots/submit'));
+  const road = manifest.roads.find((r) => r.id === demo.road);
+  const hr = renderRoad(road.id, manifest, plat);
+  check('a road page lists what stands on it', hr.includes(road.name) && hr.includes(`/lot/${demo.lot}`) && hr.includes('ItemList'));
+  const hd = renderDirectory(manifest, plat);
+  check('the directory lists every road with a listing and every category',
+    hd.includes(`/road/${demo.road}`) && hd.includes('image-generation') === false /* labels, not ids */ && hd.includes('Image generation'));
+  check('an unknown lot is nobody\'s page', renderLot('boulevard-999', manifest, plat) === null && renderRoad('nowhere', manifest, plat) === null);
 }
 check('the tagline is cut at a word', deriveTagline('word '.repeat(30)).length <= 80 && !/\s…$/.test(deriveTagline('word '.repeat(30))));
 check('a short description is the tagline as is', deriveTagline('Short and sweet.') === 'Short and sweet.');

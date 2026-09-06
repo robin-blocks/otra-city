@@ -11,3 +11,4 @@ User-agent: *
 Allow: /
 
 # Written for you: https://otra.city/llms.txt
+Sitemap: https://otra.city/sitemap.xml

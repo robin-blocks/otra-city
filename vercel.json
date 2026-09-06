@@ -22,8 +22,20 @@
       "destination": "/index.html"
     },
     {
-      "source": "/lot/:id",
+      "source": "/lot/:id/walk",
       "destination": "/index.html"
+    },
+    {
+      "source": "/lot/:id",
+      "destination": "/api/pages?page=lot&id=:id"
+    },
+    {
+      "source": "/road/:id",
+      "destination": "/api/pages?page=road&id=:id"
+    },
+    {
+      "source": "/directory",
+      "destination": "/api/pages?page=directory"
     },
     {
       "source": "/venue",
