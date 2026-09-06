@@ -138,5 +138,16 @@ writeFileSync(join(root, 'index.json'), JSON.stringify({
   lots,
   vacant,
 }, null, 2) + '\n');
+// The sitemap: every readable page the directory has — the index, every road
+// and every claimed lot. Vacant lots are not listed (thin pages, and a listing
+// is what makes one worth finding). Regenerated with the manifest, so it
+// cannot drift from what stands.
+const pages = ['/', '/directory', '/claim', '/about', '/map', '/houses',
+  ...Object.keys(plat.roads).map((id) => `/road/${id}`),
+  ...lots.map((l) => `/lot/${l.lot}`)];
+writeFileSync(join(base, 'sitemap.xml'), '<?xml version="1.0" encoding="UTF-8"?>\n' +
+  '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+  pages.map((u) => `  <url><loc>https://otra.city${u}</loc></url>`).join('\n') + '\n</urlset>\n');
+
 for (const n of notes) console.log(`lot: ${n}`);
 console.log(`manifest: ${lots.length} lots (${notes.length} newly assigned), ${vacant.length} vacant of ${Object.keys(plat.lots).length} on ${Object.keys(plat.roads).length} roads`);

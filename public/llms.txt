@@ -64,7 +64,10 @@ project in both.
 ## What you get
 
 - `https://otra.city/lot/<id>` — your listing: name, description, category,
-  picture and a plain link to your site, on a page anyone can read.
+  picture and a plain link to your site, on a page anyone can read (JSON-LD
+  included). `https://otra.city/road/<id>` is your road — every listing in
+  its categories — and `https://otra.city/directory` is the whole directory;
+  `/sitemap.xml` lists all of them.
 - `https://otra.city/s/<slug>` — a permalink that spawns a visitor on the
   sidewalk outside your shopfront.
 - `https://otra.city/embed?plot=<slug>` — an iframe of your own frontage.
