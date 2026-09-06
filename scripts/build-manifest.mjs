@@ -7,13 +7,18 @@
 // Allocation rules:
 //   * an assignment in the registry is never moved — a plot keeps its address
 //     forever, whatever a later plot.json asks for
-//   * a new plot that asks for a lot (`lot` in plot.json) gets it when the map
-//     affords it and nobody holds it; otherwise it gets the default and the
-//     log says so — the dry run told the submitter this rule, and the status
-//     endpoint reports the lot it actually got
-//   * the default is the nearest free lot to the city centre (map.json
-//     `centre`), ties broken by address, so the district fills densely from
-//     the middle and distance from the centre keeps its meaning
+//   * a new plot lands on a road that serves its `category` (map.json gives
+//     every listing road its categories), nearest the centre first — so the
+//     streets read as the directory's categories and a visitor walking one
+//     sees one kind of thing. A category with no road, or a full one, falls
+//     through to the nearest free lot anywhere, and the log says so: that is
+//     the signal to give the category a road at the far end of the network
+//   * the city's own plots (a url on otra.city — exhibitions, venues, demos)
+//     may ask for a lot with `lot` in plot.json and get it when the map
+//     affords it and nobody holds it; a listing's request is ignored, because
+//     its place is its category — the dry run says so before it commits
+//   * the rule itself is ONE function, pickLot in city-map.mjs, shared with the
+//     submit API's dry run, so what the report predicted is what happens here
 //   * assignments are written back to the registry, stable and reviewable in
 //     git rather than recomputed each build
 //   * EVERY unclaimed lot is published as vacant, in default-allocation order:
@@ -21,7 +26,9 @@
 import { readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { POSTER_DIR, posterUrl, findPoster } from '../lib/poster-paths.mjs';
-import { rankFree } from '../public/js/city-map.mjs';
+import { rankFree, pickLot } from '../public/js/city-map.mjs';
+import { apexHost } from '../lib/submitter-host.mjs';
+import { DEFAULT_CATEGORY } from '../public/js/categories.mjs';
 
 const base = join(new URL('..', import.meta.url).pathname, 'public');
 const root = join(base, 'plots');
@@ -64,19 +71,25 @@ if (dup.length) throw new Error(`registry: lot ${dup[0][0]} is held by more than
 // otherwise the nearest free lot to the centre
 const notes = [];
 for (const slug of slugs.filter((s) => !assigned[s])) {
-  const want = readPlot(slug).lot;
-  let id;
-  if (want && plat.lots[want] && !holder.has(want)) {
-    id = want;
-    notes.push(`${slug}: ${id} (${plat.lots[id].address}), as requested`);
-  } else {
-    id = rankFree(plat, holder.keys(), centre)[0]?.id;
-    if (!id) throw new Error('no free lot left — extend the map (public/city/map.json)');
-    const why = !want ? 'nearest free lot to the centre'
-      : !plat.lots[want] ? `requested "${want}" is not a lot this map affords; nearest free lot instead`
-        : `requested ${want} is held by ${holder.get(want)}; nearest free lot instead`;
-    notes.push(`${slug}: ${id} (${plat.lots[id].address}) — ${why}`);
-  }
+  const plot = readPlot(slug);
+  const want = plot.lot;
+  const category = plot.category || DEFAULT_CATEGORY;
+  const mayRequest = apexHost(plot.url || '') === 'otra.city';
+  const pick = pickLot(plat, holder.keys(), { category, requested: want, mayRequest, centre });
+  if (!pick) throw new Error('no free lot left — extend the map (public/city/map.json)');
+  const id = pick.id;
+  const why = {
+    requested: 'as requested',
+    category: `${category}: the first free lot on a road serving it`,
+    'category-full': `every lot on the roads serving ${category} is held; nearest free lot instead — time to add a road for it`,
+    'category-unrouted': `no road serves ${category}; nearest free lot instead — give it a road in map.json`,
+    nearest: 'nearest free lot to the centre',
+  }[pick.why];
+  const ignored = want && pick.why !== 'requested'
+    ? (mayRequest ? ` (requested ${want}: ${!plat.lots[want] ? 'not a lot this map affords' : `held by ${holder.get(want)}`})`
+      : ` (requested ${want} ignored: a listing is placed by its category)`)
+    : '';
+  notes.push(`${slug}: ${id} (${plat.lots[id].address}) — ${why}${ignored}`);
   assigned[slug] = id;
   holder.set(id, slug);
 }
@@ -118,9 +131,10 @@ writeFileSync(registryPath, JSON.stringify({
 }, null, 2) + '\n');
 
 writeFileSync(join(root, 'index.json'), JSON.stringify({
-  version: '0.7',
+  version: '0.8',
   spawn: plat.spawn,
-  roads: Object.values(plat.roads).map((r) => ({ id: r.id, name: r.name, lots: r.lots })),
+  roads: Object.values(plat.roads).map((r) => ({ id: r.id, name: r.name, lots: r.lots,
+    ...(r.categories ? { categories: r.categories } : {}) })),
   lots,
   vacant,
 }, null, 2) + '\n');

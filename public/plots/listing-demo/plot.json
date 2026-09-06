@@ -1,0 +1,37 @@
+{
+  "slug": "listing-demo",
+  "name": "Listing Demo",
+  "tagline": "What a listing gets, built by the city",
+  "url": "https://otra.city/claim#build",
+  "builder": "otra.city · template shopfront",
+  "type": "shop",
+  "category": "other",
+  "description": "The shopfront the city builds for any listing: a walkable shop in the category colour, your picture on the facade and inside, the standard door. A url and a sentence gets you this.",
+  "color": "#3858fa",
+  "media": {
+    "pictures": [
+      {
+        "node": "pic_1",
+        "file": "media/pic-1.webp"
+      },
+      {
+        "node": "pic_2",
+        "file": "media/pic-1.webp"
+      }
+    ]
+  },
+  "anims": [
+    {
+      "type": "pulse",
+      "node": "lintel",
+      "period": 2.6,
+      "depth": 0.35
+    }
+  ],
+  "template": {
+    "id": "shopfront",
+    "version": 1,
+    "variant": "tower",
+    "pictures": "images"
+  }
+}

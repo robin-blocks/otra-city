@@ -10,8 +10,11 @@
 // Without a token — or with { dry: true } — it validates and reports only.
 import { validateIdentity, validateGlb, probeWalkability, validateMediaDecl, probeSurfaces, probeMediaFiles, SPEC } from '../lib/validate-plot.mjs';
 import { fetchAsset } from '../lib/fetch-asset.mjs';
-import { rankFree } from '../public/js/city-map.mjs';
+import { pickLot } from '../public/js/city-map.mjs';
+import { DEFAULT_CATEGORY } from '../public/js/categories.mjs';
 import { hostOf, apexHost, sameSite, ownerKey, classifyUrl } from '../lib/submitter-host.mjs';
+import { buildTemplate, TEMPLATE_ID, TEMPLATE_VERSION, PICTURE_NODES } from '../lib/template-shop.mjs';
+import { fetchSiteMeta, imageKind } from '../lib/site-meta.mjs';
 import { readFileSync } from 'node:fs';
 
 const TRUSTED = JSON.parse(readFileSync(new URL('../trusted.json', import.meta.url)));
@@ -223,6 +226,78 @@ async function checkBacklink(url, slug) {
   }
 }
 
+// --- A listing --------------------------------------------------------------
+// A submission with no build of its own is a directory listing: a url, a name,
+// a sentence, a category — the payload an agent already writes for an AI
+// directory. The city builds the shopfront (lib/template-shop.mjs) and puts
+// the site's own pictures on it: `images` if the listing sent any, else the
+// page's og:image, else lit blank plates. Everything the template produces
+// then meets the same validator a hand-built bundle meets, in this same
+// request, so a clean dry run means exactly what it means for a custom build.
+const IMAGE_MAX = 6;
+
+// The board's one-liner, from the listing's description when it sent no
+// tagline: cut at a word inside 80 chars, never mid-word.
+export function deriveTagline(description) {
+  const s = String(description || '').replace(/\s+/g, ' ').trim();
+  if (s.length <= 80) return s;
+  const cut = s.slice(0, 79);
+  const sp = cut.lastIndexOf(' ');
+  return (sp > 40 ? cut.slice(0, sp) : cut).replace(/[\s,;:–—-]+$/, '') + '…';
+}
+
+// Runs BEFORE identity validation so the derived fields are what gets checked.
+// The tagline is derived for every submission that sent a description and no
+// tagline — a hand-built bundle with directory fields is welcome too; the
+// shop type and the default category are a listing's alone.
+function prepareListing(plot, listing) {
+  if (!plot.tagline && typeof plot.description === 'string') plot.tagline = deriveTagline(plot.description);
+  if (!listing) return;
+  if (!plot.type) plot.type = 'shop';
+  if (!plot.category) plot.category = DEFAULT_CATEGORY;
+}
+
+// `fetchImage` is injectable so the check suite can hand it pictures without
+// a public https host; the endpoint always uses fetchAsset.
+export async function buildListing(plot, { fetchMeta = true, fetchImage = fetchAsset } = {}) {
+  const notes = [];
+  const wanted = (Array.isArray(plot.images) ? plot.images : [])
+    .filter((u) => typeof u === 'string' && /^https:\/\//i.test(u)).slice(0, IMAGE_MAX);
+  let source = wanted.length ? 'images' : 'none';
+  if (!wanted.length && fetchMeta && plot.url) {
+    const meta = await fetchSiteMeta(plot.url);
+    if (meta?.image) { wanted.push(meta.image); source = 'og:image'; }
+    else notes.push(`no og:image on ${plot.url} and no images[] sent — the plates on the building stay blank until you add one`);
+  }
+  const media = {};
+  const pictures = [];
+  for (const url of wanted) {
+    if (pictures.length >= PICTURE_NODES.length) break;
+    try {
+      const buf = await fetchImage(url, { maxBytes: PICTURE_MAX, label: `image ${pictures.length + 1}` });
+      const kind = imageKind(buf);
+      if (!kind) { notes.push(`${url} is not a png, jpg or webp — skipped`); continue; }
+      const name = `pic-${pictures.length + 1}.${kind}`;
+      media[name] = buf.toString('base64');
+      pictures.push(name);
+    } catch (e) {
+      notes.push(`could not fetch ${url}: ${String(e.message || e).slice(0, 80)} — skipped`);
+    }
+  }
+  // one picture goes on the facade AND the wall facing the door
+  const bound = pictures.length === 1 ? [pictures[0], pictures[0]] : pictures;
+  const t = buildTemplate({ slug: plot.slug, category: plot.category, color: plot.color, images: bound.length });
+  const glb = await t.write();
+  delete plot.images;
+  plot.media = { ...(plot.media || {}), pictures: bound.map((file, i) => ({ node: PICTURE_NODES[i], file: `media/${file}` })) };
+  if (!plot.media.pictures.length) delete plot.media.pictures;
+  if (!Object.keys(plot.media).length) delete plot.media;
+  plot.anims = t.anims;
+  if (!plot.color) plot.color = t.color;
+  plot.template = { id: TEMPLATE_ID, version: TEMPLATE_VERSION, variant: t.variant, pictures: source };
+  return { glb, media, variant: t.variant, pictures: pictures.length, source, notes };
+}
+
 // Is anybody else already standing on this identity? Advisory only: one owner
 // with two genuine projects is legitimate, and the city's own lots all share
 // otra.city. It is here because the likeliest cause by far is an agent that
@@ -361,31 +436,48 @@ async function checkLot(plot, ownership, host) {
     const held = new Map(Object.entries(registry).map(([slug, id]) => [id, slug]));
     const want = plot.lot;
     const has = (id) => PLAT.lots[id];
+    const addr = (id) => `${id} (${has(id)?.address ?? '?'})`;
     if (ownership?.mode === 'update' && registry[plot.slug]) {
       const id = registry[plot.slug];
       return { ok: true, mode: 'kept', lot: id,
-        detail: `this plot keeps its address, ${id} (${has(id)?.address ?? '?'}); a lot request applies to a new plot only` +
+        detail: `this plot keeps its address, ${addr(id)}; a plot never moves` +
           (want && want !== id ? ` — "${want}" ignored` : '') };
     }
-    const next = rankFree(PLAT, held.keys(), PLAT.centre)[0];
-    if (want === undefined || want === null || want === '') {
-      return next
-        ? { ok: true, mode: 'default', lot: next.id,
-          detail: `none requested — you would get ${next.id} (${next.address}), the first lot on offer; ` +
-            `every free lot is in GET /api/plots vacant[], or on https://otra.city/map` }
-        : { ok: false, mode: 'full', lot: null, detail: 'no free lot left on the map — open an issue' };
+    // The city's own plots — exhibitions, venues, demos — are placed by hand;
+    // a listing is placed by its category, so a street reads as one kind of
+    // thing. Same function CI allocates with, so this line is a prediction
+    // that comes true (unless the lot goes in the minute between, in which
+    // case the next one on the same road does, and the status endpoint says).
+    const mayRequest = apexHost(plot.url || '') === 'otra.city';
+    const category = plot.category || DEFAULT_CATEGORY;
+    const pick = pickLot(PLAT, held.keys(), { category, requested: want, mayRequest, centre: PLAT.centre });
+    if (!pick) return { ok: false, mode: 'full', lot: null, detail: 'no free lot left on the map — open an issue' };
+    if (want && !mayRequest) {
+      // a wrong id is still a wrong id, and worth a rejection so the agent
+      // learns the rule here rather than wondering why it was ignored
+      if (typeof want !== 'string' || !has(want)) {
+        return { ok: false, mode: 'unknown', lot: null,
+          detail: `"${want}" is not a lot on the map — and a listing does not pick one: drop "lot" and you land on ${addr(pick.id)}, the first free lot on a road serving ${category}` };
+      }
     }
-    if (typeof want !== 'string' || !has(want)) {
-      return { ok: false, mode: 'unknown', lot: null,
-        detail: `"${want}" is not a lot on the map — pick an id from GET /api/plots vacant[] (the nearest free is ${next?.id ?? 'none'})` };
-    }
-    if (held.has(want)) {
+    if (mayRequest && want && pick.why !== 'requested') {
+      if (typeof want !== 'string' || !has(want)) {
+        return { ok: false, mode: 'unknown', lot: null,
+          detail: `"${want}" is not a lot on the map — pick an id from GET /api/plots vacant[] (or drop it for ${addr(pick.id)})` };
+      }
       return { ok: false, mode: 'held', lot: null,
-        detail: `${want} (${has(want).address}) is held by ${held.get(want)} — pick another from GET /api/plots vacant[] (the nearest free is ${next?.id ?? 'none'})` };
+        detail: `${addr(want)} is held by ${held.get(want)} — pick another from GET /api/plots vacant[] (or drop it for ${addr(pick.id)})` };
     }
-    return { ok: true, mode: 'requested', lot: want,
-      detail: `${want} (${has(want).address}) is free — yours if it still is when CI allocates, about a minute from now; ` +
-        `otherwise the nearest free lot, and GET /api/plots/${plot.slug} reports which` };
+    const road = PLAT.roads?.[has(pick.id)?.road];
+    const detail = {
+      requested: `${addr(pick.id)} is free — yours if it still is when CI allocates, about a minute from now; otherwise the next lot the same rule gives, and GET /api/plots/${plot.slug} reports which`,
+      category: `${addr(pick.id)} on ${road?.name ?? pick.id}, the road for ${category}` +
+        (want ? ` — "${want}" ignored: a listing is placed by its category, not by request` : ''),
+      'category-full': `every lot on the roads serving ${category} is held, so ${addr(pick.id)}, the nearest free lot — the city grows a road for ${category} when this happens`,
+      'category-unrouted': `no road serves "${category}" yet, so ${addr(pick.id)}, the nearest free lot`,
+      nearest: `${addr(pick.id)}, the nearest free lot to the centre`,
+    }[pick.why];
+    return { ok: true, mode: pick.why, lot: pick.id, detail };
   } catch (e) {
     return { ok: false, mode: 'unknown', lot: null, detail: `lot check failed: ${e.name || e}` };
   }
@@ -529,6 +621,10 @@ export default async function handler(req, res) {
   try {
     const { body, bytes: requestBytes } = await readBody(req);
     const plot = body.plot || {};
+    // telemetry-only fields never travel into the plot that gets published
+    delete plot.discovery_source;
+    const listing = !body.glb_base64 && !body.glb_url;
+    prepareListing(plot, listing);
     const result = { spec_version: SPEC.version, identity: null, budgets: null, walkability: null, backlink: null };
 
     result.identity = validateIdentity(plot);
@@ -539,14 +635,19 @@ export default async function handler(req, res) {
     // budget. They can be mixed.
     let fetchedBytes = 0;
     let glb;
+    let built = null;
     if (body.glb_base64) {
       glb = Buffer.from(body.glb_base64, 'base64');
     } else if (body.glb_url) {
       glb = await fetchAsset(body.glb_url, { maxBytes: SPEC.budgets.max_glb_bytes, label: 'glb' });
       fetchedBytes += glb.length;
     } else {
-      throw new Error('send your build as glb_base64 (inline, subject to the 4.5 MB request-body limit) ' +
-        'or glb_url (an https url the city fetches). See https://otra.city/docs/submission.md');
+      // No build: a listing. The city builds the shopfront; the site is only
+      // read for its pictures when the identity is sound, so a malformed
+      // submission costs nobody a fetch.
+      built = await buildListing(plot, { fetchMeta: result.identity.ok });
+      glb = built.glb;
+      for (const b64 of Object.values(built.media)) fetchedBytes += Buffer.from(b64, 'base64').length;
     }
     const requireDoor = plot.type === 'shop';
     result.budgets = await validateGlb(glb, { requireDoor });
@@ -558,7 +659,7 @@ export default async function handler(req, res) {
     // so a video mapped to an atlas cell is a rejection.
     result.surfaces = await probeSurfaces(glb, { plot });
 
-    const media = { ...(body.media || {}) };
+    const media = { ...(body.media || {}), ...(built?.media || {}) };
     for (const [name, src] of Object.entries(body.media_urls || {})) {
       if (name in media) {
         throw new Error(`media "${name}" was sent twice — once inline and once in media_urls; pick one`);
@@ -651,6 +752,14 @@ export default async function handler(req, res) {
       (fetchedBytes ? ` + ${MB(fetchedBytes)} fetched by url (not subject to the limit)` : '') +
       (result.payload.ok ? '' : ' — close to the platform limit; send large files by url instead'));
     if (result.feed) lines.push(`${result.feed.ok ? 'PASS' : 'FAIL'}  live feed      ${result.feed.detail}`);
+    if (built) {
+      result.shopfront = { ok: true, template: `${TEMPLATE_ID}/${built.variant}`, version: TEMPLATE_VERSION,
+        pictures: built.pictures, source: built.source, notes: built.notes };
+      lines.push(`PASS  shopfront      built by the city: ${TEMPLATE_ID}/${built.variant} v${TEMPLATE_VERSION}, ` +
+        (built.pictures ? `${built.pictures} picture(s) from ${built.source}` : 'no pictures') +
+        ' — send a glb of your own any time to replace it');
+      for (const n of built.notes) lines.push(`WARN  pictures       ${n}`);
+    }
     // "url host", not "url": validateIdentity already reports a check called
     // `url` (is it a well-formed https address), so labelling this one the same
     // printed "PASS url" and "FAIL url" one after the other and read as a
@@ -676,8 +785,14 @@ export default async function handler(req, res) {
       lot: result.lot?.lot ?? null,
       mode: result.github?.mode ?? null,
       // how the files arrived: the by-url path is the only way to spend the
-      // full media budget, so its uptake is worth watching
-      transport: body.glb_url ? 'url' : 'inline',
+      // full media budget, so its uptake is worth watching; `template` is a
+      // listing the city built for
+      transport: body.glb_url ? 'url' : body.glb_base64 ? 'inline' : 'template',
+      category: plot.category ?? null,
+      // one optional free-text field: how the submitter found the city.
+      // Unverified, capped, never stored on the plot — it is the only way to
+      // tell a repeatable channel from a one-off.
+      discovery_source: typeof body.discovery_source === 'string' ? body.discovery_source.slice(0, 120) : null,
       media_by_url: Object.keys(body.media_urls || {}).length,
       request_bytes: requestBytes,
       fetched_bytes: fetchedBytes,
@@ -693,6 +808,11 @@ export default async function handler(req, res) {
       pr_url,
       permalink: `https://otra.city/s/${plot.slug}`,
       lot: result.lot?.lot ?? null,
+      lot_url: result.lot?.lot ? `https://otra.city/lot/${result.lot.lot}` : null,
+      build: built ? 'template' : 'custom',
+      // the plot.json as it would be published — for a listing, that includes
+      // what the city derived: tagline, colour, the pictures it bound, `template`
+      plot,
       map: 'https://otra.city/map',
       status_url: `https://otra.city/api/plots/${plot.slug}`,
       embed_url: `https://otra.city/embed?plot=${plot.slug}`,

@@ -1,3 +1,7 @@
+> **Superseded 2026-09-06.** otra.city is now itself the directory — see
+> `docs/directory.md`. The funnel below shipped on PromptFrenzy's side and
+> converted nobody; the embed and poster sections remain accurate.
+
 # The AI-directory funnel (design)
 
 otra.city rides behind the PromptFrenzy AI directory as an **optional bonus
