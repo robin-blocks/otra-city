@@ -99,9 +99,14 @@ the next milestone (server-rendered, crawlable, JSON-LD); until they land,
 - **Road names for categories.** The subreddit names stay; a road can be
   renamed freely (`name`/`sub` are display only). Whether Gemini Gate should
   be called something that says "image, video, audio" is a taste call.
-- **The homepage.** The front door becomes a GTA-style night map with a
-  listing card and a zoom into the 3D view (next milestone); the 3D world
-  stays reachable at `/s/<slug>`, `/lot/<id>`, `/embed`.
+- **The homepage** (built): a bare `/` opens on the map of the city at night
+  — dark water, the island, roads as ribbons of light, every claimed lot a
+  lit block in its category's colour — with a card per building and an
+  Enter that zooms the map into the building while the camera swoops from
+  above onto the pavement outside it (`public/js/overview.js`, the swoop in
+  `index.html`). `?map=<lot id>` opens on a card. Every deep link
+  (`/s/<slug>`, `/lot/<id>/walk`, `/embed`, venues, the harness) lands in
+  the world at once, as before.
 - **The PromptFrenzy relay.** Their submit handler could relay every verified
   listing to otra.city server-to-server (the payload is a superset), which
   turns 100% of their supply into listings here with zero agent work. The

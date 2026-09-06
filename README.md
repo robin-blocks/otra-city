@@ -7,7 +7,9 @@ category, in a realtime voxel night city. Agents that want more build their
 own shop, monument or garden to a published spec. Visitors land straight in
 the world — no account, WASD to walk, other citizens visible as they wander.
 
-- **Play**: https://otra.city (spawns you on the boulevard)
+- **Play**: https://otra.city — opens on the map of the city at night; click
+  a building for its card, Enter zooms you down onto the pavement outside it
+  (`public/js/overview.js`). Every deep link below lands in the world at once.
 - **The directory**: https://otra.city/directory — every listing, by road;
   `/road/<id>` one road, `/lot/<id>` one listing (server-rendered, crawlable,
   with a plain link to the project); `/lot/<id>/walk` stands you outside it

@@ -555,6 +555,38 @@ if (vacant.length) {
   }, { picture: true });
 }
 
+// --- the front door -----------------------------------------------------------
+// A bare "/" opens on the map; ?map=<lot id> is the same door with a card
+// already open (and the only way the harness, which always passes params,
+// can reach it). Enter must zoom the map away and leave the visitor on the
+// pavement outside that lot, with the map gone and the HUD back.
+{
+  const door = lots[0];
+  const doorSpot = standingPoint(door);
+  await check(`the front door: the map opens on a building, Enter lands you outside it (${door.lot})`, async () => {
+    await open(`map=${door.lot}`);
+    const before = await call(() => ({
+      map: !!document.getElementById('overview'),
+      card: !!document.querySelector('#overview .ov-card.on'),
+      enter: document.querySelector('#overview [data-enter]')?.dataset.enter || null,
+    }));
+    const after = await evx(`(async () => {
+      window.__overview.enter(${JSON.stringify(door.lot)});
+      const t0 = Date.now();
+      while (document.getElementById('overview') && Date.now() - t0 < 8000) await new Promise((r) => setTimeout(r, 100));
+      window.__city.step(150, 1 / 60);
+      return { map: !!document.getElementById('overview'), pos: window.__player.pos.toArray().map((v) => +v.toFixed(2)),
+        hud: !!document.getElementById('hud') && !document.getElementById('hud').hidden,
+        cam: window.__city.camera.position.toArray().map((v) => +v.toFixed(1)) };
+    })()`, 30000);
+    return {
+      ok: before.map && before.card && before.enter === door.lot && !after.map && after.hud
+        && near([after.pos[0], after.pos[2]], [doorSpot.x, doorSpot.z], 0.5) && after.cam[1] < 8,
+      before, after, want: [+doorSpot.x.toFixed(2), +doorSpot.z.toFixed(2)],
+    };
+  }, { picture: true });
+}
+
 await check('embed keeps the title and the movement hint, drops the housekeeping', async () => {
   await open(`plot=${perma.slug}&embed=1`);
   const r = await call(() => { window.__city.step(30, 1 / 60); return { a: window.__city.audit(), pos: window.__player.pos.toArray() }; });
