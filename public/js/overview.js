@@ -55,7 +55,11 @@ const CSS = `
 @media (max-width: 640px) {
   #overview .ov-card { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; }
   #overview .ov-legend, #overview .ov-hint { display: none; }
+  #overview .ov-top { padding: 10px; }
+  #overview .ov-brand { padding: 8px 11px; }
   #overview .ov-brand b { font-size: 15px; }
+  #overview .ov-brand span { display: none; }
+  #overview .ov-btn { padding: 8px 12px; font-size: 12px; white-space: nowrap; }
 }
 @media (prefers-reduced-motion: reduce) { #overview { transition: none !important; } }
 `;
