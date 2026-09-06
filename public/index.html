@@ -181,6 +181,7 @@ import { createLightPool } from '/js/lights.js';
 import { attachPerfGuard } from '/js/perfguard.js';
 import { probeCoplanar, describeCoplanar } from '/js/depth-probe.mjs';
 import { PRESETS } from '/js/quality.js';
+import { mountOverview } from '/js/overview.js';
 
 const params = new URLSearchParams(location.search);
 // Tooling loads the page with ?headless=1: graphics pinned, the frame-rate
@@ -439,6 +440,45 @@ if (lot) {
   placeAt(world.spawn.x, world.spawn.z, world.spawn.yaw);
 }
 
+// The front door. A bare "/" opens on the map of the city, not in it: the
+// world loads underneath while the visitor reads the map, and Enter zooms the
+// map into a building as the camera swoops from above onto the pavement
+// outside it. Every other way in — a permalink, a lot, an embed, a venue, the
+// headless harness — still lands in the world at once. ?map=<lot id> opens
+// the map on that building's card (and is how the harness reaches it).
+const wantMap = !embed && !spawnPlot && !spawnLot && !venueRoute &&
+  (params.has('map') || (location.pathname === '/' && !location.search && !headless));
+let intro = null;                      // { t, dur, from } while the swoop runs
+const rigPos = new THREE.Vector3();    // where the rig put the camera, before the swoop moved it
+function startIntro() {
+  const fwd = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
+  intro = { t: 0, dur: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.01 : 1.7,
+    from: camera.position.clone().addScaledVector(fwd, -14).add(new THREE.Vector3(0, 46, 0)) };
+  rigPos.copy(camera.position);
+}
+// Before the sim: the rig never sees the swoop. After the rig has placed the
+// camera: render from the interpolated position instead, ease-out from high
+// above, and keep the rig's answer aside for the next frame's probe and
+// follow. Called by BOTH loops, so a stepped frame is the frame a visitor sees.
+const introRestore = () => { if (intro) camera.position.copy(rigPos); };
+function introApply(dt) {
+  if (!intro) return;
+  rigPos.copy(camera.position);
+  intro.t += dt;
+  const k = Math.min(1, intro.t / intro.dur);
+  const e = 1 - Math.pow(1 - k, 3);
+  camera.position.lerpVectors(intro.from, rigPos, e);
+  camera.lookAt(controls.target);
+  if (k >= 1) { camera.position.copy(rigPos); intro = null; }
+}
+if (wantMap) {
+  mountOverview({ world, manifest: street.manifest, focus: params.get('map'),
+    onEnter(target) {
+      if (target) placeAt(...outsideLot(target.lot));
+      startIntro();
+    } });
+}
+
 let loaded = 0;
 let cityReady = false;
 const t0 = performance.now();
@@ -526,6 +566,7 @@ let simTime = 0;
 window.__step = (frames = 60, dt = 1 / 60) => {
   for (let i = 0; i < frames; i++) {
     simTime += dt;
+    introRestore();
     player.update(dt, simTime);
     doors.update(dt, [player.pos, ...presence.positions]);
     venues.update(dt, player.pos, simTime);
@@ -537,6 +578,7 @@ window.__step = (frames = 60, dt = 1 / 60) => {
     // or a stepped frame is not the frame a visitor sees
     controls.update();
     player.updateCamera(dt);
+    introApply(dt);
   }
   presence.update(1 / 60, simTime);
   media.update(player.pos, frames * dt);
@@ -558,6 +600,7 @@ const clock = new THREE.Clock();
 renderer.info.autoReset = false;
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.05);
+  introRestore();
   const speed = player.update(dt, clock.elapsedTime);
   doors.update(dt, [player.pos, ...presence.positions]);
   venues.update(dt, player.pos, clock.elapsedTime);
@@ -568,6 +611,7 @@ function frame() {
   media.update(player.pos, dt);
   controls.update();
   player.updateCamera(dt);
+  introApply(dt);
   renderer.info.reset();
   composer.render();
   perf.tick(performance.now());
