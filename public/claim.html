@@ -273,7 +273,7 @@ go-ahead.</pre>
       ? (cats ? `It is free, on the road for ${cats}: a listing in one of those categories lands here or next door.`
         : 'It is free, on a road the city places by hand.')
       : held ? `It is taken (${held.name}).` : 'Check the id against the map.';
-    document.getElementById('lot-walk').href = '/lot/' + encodeURIComponent(want);
+    document.getElementById('lot-walk').href = '/lot/' + encodeURIComponent(want) + '/walk';
     box.style.display = 'block';
   }).catch(() => {});
 </script>

@@ -194,7 +194,7 @@ for (const v of manifest.vacant) {
   tr.children[0].textContent = v.lot;
   tr.children[1].textContent = v.address;
   tr.children[2].textContent = `x ${v.x}, z ${v.z}`;
-  tr.querySelector('.walk').href = `/lot/${encodeURIComponent(v.lot)}`;
+  tr.querySelector('.walk').href = `/lot/${encodeURIComponent(v.lot)}/walk`;
   tr.querySelector('.claim').href = `/claim?lot=${encodeURIComponent(v.lot)}`;
   tbody('vacant').append(tr);
 }
