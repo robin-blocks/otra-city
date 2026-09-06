@@ -94,7 +94,9 @@ show('why rejected', tally((r) => r.failed, (r) => r.outcome === 'rejected'),
 show('identity', tally((r) => r.owner));
 show('builder', tally((r) => r.builder));
 show('url tier', tally((r) => r.url_tier));
-show('transport', tally((r) => r.transport));
+show('transport', tally((r) => r.transport), 'template = the city built the shopfront');
+show('category', tally((r) => r.category));
+show('discovery_source', tally((r) => r.discovery_source), 'free text the submitter sent — the only way to tell a channel from a one-off');
 show('caller user-agent', tally((r) => r.caller?.['user-agent']));
 show('browser or bare API call', tally((r) => r.caller?.origin ? 'has an Origin (browser)' : 'no Origin (server-side call)'),
   '— the distinction that decides what the lesson is');

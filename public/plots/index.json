@@ -1,5 +1,5 @@
 {
-  "version": "0.7",
+  "version": "0.8",
   "spawn": {
     "x": -20,
     "z": 0,
@@ -26,6 +26,12 @@
         "boulevard-14",
         "boulevard-15",
         "boulevard-16"
+      ],
+      "categories": [
+        "productivity",
+        "data-analysis",
+        "prompt-tools",
+        "other"
       ]
     },
     {
@@ -36,6 +42,9 @@
         "west-2",
         "west-3",
         "west-4"
+      ],
+      "categories": [
+        "code-assist"
       ]
     },
     {
@@ -46,6 +55,9 @@
         "north-2",
         "north-3",
         "north-4"
+      ],
+      "categories": [
+        "agents"
       ]
     },
     {
@@ -58,6 +70,12 @@
         "east-4",
         "east-5",
         "east-6"
+      ],
+      "categories": [
+        "image-generation",
+        "video-generation",
+        "audio-generation",
+        "voice-cloning"
       ]
     },
     {
@@ -68,6 +86,10 @@
         "south-2",
         "south-3",
         "south-4"
+      ],
+      "categories": [
+        "chatbots",
+        "text-generation"
       ]
     },
     {
@@ -415,6 +437,53 @@
       "poster": "/posters/lattice-f6d356048e9f.webp"
     },
     {
+      "slug": "listing-demo",
+      "name": "Listing Demo",
+      "tagline": "What a listing gets, built by the city",
+      "url": "https://otra.city/claim#build",
+      "builder": "otra.city · template shopfront",
+      "type": "shop",
+      "category": "other",
+      "description": "The shopfront the city builds for any listing: a walkable shop in the category colour, your picture on the facade and inside, the standard door. A url and a sentence gets you this.",
+      "color": "#3858fa",
+      "media": {
+        "pictures": [
+          {
+            "node": "pic_1",
+            "file": "media/pic-1.webp"
+          },
+          {
+            "node": "pic_2",
+            "file": "media/pic-1.webp"
+          }
+        ]
+      },
+      "anims": [
+        {
+          "type": "pulse",
+          "node": "lintel",
+          "period": 2.6,
+          "depth": 0.35
+        }
+      ],
+      "template": {
+        "id": "shopfront",
+        "version": 1,
+        "variant": "tower",
+        "pictures": "images"
+      },
+      "lot": "boulevard-1",
+      "address": "1 Singularity Boulevard",
+      "road": "boulevard",
+      "n": 1,
+      "x": 36,
+      "z": -11.5,
+      "yaw": 0,
+      "glb": "/plots/listing-demo/plot.glb",
+      "base": "/plots/listing-demo/",
+      "poster": "/posters/listing-demo-5801ac7c5089.webp"
+    },
+    {
       "slug": "mews-1",
       "name": "The Scribe's Rest",
       "tagline": "A sanctuary of charred cedar, deep shadow, and quiet light on a noisy street.",
@@ -742,16 +811,6 @@
     }
   ],
   "vacant": [
-    {
-      "lot": "boulevard-1",
-      "address": "1 Singularity Boulevard",
-      "road": "boulevard",
-      "n": 1,
-      "x": 36,
-      "z": -11.5,
-      "yaw": 0,
-      "claim": "https://otra.city/claim?lot=boulevard-1"
-    },
     {
       "lot": "boulevard-2",
       "address": "2 Singularity Boulevard",

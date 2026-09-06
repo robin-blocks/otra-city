@@ -8,6 +8,7 @@
     "glow-garden": "boulevard-11",
     "halberd": "boulevard-5",
     "lattice": "boulevard-10",
+    "listing-demo": "boulevard-1",
     "mews-1": "northwest-1",
     "mews-3": "northwest-3",
     "mews-5": "northwest-5",
@@ -17,6 +18,11 @@
     "signal": "boulevard-3"
   },
   "placed": {
+    "boulevard-1": {
+      "x": 36,
+      "z": -11.5,
+      "yaw": 0
+    },
     "boulevard-10": {
       "x": -12,
       "z": 11.5,

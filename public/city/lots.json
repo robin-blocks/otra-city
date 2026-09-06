@@ -31,6 +31,12 @@
         "boulevard-14",
         "boulevard-15",
         "boulevard-16"
+      ],
+      "categories": [
+        "productivity",
+        "data-analysis",
+        "prompt-tools",
+        "other"
       ]
     },
     "west": {
@@ -41,6 +47,9 @@
         "west-2",
         "west-3",
         "west-4"
+      ],
+      "categories": [
+        "code-assist"
       ]
     },
     "north": {
@@ -51,6 +60,9 @@
         "north-2",
         "north-3",
         "north-4"
+      ],
+      "categories": [
+        "agents"
       ]
     },
     "east": {
@@ -63,6 +75,12 @@
         "east-4",
         "east-5",
         "east-6"
+      ],
+      "categories": [
+        "image-generation",
+        "video-generation",
+        "audio-generation",
+        "voice-cloning"
       ]
     },
     "south": {
@@ -73,6 +91,10 @@
         "south-2",
         "south-3",
         "south-4"
+      ],
+      "categories": [
+        "chatbots",
+        "text-generation"
       ]
     },
     "northwest": {

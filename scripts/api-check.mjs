@@ -19,7 +19,9 @@ import { createServer } from 'node:http';
 import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import handler from '../api/submit.mjs';
+import handler, { buildListing, deriveTagline } from '../api/submit.mjs';
+import { parseSiteMeta, imageKind } from '../lib/site-meta.mjs';
+import { pickLot } from '../public/js/city-map.mjs';
 import drain, { selectRecords, parseBatch } from '../api/log-drain.mjs';
 import { apexHost, sameSite, ownerKey, classifyUrl } from '../lib/submitter-host.mjs';
 
@@ -62,6 +64,11 @@ const api = await listen('localhost', (req, res) => handler(req, res));
 const SLUG = 'api-check-fixture';
 writeFileSync(join(pages, 'backlink.html'), `<!doctype html><a href="https://otra.city/s/${SLUG}">my plot</a>`);
 writeFileSync(join(pages, 'bare.html'), '<!doctype html><p>nothing here</p>');
+// a listing's page: the permalink for proof, and an og:image the way a site
+// declares one (the fixture host is http, so the fetch of it fails honestly)
+writeFileSync(join(pages, 'listing.html'), `<!doctype html><head><meta property="og:image" content="/og.png"></head>` +
+  `<a href="https://otra.city/s/${SLUG}">my plot</a>`);
+const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ff9f000200fe01fc3aa1660c0000000049454e44ae426082', 'hex');
 
 const post = async (body) => {
   const r = await fetch(`${api.origin}/api/plots/submit`, {
@@ -150,9 +157,73 @@ check('a real domain passes', classifyUrl('https://4dgsx.com').ok);
   check('a second lot for one owner warns, never rejects',
     !!json.result.duplicate && json.result.duplicate.ok === true && /WARN {2}duplicate/.test(json.report));
 }
+// --- a listing: no build of its own -------------------------------------------
+const listing = (over = {}) => ({
+  plot: { slug: SLUG, name: 'API CHECK', url: `${site.origin}/listing.html`, builder: 'api-check',
+    description: 'A directory listing under test: one sentence about what it does, long enough that the board needs a shorter line than this one.',
+    category: 'code-assist', ...over },
+  dry: true,
+});
 {
-  const { status, json } = await post({ plot: { slug: SLUG }, dry: true });
-  check('a bundle with no build is an error, not a crash', status === 400 && /glb_base64|glb_url/.test(json.error));
+  const { status, json } = await post(listing());
+  check('a listing with no build is accepted and built', status === 200 && json.accepted === true && json.build === 'template',
+    json.accepted ? '' : (json.report || json.error || '').split('\n').filter((l) => l.startsWith('FAIL')).join(' | '));
+  check('the city derives the board line from the description',
+    typeof json.plot?.tagline === 'string' && json.plot.tagline.length <= 80 && json.plot.tagline.endsWith('…'), json.plot?.tagline);
+  check('the stored plot records the template it was built with',
+    json.plot?.template?.id === 'shopfront' && typeof json.plot.template.variant === 'string' && json.plot.type === 'shop');
+  check('a listing lands on the road for its category',
+    /^west-/.test(json.lot || '') && json.result.lot.mode === 'category', `${json.lot} ${json.result?.lot?.mode}`);
+  check('an og:image the city cannot fetch is a warning, never a rejection',
+    json.accepted === true && /WARN {2}pictures/.test(json.report) && json.result.shopfront.pictures === 0);
+  check('the report says the city built it', /PASS {2}shopfront {6}built by the city/.test(json.report));
+  check('it hands back the listing page', json.lot_url === `https://otra.city/lot/${json.lot}`);
+}
+{
+  const { json } = await post(listing({ category: 'agents', lot: 'boulevard-2' }));
+  check('a listing cannot pick its lot — its category places it',
+    json.accepted === true && /^north-/.test(json.lot || '') && /ignored/.test(json.result.lot.detail), `${json.lot}`);
+}
+{
+  const { json } = await post(listing({ category: 'nope' }));
+  const c = json.result.identity.checks.find((x) => x.name === 'category');
+  check('an unknown category is a rejection that lists the real ones',
+    json.accepted === false && c.ok === false && /image-generation/.test(c.detail));
+}
+{
+  // sent inside the plot AND at the top level: only the top-level one is
+  // read, and neither reaches the published plot
+  const orig = console.log;
+  let line = null;
+  console.log = (...a) => { if (String(a[0]).startsWith('SUBMIT ')) line = JSON.parse(String(a[0]).slice(7)); orig(...a); };
+  const { json } = await post({ ...listing({ discovery_source: 'smuggled' }), discovery_source: 'api-check suite' });
+  console.log = orig;
+  check('discovery_source is logged, capped, and never published',
+    line?.discovery_source === 'api-check suite' && line?.transport === 'template' && line?.category === 'code-assist' &&
+    json.plot.discovery_source === undefined, JSON.stringify({ logged: line?.discovery_source, published: json.plot?.discovery_source }));
+}
+{
+  // the picture path, with a fetcher the suite controls: one image goes on the
+  // facade AND the wall inside; a non-image is skipped with a note
+  const plot = { slug: SLUG, name: 'X', url: 'https://example.com', builder: 'x', category: 'agents', description: 'd',
+    images: ['https://example.com/a.png', 'https://example.com/not-an-image'] };
+  const built = await buildListing(plot, { fetchMeta: false, fetchImage: async (u) => (u.endsWith('.png') ? PNG : Buffer.from('<svg/>')) });
+  check('a listing\'s own images go on the building', built.pictures === 1 && built.source === 'images' &&
+    plot.media.pictures.map((p) => p.node).join(',') === 'pic_1,pic_2' && Object.keys(built.media)[0] === 'pic-1.png');
+  check('a non-image url is skipped with a note, not an error', built.notes.length === 1 && /not a png/.test(built.notes[0]));
+  check('images[] is consumed, not published', plot.images === undefined);
+}
+check('the tagline is cut at a word', deriveTagline('word '.repeat(30)).length <= 80 && !/\s…$/.test(deriveTagline('word '.repeat(30))));
+check('a short description is the tagline as is', deriveTagline('Short and sweet.') === 'Short and sweet.');
+check('og:image is read whatever the attribute order',
+  parseSiteMeta('<meta content="/x.png" property="og:image">', 'https://a.com/p/').image === 'https://a.com/x.png');
+check('twitter:image is the fallback', parseSiteMeta('<meta name="twitter:image" content="https://c.dn/t.jpg">', 'https://a.com').image === 'https://c.dn/t.jpg');
+check('a picture is known by its bytes, not its name', imageKind(PNG) === 'png' && imageKind(Buffer.from('<svg/>')) === null);
+{
+  const plat = JSON.parse(readFileSync(join(root, 'public/city/lots.json')));
+  check('the city may still ask for a lot', pickLot(plat, [], { category: 'agents', requested: 'boulevard-1', mayRequest: true }).why === 'requested');
+  check('a listing\'s request is not honoured', pickLot(plat, [], { category: 'agents', requested: 'boulevard-1' }).why === 'category');
+  check('a category with no road falls through, and says so', pickLot(plat, [], { category: 'nope' }).why === 'category-unrouted');
 }
 {
   const r = await fetch(`${api.origin}/api/plots/submit`);

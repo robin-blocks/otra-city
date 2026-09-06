@@ -8,6 +8,12 @@ is up to you — Blender is recommended but not required; see
 `plot.glb` + `plot.json` (identity, media bindings, animation declarations) +
 optional media files — see [`submission.md`](submission.md).
 
+> **You may not need any of this.** A listing — a url, a name, a sentence and
+> a category, sent to the same endpoint with no build — gets a shopfront the
+> city builds, on the road for its category. See
+> [otra.city/claim](https://otra.city/claim). This brief is for building your
+> own, which replaces the city's building on the same lot whenever you like.
+
 ## The world you're building in
 
 A night city, permanently. Ambient light is near-black; **emissive surfaces
@@ -72,13 +78,17 @@ free lot in the order they are offered (nearest to City Hall first), each with
 its `lot` id, `address` and world position — or look at
 [otra.city/map](https://otra.city/map).
 
-- **Ask for one**: `"lot": "boulevard-14"` in your `plot.json`. The dry run's
-  `lot` line says whether it is free. It is yours if nobody takes it in the
-  minute between your dry run and the merge; if someone does, you get the
-  nearest free lot instead and `GET /api/plots/<slug>` reports the address you
-  actually got (`position.lot`, `position.address`).
-- **Leave it out** and you get `vacant[0]`: the first lot on offer, which is
-  the nearest free one to City Hall.
+- **Your category places you.** Roads are categories (`roads[].categories`
+  in `/api/plots`): a plot lands on the first free lot of a road serving its
+  `category`, nearest the centre first, so a road reads as one kind of thing.
+  The dry run's `lot` line names the lot you would get. If somebody takes it
+  in the minute between your dry run and the merge, the same rule gives the
+  next one and `GET /api/plots/<slug>` reports the address you actually got
+  (`position.lot`, `position.address`). A category with no road, or a full
+  one, falls through to the nearest free lot anywhere, and the report says so.
+- **Asking for a lot by id** (`"lot": "boulevard-14"`) is honoured for the
+  city's own plots only — exhibitions, venues, demonstrations, whose url is on
+  otra.city. From anyone else it is reported and ignored.
 - **A street can be set aside** — the city occasionally reserves one for an
   event. Its lots are listed like any other, and asking for one by id works
   like any other, but they sort to the END of `vacant[]` so they are never

@@ -245,7 +245,10 @@ export function platLots(map, venues = [], trace = null) {
       }
     }
     roads[road.id] = { id: road.id, name: road.name, lots: ids,
-      ...(road.lots.by_request ? { byRequest: true } : {}) };
+      ...(road.lots.by_request ? { byRequest: true } : {}),
+      // the directory categories this road takes listings for — the one
+      // per-road fact the allocator needs, carried into the plat like byRequest
+      ...(Array.isArray(road.categories) && road.categories.length ? { categories: road.categories.slice() } : {}) };
   }
   return { roads, lots };
 }
@@ -264,6 +267,42 @@ export function rankFree(plat, takenIds, centre = [0, 0]) {
     .sort((a, b) => last(a.l) - last(b.l) || a.d - b.d
       || a.l.road.localeCompare(b.l.road) || a.l.n - b.l.n)
     .map((e) => e.l);
+}
+
+// The free lots on the roads that serve a category, in the same order
+// rankFree would offer them — so a listing lands beside its kind. Empty when
+// no road serves the category, or when every lot on those roads is held:
+// that is the signal to grow the map (a road for the category, added at the
+// far end of the network), and until then pickLot falls through to the
+// nearest free lot anywhere.
+export function rankForCategory(plat, takenIds, category, centre = [0, 0]) {
+  if (!category) return [];
+  const roads = new Set(Object.values(plat.roads || {})
+    .filter((r) => Array.isArray(r.categories) && r.categories.includes(category))
+    .map((r) => r.id));
+  if (!roads.size) return [];
+  return rankFree(plat, takenIds, centre).filter((l) => roads.has(l.road));
+}
+
+// Where a new plot stands. ONE rule for the dry run, CI's allocation and the
+// registry, so what the report predicted is what the city does:
+//   * a `requested` lot is honoured only when the caller may ask for one
+//     (the city's own lots — exhibitions, venues, demos — are placed by hand;
+//     a listing is placed by its category, so the streets stay legible)
+//   * otherwise the first free lot on a road serving `category`
+//   * otherwise the nearest free lot to the centre (with the reason)
+// Returns { id, why } or null when the map is full.
+export function pickLot(plat, takenIds, { category = null, requested = null, mayRequest = false, centre = [0, 0] } = {}) {
+  const taken = new Set(takenIds);
+  if (requested && mayRequest && plat.lots[requested] && !taken.has(requested)) {
+    return { id: requested, why: 'requested' };
+  }
+  const byCat = rankForCategory(plat, taken, category, centre)[0];
+  if (byCat) return { id: byCat.id, why: 'category' };
+  const any = rankFree(plat, taken, centre)[0];
+  if (!any) return null;
+  const served = Object.values(plat.roads || {}).some((r) => r.categories?.includes(category));
+  return { id: any.id, why: !category ? 'nearest' : served ? 'category-full' : 'category-unrouted' };
 }
 
 // ---- the walkable fence --------------------------------------------------
