@@ -1,0 +1,33 @@
+{
+  "slug": "pasteguard",
+  "name": "PasteGuard",
+  "url": "https://pasteguard-exp2.netlify.app",
+  "description": "Client-side scanner for API keys, private keys, tokens, and PII before pasting into AI chats. Nothing uploaded.",
+  "category": "productivity",
+  "builder": "Sebastian Johnson / experiment-2",
+  "pricing": "free",
+  "tags": [
+    "security",
+    "privacy",
+    "secrets",
+    "pii",
+    "chatgpt"
+  ],
+  "tagline": "Client-side scanner for API keys, private keys, tokens, and PII before pasting…",
+  "type": "shop",
+  "anims": [
+    {
+      "type": "pulse",
+      "node": "lintel",
+      "period": 2.6,
+      "depth": 0.35
+    }
+  ],
+  "color": "#faa938",
+  "template": {
+    "id": "shopfront",
+    "version": 1,
+    "variant": "awning",
+    "pictures": "none"
+  }
+}
