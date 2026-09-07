@@ -112,7 +112,10 @@ the next milestone (server-rendered, crawlable, JSON-LD); until they land,
   visitor as a green arrow and Esc or Resume walking returns them to the
   same spot. On phones a tap snaps to the nearest building within a finger's
   reach, the static picture is cached per zoom so pan and pinch are a blit,
-  and the 3D loop stops while the map is up.
+  and the 3D loop stops while the map is up. In the world a phone gets a
+  two-line panel — where you are, and how to move — with the render stats,
+  the housekeeping links and the longer half of the hint behind a "?"; the
+  Map button is a 44 px target beside it, never under it.
 - **The PromptFrenzy relay.** Their submit handler could relay every verified
   listing to otra.city server-to-server (the payload is a superset), which
   turns 100% of their supply into listings here with zero agent work. The

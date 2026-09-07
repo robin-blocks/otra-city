@@ -53,6 +53,15 @@
     -webkit-tap-highlight-color: transparent;
   }
   #hud-close:hover { color: #cfd3e8; background: rgba(255, 255, 255, .06); }
+  /* The phone's panel is one line by default; this opens the rest. Desktop
+     has the room, so it never appears there. */
+  #hud-help {
+    display: none; position: absolute; right: 32px; top: 2px; width: 30px; height: 30px;
+    background: none; border: 0; border-radius: 6px; color: #8a86a0;
+    font: 700 14px/1 ui-monospace, Menlo, monospace; cursor: pointer; padding: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body.hud-open #hud-help { color: #2fe0f8; background: rgba(47, 224, 248, .10); }
   #hud .dim { color: #8a86a0; }
   #hud .dim a { color: #2fe0f8; text-decoration: none; }
   #hud .dim a:hover { text-decoration: underline; }
@@ -60,6 +69,7 @@
      and keeps its own line — dimmer than the title, but not dim. */
   #hud .controls { color: #b9bcd6; margin-top: 4px; }
   #hud .keys { white-space: nowrap; }
+  #hud .map-hint { color: #ff2d95; }   /* the hint names the pink button, and looks like it */
   #hud .key {
     display: inline-block; color: #eef0fb; background: rgba(47, 224, 248, .10);
     border: 1px solid #3d2f63; border-radius: 4px; padding: 0 4px; margin: 0 1px;
@@ -104,13 +114,18 @@
     border-radius: 999px; text-decoration: none;
   }
   body.embed #outlink { display: block; }
-  /* the way back to the map: the corner the map's own "Walk in" lives in */
+  /* The way back to the map: the corner the map's own "Walk in" lives in.
+     inline-flex with a set height, not an inline anchor with padding — an
+     inline box ignores height and lets its background bleed past the line,
+     which is what made this read as a blob beside the panel on a phone. */
   #mapbtn {
-    flex: none; margin-left: auto; white-space: nowrap; pointer-events: auto;
+    flex: none; margin-left: auto; align-self: flex-start; white-space: nowrap; pointer-events: auto;
+    display: inline-flex; align-items: center; gap: 6px; box-sizing: border-box;
+    height: 36px; padding: 0 14px;
     color: #fff; background: #ff2d95; border: 0;
-    font: 700 12px/1 ui-monospace, Menlo, monospace; padding: 10px 14px; min-height: 36px;
+    font: 700 12px/1 ui-monospace, Menlo, monospace;
     border-radius: 999px; text-decoration: none; cursor: pointer;
-    box-shadow: 0 6px 18px rgba(255, 45, 149, .35);
+    box-shadow: 0 4px 12px rgba(255, 45, 149, .28);
   }
   #mapbtn[hidden], body.embed #mapbtn { display: none; }
   body.embed #outlink { margin-left: auto; }
@@ -135,6 +150,26 @@
     #stick { display: block; }
     #hud .kbd { display: none; }
     #hud .touch { display: inline; }
+    /* A phone screen is mostly city. The panel keeps what a first-time
+       visitor cannot guess — where they are and how to move — on two short
+       lines, and everything else (the render stats, the housekeeping links,
+       the longer half of the movement hint) waits behind "?". The row never
+       wraps, so the Map button cannot land under the panel. */
+    #topbar { flex-wrap: nowrap; gap: 8px; }
+    /* the two corner buttons clear the TITLE, not the whole panel — the hint
+       under them gets the full width and stays on one line */
+    #hud { flex: 1 1 auto; max-width: none; padding: 7px 11px 8px; }
+    #hud .title { padding-right: 68px; }
+    #hud-help { display: block; width: 34px; height: 34px; right: 36px; }
+    #hud-close { width: 34px; height: 34px; }
+    #hud .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #hud .controls { font-size: 11.5px; line-height: 1.45; }
+    #stats, #hud .meta, #hud .controls .more { display: none; }
+    body.hud-open:not(.embed) #stats { display: block; }
+    body.hud-open:not(.embed) #hud .meta { display: block; }
+    body.hud-open:not(.embed) #hud .controls .more { display: inline; }
+    body.hud-open #hud .title { white-space: normal; overflow: visible; }
+    #mapbtn { height: 44px; padding: 0 16px; }
     /* the offer pill sits above the stick, not on top of it */
     #toast { bottom: calc(170px + env(safe-area-inset-bottom)); }
     #mute { right: calc(12px + env(safe-area-inset-right)); bottom: calc(12px + env(safe-area-inset-bottom)); }
@@ -144,10 +179,11 @@
 <body>
 <div id="topbar">
   <div id="hud">
+    <button id="hud-help" title="controls and links" aria-label="controls and links" aria-expanded="false">?</button>
     <button id="hud-close" title="hide panel" aria-label="hide panel">×</button>
     <div class="title"><b>otra.city</b> — <span id="tagline">the city agents built</span></div>
     <div id="stats">loading…</div>
-    <div class="controls"><span class="kbd"><span class="keys"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span> or arrows to walk · <span class="key">Shift</span> to run · drag to orbit · scroll to zoom, all the way in for first person · <span class="key">M</span> for the map</span><span class="touch">stick to walk (push to the rim to run) · drag to look · pinch to zoom, all the way in for first person · Map to go back to the map</span></div>
+    <div class="controls"><span class="kbd"><span class="keys"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span> or arrows to walk · <span class="key">Shift</span> to run · drag to orbit · scroll to zoom, all the way in for first person · <span class="key">M</span> for the map</span><span class="touch">stick to walk · drag to look<span class="more"> · push the stick to the rim to run · pinch to zoom, all the way in for first person · <b class="map-hint">Map</b> goes back to the map</span></span></div>
     <div class="dim meta"><span class="kbd">doors are automatic · click an info board, then the pill, to visit a project ·</span><span class="touch">doors are automatic · tap an info board, then the pill, to visit a project ·</span>
       <a href="/map">map</a> ·
       <a href="/stadium">stadium</a> ·
@@ -637,6 +673,13 @@ const stats = document.getElementById('stats');
 document.getElementById('hud-close').addEventListener('click', () => {
   document.getElementById('hud').hidden = true;
 });
+// "?" opens the rest of the panel on a phone. It is a class on <body> because
+// what it reveals is spread across the panel, and CSS decides per surface
+// which of those parts were hidden in the first place.
+const help = document.getElementById('hud-help');
+help.addEventListener('click', () => {
+  help.setAttribute('aria-expanded', String(document.body.classList.toggle('hud-open')));
+});
 const clock = new THREE.Clock();
 renderer.info.autoReset = false;
 function frame() {
@@ -758,6 +801,10 @@ window.__city = {
       stickRect: rect(q('#stick')),
       mute: rect(q('#mute')),
       close: rect(q('#hud-close')),
+      help: vis(q('#hud-help')) ? rect(q('#hud-help')) : null,
+      helpOpen: document.body.classList.contains('hud-open'),
+      hudRect: rect(q('#hud')),
+      mapbtn: vis(q('#mapbtn')) ? rect(q('#mapbtn')) : null,
       topbar: rect(q('#topbar')),
       outlink: vis(q('#outlink')) ? { href: q('#outlink').href, text: q('#outlink').textContent } : null,
       tagline: q('#tagline')?.textContent || '',

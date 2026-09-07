@@ -517,6 +517,47 @@ await check('phone HUD: the stick is there, in view, and the hint says so', asyn
   };
 }, { picture: true });
 
+// The phone panel used to fill nearly half the screen with render stats and
+// housekeeping prose, and the Map button — an inline anchor, so its height was
+// ignored — wrapped onto a second row and painted over the panel's corner.
+// Both are asserted here because both were visible on a real phone and green
+// in CI: what the check did not measure, it could not see.
+await check('phone HUD: one short panel, the Map button beside it, nothing on top of anything', async () => {
+  const a = await call(() => window.__city.audit());
+  const overlaps = (p, q) => !!p && !!q && !(p.x + p.w <= q.x || q.x + q.w <= p.x || p.y + p.h <= q.y || q.y + q.h <= p.y);
+  const inView = (r) => !!r && r.x >= 0 && r.y >= 0 && r.x + r.w <= a.viewport[0] + 1 && r.y + r.h <= a.viewport[1] + 1;
+  const share = a.hudRect ? a.hudRect.h / a.viewport[1] : 1;
+  return {
+    // collapsed: the city gets the screen, and the panel still says how to move
+    ok: share <= 0.2 && !a.stats && !a.meta && a.controls && /walk/i.test(a.controlsText)
+      // the way back is a real touch target, in view, clear of the panel
+      && !!a.mapbtn && a.mapbtn.h >= 44 && inView(a.mapbtn) && !overlaps(a.mapbtn, a.hudRect)
+      // and the rest is one tap away
+      && !!a.help && a.help.h >= 34,
+    sharePct: Math.round(share * 100), hud: a.hudRect, map: a.mapbtn, help: a.help,
+    stats: a.stats, meta: a.meta, controls: a.controlsText,
+  };
+}, { picture: true });
+
+await check('phone HUD: "?" opens the rest and closes it again', async () => {
+  const opened = await call(() => {
+    document.getElementById('hud-help').click();
+    const a = window.__city.audit();
+    return { open: a.helpOpen, stats: a.stats, meta: a.meta, text: a.controlsText,
+      aria: document.getElementById('hud-help').getAttribute('aria-expanded') };
+  });
+  const closed = await call(() => {
+    document.getElementById('hud-help').click();
+    const a = window.__city.audit();
+    return { open: a.helpOpen, stats: a.stats, meta: a.meta, share: a.hudRect.h / a.viewport[1] };
+  });
+  return {
+    ok: opened.open && opened.stats && opened.meta && opened.aria === 'true' && /pinch/i.test(opened.text)
+      && !closed.open && !closed.stats && !closed.meta && closed.share <= 0.2,
+    opened, closed,
+  };
+});
+
 // back to the desk before anything else measures
 await page.send('Emulation.setEmulatedMedia', { features: [] }).catch(() => {});
 await page.send('Emulation.setTouchEmulationEnabled', { enabled: false });
