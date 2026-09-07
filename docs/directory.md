@@ -106,7 +106,13 @@ the next milestone (server-rendered, crawlable, JSON-LD); until they land,
   above onto the pavement outside it (`public/js/overview.js`, the swoop in
   `index.html`). `?map=<lot id>` opens on a card. Every deep link
   (`/s/<slug>`, `/lot/<id>/walk`, `/embed`, venues, the harness) lands in
-  the world at once, as before.
+  the world at once, as before. The way back is the game convention: a Map
+  pill in the corner the map's own Walk in occupies, the M key, and the
+  browser's Back after entering from the map; the reopened map shows the
+  visitor as a green arrow and Esc or Resume walking returns them to the
+  same spot. On phones a tap snaps to the nearest building within a finger's
+  reach, the static picture is cached per zoom so pan and pinch are a blit,
+  and the 3D loop stops while the map is up.
 - **The PromptFrenzy relay.** Their submit handler could relay every verified
   listing to otra.city server-to-server (the payload is a superset), which
   turns 100% of their supply into listings here with zero agent work. The

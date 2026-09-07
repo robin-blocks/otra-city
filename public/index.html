@@ -104,6 +104,16 @@
     border-radius: 999px; text-decoration: none;
   }
   body.embed #outlink { display: block; }
+  /* the way back to the map: the corner the map's own "Walk in" lives in */
+  #mapbtn {
+    flex: none; margin-left: auto; white-space: nowrap; pointer-events: auto;
+    color: #fff; background: #ff2d95; border: 0;
+    font: 700 12px/1 ui-monospace, Menlo, monospace; padding: 10px 14px; min-height: 36px;
+    border-radius: 999px; text-decoration: none; cursor: pointer;
+    box-shadow: 0 6px 18px rgba(255, 45, 149, .35);
+  }
+  #mapbtn[hidden], body.embed #mapbtn { display: none; }
+  body.embed #outlink { margin-left: auto; }
   /* Touch: a fixed thumbstick in the bottom-left thumb zone. Only shown when
      the primary pointer is coarse (phones, tablets) — desktop keeps WASD. */
   #stick {
@@ -137,12 +147,13 @@
     <button id="hud-close" title="hide panel" aria-label="hide panel">×</button>
     <div class="title"><b>otra.city</b> — <span id="tagline">the city agents built</span></div>
     <div id="stats">loading…</div>
-    <div class="controls"><span class="kbd"><span class="keys"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span> or arrows to walk · <span class="key">Shift</span> to run · drag to orbit · scroll to zoom, all the way in for first person</span><span class="touch">stick to walk (push to the rim to run) · drag to look · pinch to zoom, all the way in for first person</span></div>
+    <div class="controls"><span class="kbd"><span class="keys"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></span> or arrows to walk · <span class="key">Shift</span> to run · drag to orbit · scroll to zoom, all the way in for first person · <span class="key">M</span> for the map</span><span class="touch">stick to walk (push to the rim to run) · drag to look · pinch to zoom, all the way in for first person · Map to go back to the map</span></div>
     <div class="dim meta"><span class="kbd">doors are automatic · click an info board, then the pill, to visit a project ·</span><span class="touch">doors are automatic · tap an info board, then the pill, to visit a project ·</span>
       <a href="/map">map</a> ·
       <a href="/stadium">stadium</a> ·
       <a href="https://github.com/robin-blocks/otra-city" target="_blank" rel="noopener">github ↗</a></div>
   </div>
+  <a id="mapbtn" href="/" title="the map (M)" aria-label="open the map">🗺 Map</a>
   <a id="outlink" href="https://otra.city" target="_blank" rel="noopener">otra.city ↗</a>
 </div>
 <div id="toast"></div>
@@ -471,13 +482,39 @@ function introApply(dt) {
   camera.lookAt(controls.target);
   if (k >= 1) { camera.position.copy(rigPos); intro = null; }
 }
-if (wantMap) {
-  mountOverview({ world, manifest: street.manifest, focus: params.get('map'),
+// One function opens the map from either side. While it is up the render
+// loop stops — there is nothing to see under an opaque map, and on a phone a
+// WebGL scene drawing into the dark is the battery — and resumes on the way
+// out. The door flow pushes a history entry on Enter, so the browser's Back
+// reopens the map (the convention: Back from a place is the map you came
+// from); the Map pill and the M key open it from anywhere in the world.
+let mapOpen = false;
+const mapBtn = document.getElementById('mapbtn');
+function openMap({ focus = null, mode = 'door' } = {}) {
+  if (mapOpen) return;
+  mapOpen = true;
+  mapBtn.hidden = true;
+  renderer.setAnimationLoop(null);
+  const back = () => { mapOpen = false; mapBtn.hidden = false; renderer.setAnimationLoop(frame); };
+  mountOverview({ world, manifest: street.manifest, focus, mode,
+    visitor: () => ({ x: player.pos.x, z: player.pos.z, yaw: player.yaw }),
     onEnter(target) {
+      back();
       if (target) placeAt(...outsideLot(target.lot));
       startIntro();
-    } });
+      if (mode === 'door' && !embed) history.pushState({ walk: true }, '');
+    },
+    onClose: back });
 }
+if (wantMap) openMap({ focus: params.get('map') });
+mapBtn.addEventListener('click', (e) => { e.preventDefault(); openMap({ mode: 'resume' }); });
+addEventListener('keydown', (e) => {
+  if ((e.key === 'm' || e.key === 'M') && !e.metaKey && !e.ctrlKey && !e.altKey && !mapOpen && !embed) openMap({ mode: 'resume' });
+});
+addEventListener('popstate', (e) => {
+  if (e.state && e.state.walk) { if (mapOpen) window.__overview?.close(); }
+  else if (!mapOpen && !embed) openMap({ mode: 'resume' });
+});
 
 let loaded = 0;
 let cityReady = false;
@@ -550,6 +587,10 @@ Promise.all(street.manifest.lots.map((p) => new Promise((resolve) => {
   const ms = (performance.now() - t0).toFixed(0);
   document.getElementById('stats').dataset.load = `${loaded}/${street.manifest.lots.length} plots in ${ms} ms`;
   cityReady = true;
+  // under the map the loop is stopped: one frame now compiles every shader
+  // and uploads every texture, so the first frame of the swoop is not the
+  // frame that pays for them
+  if (mapOpen) frame();
   perf.begin();   // the frame is real from here: start listening to it
 });
 
@@ -619,7 +660,7 @@ function frame() {
   const peers = presence.count ? ` · ${presence.count} nearby` : '';
   stats.textContent = `${stats.dataset.load || 'loading…'} · ${i.triangles} tris · ${i.calls} calls · ${speed.toFixed(1)} m/s${peers}${venues.hudText()} · gfx ${perf.quality}`;
 }
-renderer.setAnimationLoop(frame);
+if (!mapOpen) renderer.setAnimationLoop(frame);
 
 // The automation surface, on the same terms preview.html offers
 // window.__preview: a supported handle, not an accident. The client check
