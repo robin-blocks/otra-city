@@ -389,7 +389,22 @@ export function mountOverview({ world, manifest, focus = null, onEnter, onClose 
   function closeCard() { selected = null; card.classList.remove('on'); draw(); }
 
   // --- leaving -----------------------------------------------------------------
+  // The zoom is decoration; the handover is not. requestAnimationFrame only
+  // runs while the browser is drawing frames, and this overlay is exactly what
+  // stops it doing so: the moment an opaque full-screen layer fades off a
+  // WebGL canvas that is not currently presenting (the render loop is parked
+  // while the map is up), a surface that composites on demand — an occluded or
+  // throttled tab, and headless Chrome, which is how the walkthrough sees the
+  // front door — can stop issuing frames altogether. The animation then hangs
+  // one frame in, the map is never removed, and the visitor is left standing on
+  // the pavement behind a map they cannot get out of.
+  //
+  // So the clock owns both moments and rAF owns neither: the world takes over
+  // at 30% and the map removes itself at the end whether or not a single frame
+  // was drawn in between. When frames do flow the timings are the ones they
+  // always were, and the zoom rides along on top.
   let leaving = false;
+  let gone = false;
   function enter(lotId) {
     if (leaving) return;
     leaving = true;
@@ -402,17 +417,25 @@ export function mountOverview({ world, manifest, focus = null, onEnter, onClose 
     let told = false;
     clearTimeout(staticTimer);
     root.style.transition = `opacity ${Math.max(200, dur * 0.6)}ms ease-in ${Math.round(dur * 0.35)}ms`;
+    const handOver = () => {
+      if (told) return;
+      told = true;
+      root.style.opacity = '0';
+      onEnter?.(lot ? { id: lot.id, lot } : null);
+    };
     const tick = (now) => {
+      if (gone) return;
       const k = dur ? Math.min(1, (now - t0) / dur) : 1;
       const e = k * k * (3 - 2 * k);
       view.cx = from.cx + (to.cx - from.cx) * e; view.cz = from.cz + (to.cz - from.cz) * e;
       view.s = from.s * Math.pow(to.s / from.s, e);
       draw();
-      if (!told && k >= 0.3) { told = true; root.style.opacity = '0'; onEnter?.(lot ? { id: lot.id, lot } : null); }
+      if (k >= 0.3) handOver();
       if (k < 1) requestAnimationFrame(tick);
-      else setTimeout(destroy, Math.max(0, dur * 0.65));
     };
     requestAnimationFrame(tick);
+    setTimeout(handOver, Math.max(0, dur * 0.3));
+    setTimeout(destroy, Math.max(0, dur * 1.65));
   }
   // back to walking, exactly where the visitor stood — no zoom, a short fade
   function close() {
@@ -424,6 +447,8 @@ export function mountOverview({ world, manifest, focus = null, onEnter, onClose 
     setTimeout(destroy, 190);
   }
   function destroy() {
+    if (gone) return;
+    gone = true;
     clearTimeout(staticTimer);
     root.remove(); style.remove();
     removeEventListener('resize', resize);
