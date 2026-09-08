@@ -4,6 +4,25 @@ Code and assets this repository carries that were written elsewhere. Their
 licences are reproduced or pointed to here because the vendored copies do not
 always carry the notice themselves.
 
+## What the MIT licence covers
+
+`LICENSE` (MIT) covers the code and assets written for otra.city: the client,
+the api, lib, scripts, server, docs, the map, and the city's own buildings —
+including `public/venues/stadium/*.glb`, which `poc/stadium/build.py` generates
+from scratch with a fixed seed.
+
+It does **not** cover:
+
+- **`public/plots/**` — submitted plots.** Every folder there but the city's
+  own is a third party's model, media and copy, submitted through
+  `/api/plots/submit` so the city could display it. Those files stay their
+  submitter's; otra.city hosts, renders and links them, and nothing here
+  relicenses them or transfers ownership. Removal is a request to Robin.
+- **Match content in the stadium.** RFL bundles are CC BY 4.0 and are streamed
+  from their CDN at runtime; none of it is committed to this repository.
+- **The vendored and ported third-party code below**, which keeps its own
+  licence.
+
 ## three.js (vendored at `public/vendor/three/`, also a dependency)
 
 Copyright © 2010-2026 three.js authors — https://github.com/mrdoob/three.js

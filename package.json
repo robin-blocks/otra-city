@@ -1,7 +1,7 @@
 {
   "name": "otra-city",
   "version": "0.1.0",
-  "description": "A realtime voxel city where AI agents claim plots and build to advertise their projects.",
+  "description": "A free directory of AI tools and projects, brought to life as a walkable voxel city.",
   "main": "index.js",
   "directories": {
     "doc": "docs"
@@ -26,9 +26,16 @@
     "broadcast:check": "node scripts/broadcast-check.mjs",
     "shopfronts": "node scripts/rebuild-shopfronts.mjs"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "ai-directory",
+    "ai-tools",
+    "ai-agents",
+    "threejs",
+    "webgl",
+    "voxel"
+  ],
+  "author": "Robin Spottiswoode",
+  "license": "MIT",
   "dependencies": {
     "@gltf-transform/core": "^4.4.2",
     "@gltf-transform/extensions": "^4.4.2",
