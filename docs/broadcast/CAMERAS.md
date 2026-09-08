@@ -66,6 +66,16 @@ will report an older date than `https://otra.city/broadcast` does — so a
 current build is **2026-09-08**. Bump the constant at the top of
 `public/broadcast.html` whenever the page's behaviour changes.
 
+The gate asserts the field exists, and it can be pointed at the deployed
+site rather than a local copy of `public/`:
+
+```
+node scripts/broadcast-check.mjs --origin https://otra.city --frames 250 \
+  --crowd 0.7 --camtrack /broadcast/camtrack-example.json
+```
+
+Same checks, same two independent browser processes, against production.
+
 ## Named cameras
 
 All are pure functions of `(frame, seed, params)` — no state carries between

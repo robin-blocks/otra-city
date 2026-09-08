@@ -13,6 +13,12 @@
 //   node scripts/broadcast-check.mjs [--frames 250] [--camera gantry]
 //                                    [--bundle <url>] [--out report.json]
 //                                    [--shots dir] [--gpu]
+//                                    [--origin https://otra.city]
+//
+// `--origin` points the same gate at a deployed site instead of serving
+// public/ locally — so "is production the build we described?" is a command
+// with a PASS line, not a comparison of memories. Everything else, the two
+// independent processes included, runs unchanged against it.
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { serve } from '../lib/static-server.mjs';
@@ -29,6 +35,7 @@ const CROWD = arg('crowd');
 const CAMTRACK = arg('camtrack');
 const SHOTS = arg('shots');
 const out = arg('out');
+const ORIGIN = (arg('origin') || '').replace(/\/+$/, '') || null;
 
 const checks = [];
 const check = (name, ok, detail = '') => {
@@ -39,7 +46,7 @@ const check = (name, ok, detail = '') => {
 
 /** Open /broadcast in its own browser and expose the page's contract. */
 async function openBroadcast({ width = 1280, height = 720 } = {}) {
-  const { server, origin } = await serve(PUBLIC_DIR);
+  const { server, origin } = ORIGIN ? { server: null, origin: ORIGIN } : await serve(PUBLIC_DIR);
   const chrome = await launchChrome({ width, height, gpu: flag('gpu') });
   const problems = [];
   chrome.onConsole((type, text) => { if (type === 'error') problems.push(text); });
@@ -78,15 +85,15 @@ async function openBroadcast({ width = 1280, height = 720 } = {}) {
       return h.toString(16).padStart(8, '0');
     })()`),
     resources: () => ev(`performance.getEntriesByType('resource').length`),
-    async close() { await chrome.close().catch(() => {}); server.close(); },
+    async close() { await chrome.close().catch(() => {}); server?.close(); },
   };
 }
 
 console.log(`broadcast check — camera ${CAMERA}, ${FRAMES} frames${BUNDLE ? `, bundle ${BUNDLE}` : ', ambient'}`
-  + `${CROWD ? `, crowd ${CROWD}` : ''}${CAMTRACK ? `, camtrack ${CAMTRACK}` : ''}\n`);
+  + `${CROWD ? `, crowd ${CROWD}` : ''}${CAMTRACK ? `, camtrack ${CAMTRACK}` : ''}${ORIGIN ? `, against ${ORIGIN}` : ''}\n`);
 
 let a = null, b = null, failed = 0;
-const report = { camera: CAMERA, frames: FRAMES, bundle: BUNDLE || null, checks };
+const report = { camera: CAMERA, frames: FRAMES, bundle: BUNDLE || null, origin: ORIGIN, checks };
 try {
   a = await openBroadcast();
   const s0 = await a.state();
@@ -97,6 +104,9 @@ try {
   check('frame is 1280x720', s0.width === 1280 && s0.height === 720, `${s0.width}x${s0.height}`);
   check('pixel ratio locked to 1', s0.pixelRatio === 1, `dpr ${s0.pixelRatio}`);
   check('timebase is 50 fps', s0.fps === 50);
+  // A page that cannot say which build it is cannot settle "the deployed page
+  // still says X" — the conversation this line exists to end.
+  check('the page reports its build', typeof s0.build === 'string' && s0.build.length > 0, s0.build ? `build ${s0.build}` : 'no build field — a copy from before 2026-09-08');
   // The capture path must never pick up live visitors by accident: they arrive
   // over a socket on their own schedule, and footage that quietly used them is
   // only distinguishable from a deterministic run on the day it is re-filmed.

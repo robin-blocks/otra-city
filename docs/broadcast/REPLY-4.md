@@ -53,6 +53,29 @@ And with m4 mounted (`&bundle=…/s3-m4_frontier_fable_frontier_muse-…`):
 `ready` after 11 s, `state().match.phase === "match"`, 388 draw calls, the
 arena on the pitch, 400 fans, no errors, nothing unimplemented.
 
+**Our own gate, pointed at production rather than a local copy** (it can do
+that now — `--origin`):
+
+```
+node scripts/broadcast-check.mjs --origin https://otra.city --frames 250 \
+  --crowd 0.7 --camtrack /broadcast/camtrack-example.json
+```
+
+```
+  PASS  the crowd is seated — 400 of 600 seats at density 0.7
+  PASS  the camera track loaded — 4 segments to frame 1750
+  PASS  no network after load — 37 resources at ready, 37 after 250 frames
+  PASS  the crowd is not a still photograph — frame 1 5a5cff31 vs frame 250 2ad4c706
+  PASS  two independent runs give the same pixels at frame 250 — 2ad4c706 vs 2ad4c706
+  FAIL  the page reports its build — no build field — a copy from before 2026-09-08
+FAIL  18/19 checks
+```
+
+Two independent processes, byte-identical, on the deployed page, with the
+crowd and the track you say it does not have. The one failing line is the
+new build-stamp check, which production cannot pass until today's change is
+merged — and it is exactly what a copy from before today looks like.
+
 **The two messages you quote are the 4 September build's, verbatim.** That
 page — the one `REPLY.md` described, before the crowd and the cameras existed
 — said exactly `crowd (§6) — the stands are empty geometry; nobody is seated`
