@@ -33,16 +33,29 @@ const CSS = `
 #overview canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
 #overview.dragging canvas { cursor: grabbing; }
 #overview.over canvas { cursor: pointer; }
-#overview .ov-top { position: absolute; left: 0; right: 0; top: 0; display: flex; gap: 12px; align-items: flex-start;
+#overview .ov-top { position: absolute; left: 0; right: 0; top: 0; display: flex; gap: 12px; align-items: center;
   padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
   pointer-events: none; }
 #overview .ov-brand { pointer-events: auto; background: rgba(5, 8, 22, .72); border: 1px solid #1f2545; border-radius: 10px; padding: 10px 14px; }
 #overview .ov-brand b { color: #fff; font-size: 18px; letter-spacing: -.3px; display: block; }
 #overview .ov-brand span { color: #8a86a0; }
-#overview .ov-actions { margin-left: auto; pointer-events: auto; display: flex; gap: 8px; }
-#overview .ov-btn { background: #ff2d95; color: #fff; text-decoration: none; font-weight: 700; padding: 10px 16px; border-radius: 999px;
-  border: 0; font: inherit; font-weight: 700; cursor: pointer; min-height: 40px; }
-#overview .ov-btn.alt { background: rgba(5, 8, 22, .72); color: #2fe0f8; border: 1px solid #31234f; }
+#overview .ov-actions { margin-left: auto; pointer-events: auto; display: flex; align-items: center; gap: 8px; }
+/* One pill in two weights: filled pink is the way on, outlined cyan the way
+   out. inline-flex with a SET height and centred content — not an inline
+   anchor leaning on min-height, which applies to the content box and grew
+   both of these into 62px slabs with a 13px label floating near the top.
+   #mapbtn in index.html carries the same warning; this is the same trap. */
+#overview .ov-btn { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+  height: 40px; padding: 0 18px; border: 0; border-radius: 999px; white-space: nowrap;
+  background: #ff2d95; color: #fff; text-decoration: none; cursor: pointer;
+  font: 700 13px/1 ui-monospace, Menlo, Consolas, monospace;
+  box-shadow: 0 4px 14px rgba(255, 45, 149, .3);
+  transition: background-color .15s, border-color .15s, color .15s, box-shadow .15s, transform .1s; }
+#overview .ov-btn:hover { background: #ff4da6; box-shadow: 0 6px 18px rgba(255, 45, 149, .4); }
+#overview .ov-btn:active { transform: translateY(1px); box-shadow: 0 2px 8px rgba(255, 45, 149, .3); }
+#overview .ov-btn:focus-visible { outline: 2px solid #2fe0f8; outline-offset: 3px; }
+#overview .ov-btn.alt { background: rgba(5, 8, 22, .72); color: #2fe0f8; border: 1px solid #31234f; box-shadow: none; }
+#overview .ov-btn.alt:hover { background: rgba(11, 20, 46, .86); border-color: #2fe0f8; color: #7df0ff; box-shadow: none; }
 #overview .ov-legend { position: absolute; left: max(16px, env(safe-area-inset-left)); bottom: max(16px, env(safe-area-inset-bottom));
   background: rgba(5, 8, 22, .72); border: 1px solid #1f2545; border-radius: 10px; padding: 10px 12px; font-size: 12px; max-width: min(46vw, 320px); }
 #overview .ov-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin: 0 6px 0 0; vertical-align: -1px; }
@@ -74,9 +87,12 @@ const CSS = `
   #overview .ov-brand { padding: 8px 11px; }
   #overview .ov-brand b { font-size: 15px; }
   #overview .ov-brand span { display: none; }
-  #overview .ov-btn { padding: 8px 12px; font-size: 12px; white-space: nowrap; }
+  #overview .ov-btn { height: 38px; padding: 0 12px; font-size: 12px; }
 }
-@media (prefers-reduced-motion: reduce) { #overview { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) {
+  #overview, #overview .ov-btn { transition: none !important; }
+  #overview .ov-btn:active { transform: none; }
+}
 `;
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
