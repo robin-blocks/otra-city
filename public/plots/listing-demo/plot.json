@@ -30,8 +30,9 @@
   ],
   "template": {
     "id": "shopfront",
-    "version": 1,
+    "version": 2,
     "variant": "tower",
-    "pictures": "images"
+    "pictures": "images",
+    "logo": "monogram"
   }
 }

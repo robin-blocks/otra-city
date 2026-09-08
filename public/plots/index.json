@@ -468,9 +468,10 @@
       ],
       "template": {
         "id": "shopfront",
-        "version": 1,
+        "version": 2,
         "variant": "tower",
-        "pictures": "images"
+        "pictures": "images",
+        "logo": "monogram"
       },
       "lot": "boulevard-1",
       "address": "1 Singularity Boulevard",
@@ -481,7 +482,7 @@
       "yaw": 0,
       "glb": "/plots/listing-demo/plot.glb",
       "base": "/plots/listing-demo/",
-      "poster": "/posters/listing-demo-5801ac7c5089.webp"
+      "poster": "/posters/listing-demo-1d6505d4d1ae.webp"
     },
     {
       "slug": "mews-1",
@@ -701,7 +702,7 @@
         "pii",
         "chatgpt"
       ],
-      "tagline": "Client-side scanner for API keys, private keys, tokens, and PII before pasting…",
+      "tagline": "Client-side scanner for API keys, private keys, tokens",
       "type": "shop",
       "anims": [
         {
@@ -714,9 +715,22 @@
       "color": "#faa938",
       "template": {
         "id": "shopfront",
-        "version": 1,
+        "version": 2,
         "variant": "awning",
-        "pictures": "none"
+        "pictures": "screenshot",
+        "logo": "monogram"
+      },
+      "media": {
+        "pictures": [
+          {
+            "node": "pic_1",
+            "file": "media/pic-1.png"
+          },
+          {
+            "node": "pic_2",
+            "file": "media/pic-1.png"
+          }
+        ]
       },
       "lot": "boulevard-2",
       "address": "2 Singularity Boulevard",
@@ -727,7 +741,7 @@
       "yaw": 3.141592653589793,
       "glb": "/plots/pasteguard/plot.glb",
       "base": "/plots/pasteguard/",
-      "poster": "/posters/pasteguard-15a5e7d8fc07.webp"
+      "poster": "/posters/pasteguard-15eb880d3079.webp"
     },
     {
       "slug": "promptfrenzy",

@@ -43,7 +43,18 @@ project in both.
 
 - `POST https://otra.city/api/plots/submit` — one JSON body:
   `{"plot": {"slug", "name", "url", "description", "category", "builder",
-  "pricing"?, "tags"?, "images"?}, "discovery_source"?, "dry": true}`.
+  "pricing"?, "tags"?, "images"?, "logo"?, "colors"?}, "discovery_source"?,
+  "dry": true}`.
+- **Send `images`, `logo` and `colors`.** They are optional and they are the
+  whole difference in what gets built. `images` (https png/jpg/webp) go on the
+  billboard and the wall facing the door — a screenshot of the thing working is
+  the right picture. `logo` (an https **png with a transparent background**) is
+  not pasted on flat: the city reads its shape and builds it as a solid object,
+  lit on a plinth in the window. `colors` is `{"primary", "accent"}` in
+  `#rrggbb` — without it every shop on your road is the same colour. Send no
+  pictures at all and the city falls back to your `og:image`, and failing that
+  photographs your page itself, so nothing is ever blank — but nothing is your
+  choice either.
   **Send `"dry": true` first: the dry run is the validator** — it reads your
   page for the permalink `otra.city/s/<slug>` (proof you control the site;
   plain text or a nofollow link counts), builds your shopfront, runs every

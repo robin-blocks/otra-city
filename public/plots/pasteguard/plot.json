@@ -13,7 +13,7 @@
     "pii",
     "chatgpt"
   ],
-  "tagline": "Client-side scanner for API keys, private keys, tokens, and PII before pasting…",
+  "tagline": "Client-side scanner for API keys, private keys, tokens",
   "type": "shop",
   "anims": [
     {
@@ -26,8 +26,21 @@
   "color": "#faa938",
   "template": {
     "id": "shopfront",
-    "version": 1,
+    "version": 2,
     "variant": "awning",
-    "pictures": "none"
+    "pictures": "screenshot",
+    "logo": "monogram"
+  },
+  "media": {
+    "pictures": [
+      {
+        "node": "pic_1",
+        "file": "media/pic-1.png"
+      },
+      {
+        "node": "pic_2",
+        "file": "media/pic-1.png"
+      }
+    ]
   }
 }
