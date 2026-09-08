@@ -50,6 +50,32 @@ silently: hours of footage that simply never repeats.
 Anything the page cannot honour is reported in `state().unimplemented` and
 shown on the page rather than silently ignored.
 
+Camera names are case-insensitive: `camera=STANDS`, `camera=stands` and
+`camera=Stands` are the same shot, and the authored views in `venue.json`
+answer to capitals too. `window.rflBroadcast.cameras()` lists every name
+`camera=` accepts. `camera=TRACK` on its own is refused with a message
+saying it needs `camtrack=`, since the track file is what supplies it.
+
+## Which build you are talking to
+
+`state().build` (also `window.rflBroadcast.build`, and `build …` on the note
+line at the bottom of the page) is the date the page's behaviour last
+changed. A harness that pins a copy of the page, or a proxy that holds one,
+will report an older date than `https://otra.city/broadcast` does — so a
+"the deployed page still says X" conversation is settled by reading it. The
+current build is **2026-09-08**. Bump the constant at the top of
+`public/broadcast.html` whenever the page's behaviour changes.
+
+The gate asserts the field exists, and it can be pointed at the deployed
+site rather than a local copy of `public/`:
+
+```
+node scripts/broadcast-check.mjs --origin https://otra.city --frames 250 \
+  --crowd 0.7 --camtrack /broadcast/camtrack-example.json
+```
+
+Same checks, same two independent browser processes, against production.
+
 ## Named cameras
 
 All are pure functions of `(frame, seed, params)` — no state carries between
@@ -173,6 +199,19 @@ than bright daylight. The neon stays lit, because it is painted in.
 
 If a genuine daylight look matters, say so — it is a real art job on the city,
 not a parameter.
+
+## Season 4: the Microduck division
+
+From 2 October 2026 the RFL runs a second division on the same pitch — a
+25 cm biped, published in bundles scaled ×4 into stadium metres, so the
+bodies are ~1.0 m tall and the ball 0.28 m. Nothing on this page keys on the
+robot: the match module never reads a bundle's `scene.json` (the SDK does),
+the cameras aim at fixed points between 0.5 and 0.6 m above the turf, the
+track reader passes RFL's per-frame state through untouched, and the crowd
+and the sightline check do not know a match is on. A duck bundle plays the
+way a G1 bundle does. The one thing that had to change was the scoreboard,
+whose title and club-name lines now fit their width instead of running off
+the board — season-4 titles are half again as long.
 
 ## What is not built
 

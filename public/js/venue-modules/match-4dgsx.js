@@ -39,6 +39,10 @@ function countdown(ms) {
   if (d > 0) return `${d}d ${h}h`;
   return `${h}:${pad2(m)}:${pad2(s % 60)}`;
 }
+/** The last path segment of a bundle URL — what a fixture's board shows in place of a programme title. */
+function bundleName(url) {
+  try { return new URL(url).pathname.split('/').filter(Boolean).pop() || String(url); } catch { return String(url || ''); }
+}
 function londonTime(iso) {
   try { return new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(iso)); } catch { return ''; }
 }
@@ -89,6 +93,22 @@ export function create(ctx) {
   let skewMs = 0;
   const now = () => Date.now() - skewMs;
 
+  // One line of text no wider than `maxW`: the font shrinks until the line
+  // fits, and past `minSize` the text is cut with an ellipsis instead. The
+  // board never measured what it drew — a season-4 title ("RFL S4 · Microduck
+  // · Match 12: Singularity United vs Synthetic Athletic") is half again as
+  // long as a season-3 one and ran 350 px off the board's edge, and the two
+  // longest club names already ran past the edge and into the score.
+  function fitText(text, x, y, { weight = 500, size = 30, maxW, minSize = Math.round(size * 0.6) }) {
+    let s = size;
+    let t = String(text ?? '');
+    const font = (px) => `${weight} ${px}px Menlo, monospace`;
+    g.font = font(s);
+    while (g.measureText(t).width > maxW && s > minSize) { s -= 1; g.font = font(s); }
+    while (g.measureText(t).width > maxW && t.length > 1) t = `${t.slice(0, -2)}…`;
+    g.fillText(t, x, y);
+  }
+
   // The venue's tannoy, if it declared one. Built here rather than per match
   // so the speakers keep their places across mounts; it only carries sound
   // while a match is up.
@@ -138,9 +158,8 @@ export function create(ctx) {
         g.fillStyle = '#e9edf6';
         g.font = '900 84px Menlo, monospace';
         g.fillText(team.code || '', x, 300);
-        g.font = '500 32px Menlo, monospace';
         g.fillStyle = '#b9bcd6';
-        g.fillText((team.name || '').slice(0, 20), x, 350);
+        fitText(team.name || '', x, 350, { size: 32, maxW: 280 });
       }
       g.fillStyle = '#e9edf6';
       g.font = '900 118px Menlo, monospace';
@@ -149,8 +168,7 @@ export function create(ctx) {
       g.font = '700 64px Menlo, monospace';
       g.fillText(st.clock || '', W / 2, 460);
       g.fillStyle = '#8a86a0';
-      g.font = '500 30px Menlo, monospace';
-      g.fillText(state.match?.title || '', W / 2, 520);
+      fitText(state.match?.title || '', W / 2, 520, { size: 30, maxW: W - 88 });
       text = `${a?.code || ''} ${sc.a}-${sc.b} ${b?.code || ''} ${st.clock || ''}`;
     } else if (state.sdk === 'failed') {
       g.textAlign = 'center';
@@ -175,8 +193,7 @@ export function create(ctx) {
         g.font = '700 40px Menlo, monospace';
         g.fillText(`${nx.home?.code || '?'}  v  ${nx.away?.code || '?'}`, W / 2, 372);
         g.fillStyle = '#b9bcd6';
-        g.font = '500 32px Menlo, monospace';
-        g.fillText(`${nx.home?.name || ''} v ${nx.away?.name || ''} · ${londonTime(nx.startsAt)} London`, W / 2, 416);
+        fitText(`${nx.home?.name || ''} v ${nx.away?.name || ''} · ${londonTime(nx.startsAt)} London`, W / 2, 416, { size: 32, maxW: W - 88 });
         text = `next ${nx.home?.code}-${nx.away?.code} in ${countdown(ms)}`;
       } else {
         g.fillStyle = '#8a86a0';
@@ -187,8 +204,7 @@ export function create(ctx) {
       const r = state.recent[0];
       if (r) {
         g.fillStyle = '#8a86a0';
-        g.font = '500 32px Menlo, monospace';
-        g.fillText(`LAST RESULT  ${r.home?.code} ${r.score?.[0] ?? '–'} – ${r.score?.[1] ?? '–'} ${r.away?.code}`, W / 2, 500);
+        fitText(`LAST RESULT  ${r.home?.code} ${r.score?.[0] ?? '–'} – ${r.score?.[1] ?? '–'} ${r.away?.code}`, W / 2, 500, { size: 32, maxW: W - 88 });
       }
     }
     if (coarse && !st) {
@@ -257,7 +273,7 @@ export function create(ctx) {
 
   function onMount(st, item) {
     stage = st;
-    state.match = item ? { id: item.bundleId, title: item.title, state: item.state } : { id: 'bundle', title: cfg.bundle || '' };
+    state.match = item ? { id: item.bundleId, title: item.title, state: item.state } : { id: 'bundle', title: bundleName(cfg.bundle) };
     st.group.position.set(0, 0, 0);
     pitch.add(st.group);
     state.docks = [];

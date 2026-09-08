@@ -79,6 +79,11 @@ import { CAMERAS, createTrack } from '/js/broadcast-cameras.js';
 
 const FPS = 50;                 // the brief's timebase; one step is 20 ms
 const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
+// Which build of this page a harness is talking to. Bump the date whenever the
+// page's behaviour changes. It is reported in `state().build` and on the note
+// line, so "the deployed page still says X" is settled by reading the page,
+// not by comparing memories of deploys.
+const BUILD = '2026-09-08';
 
 // Errors are evidence: a silent failure films a black hour, so every one is
 // kept for `state()`, echoed to the console the harness reads, and shown.
@@ -393,7 +398,9 @@ function cameraAt(name, frameNo) {
     if (lastTrackCam) return lastTrackCam;
   }
   if (ANIMATED.has(key)) return CAMERAS[key](t, seed, {});
-  const c = def?.cameras?.[name];
+  // Authored names are lower-case in venue.json and RFL's brief writes every
+  // camera in capitals, so an authored camera answers to either.
+  const c = def?.cameras?.[name] ?? def?.cameras?.[key];
   if (c) return { pos: c[0], lookAt: c[1], fov: null };
   if (CAMERAS[key]) return CAMERAS[key](t, seed, {});
   return null;
@@ -431,7 +438,9 @@ async function networkQuiet({ stableMs = 1500, timeoutMs = 30000 } = {}) {
 function useCamera(name) {
   const c = cameraAt(name, frame);
   if (!c) {
-    fail('camera', `unknown camera "${name}" — one of ${[...new Set([...Object.keys(def?.cameras || {}), ...Object.keys(CAMERAS)])].join(', ')}`);
+    fail('camera', String(name).toLowerCase() === 'track'
+      ? 'TRACK is the camera a track file supplies — add camtrack=<https url>'
+      : `unknown camera "${name}" — one of ${[...new Set([...Object.keys(def?.cameras || {}), ...Object.keys(CAMERAS)])].join(', ')}`);
     return false;
   }
   aim(c);
@@ -462,7 +471,7 @@ function draw() {
   if (!errors.length) {
     const r = renderer.info.render;
     note.textContent = `otra.city broadcast · ${wantVenue} · camera ${wantCam} · frame ${frame} `
-      + `(${(frame / FPS).toFixed(2)}s @ ${FPS}fps) · ${W}×${H} · ${r.calls} calls · ${r.triangles} tris`
+      + `(${(frame / FPS).toFixed(2)}s @ ${FPS}fps) · ${W}×${H} · build ${BUILD} · ${r.calls} calls · ${r.triangles} tris`
       + (crowd ? ` · ${crowd.count} fans (${crowd.state.standing} up)` : '')
       + (track && lastTrackCam ? ` · track seg ${lastTrackCam.segment} (${lastTrackCam.camera})` : '')
       + (live ? ` · LIVE ${presence?.count ?? 0}/${liveCap} peers${presence?.connected ? '' : ' (connecting…)'} — not reproducible` : '')
@@ -470,12 +479,12 @@ function draw() {
   }
 }
 
-const ready = boot().then(() => ({ venue: wantVenue, camera: wantCam, fps: FPS, width: W, height: H }))
+const ready = boot().then(() => ({ venue: wantVenue, camera: wantCam, fps: FPS, width: W, height: H, build: BUILD }))
   .catch((e) => { fail('boot', e); throw e; });
 
 window.rflBroadcast = {
   ready,
-  fps: FPS, width: W, height: H,
+  fps: FPS, width: W, height: H, build: BUILD,
 
   /**
    * Advance the scene to absolute frame `n` on the 50 fps timebase and draw it.
@@ -504,11 +513,13 @@ window.rflBroadcast = {
   },
 
   camera: (name) => useCamera(name),
-  cameras: () => Object.keys(def?.cameras || {}),
+  // every name `camera=` accepts: the venue's authored views and the director's shots
+  cameras: () => [...new Set([...Object.keys(def?.cameras || {}), ...Object.keys(CAMERAS)])],
 
   state() {
     const r = renderer.info.render;
     return {
+      build: BUILD,
       venue: wantVenue, camera: wantCam, frame, t: frame / FPS, fps: FPS,
       width: W, height: H, pixelRatio: renderer.getPixelRatio(),
       tier: V?.tier ?? null, loaded: !!V?.near,

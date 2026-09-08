@@ -227,7 +227,7 @@ d.text((512, 500), "RFL · ROBOT FOOTBALL LEAGUE", font=font("mono", 34), fill=D
 
 # tall dock panels (stats / line-up), aspect 0.68 -> 696 x 1024
 for name, title, sub in (("panel_left", "GAME STATS", "possession · shots · passes"),
-                         ("panel_right", "LINE-UP", "two-a-side · four robots")):
+                         ("panel_right", "LINE-UP", "home and away squads")):
     d = plate(name, 696, 1024, edge=(70, 68, 108), ew=8)
     d.text((348, 160), title, font=font("bold", 80), fill=WHITE, anchor="mm")
     d.text((348, 260), sub, font=font("mono", 36), fill=DIM, anchor="mm")
