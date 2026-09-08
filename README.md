@@ -141,3 +141,12 @@ rewrites (`/s/:slug`, `/embed`, legacy 2D-era paths → sunset notice). Set
 real PR creation from the submit endpoint; without them it validates in dry
 mode. Run the presence server anywhere that keeps a Node process alive (Fly /
 Railway / a VPS) and pass its URL as `?ws=wss://...` or edit `presence.js`.
+
+
+## Licence
+
+MIT ([LICENSE](LICENSE)) for otra.city's own code and buildings. Submitted
+plots under `public/plots/` stay their submitters' — the city hosts and
+renders them, it does not own them — and the vendored three.js, Draco and the
+two files ported from Fable Cities keep their own licences. The scope, and
+every notice: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
