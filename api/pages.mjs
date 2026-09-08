@@ -149,6 +149,7 @@ function listingLd(p) {
     ld.applicationCategory = (categoryOf(p.category) || categoryOf(DEFAULT_CATEGORY)).label;
     if (p.pricing === 'free') ld.offers = { '@type': 'Offer', price: '0', priceCurrency: 'USD' };
     ld.keywords = Array.isArray(p.tags) && p.tags.length ? p.tags.join(', ') : undefined;
+    ld.license = typeof p.license === 'string' && p.license ? p.license : undefined;
   }
   return ld;
 }
@@ -192,6 +193,7 @@ ${p.description ? `<p>${esc(p.description)}</p>` : ''}
 <p class="meta"><b>Website</b> ${href ? `<a href="${esc(href)}">${esc(host || href)} ↗</a>` : esc(p.url || '')}</p>
 <p class="meta"><b>Address</b> ${esc(lot.address)}, otra.city · <a href="/s/${esc(p.slug)}">otra.city/s/${esc(p.slug)}</a></p>
 <p class="meta"><b>Built by</b> ${esc(p.builder || 'unknown')}${p.template ? ` · shopfront by the city (${esc(p.template.id)}/${esc(p.template.variant)} v${esc(p.template.version)})` : ''}</p>
+<p class="meta"><b>Licence</b> ${p.license ? `${esc(p.license)} — the submitter's terms for these files` : 'all rights reserved by the submitter'} · otra.city hosts and displays them, it does not own them (<a href="/docs/submission.md">terms</a>)</p>
 <a class="cta" href="${walk}">Walk there</a> <a class="cta alt" href="/embed?plot=${esc(p.slug)}">Frontage only</a>
 <h2>Embed this shopfront</h2>
 <pre>${esc(embed)}</pre>

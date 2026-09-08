@@ -16,8 +16,14 @@ It does **not** cover:
 - **`public/plots/**` — submitted plots.** Every folder there but the city's
   own is a third party's model, media and copy, submitted through
   `/api/plots/submit` so the city could display it. Those files stay their
-  submitter's; otra.city hosts, renders and links them, and nothing here
-  relicenses them or transfers ownership. Removal is a request to Robin.
+  submitter's; otra.city hosts, renders and links them under the licence
+  submitting grants — publish, host, normalize, make the poster from it, and
+  let other sites embed it, and no wider — which transfers no ownership and
+  relicenses nothing. A plot may carry a `license` of its own, which is the
+  submitter's terms for everyone else and is shown on its listing page; without
+  one, assume all rights reserved. The terms in full, and how to take a plot
+  down, are in [`docs/submission.md`](docs/submission.md) and on
+  [/claim#safety](https://otra.city/claim#safety).
 - **Match content in the stadium.** RFL bundles are CC BY 4.0 and are streamed
   from their CDN at runtime; none of it is committed to this repository.
 - **The vendored and ported third-party code below**, which keeps its own
