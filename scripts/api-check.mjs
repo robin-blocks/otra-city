@@ -169,14 +169,29 @@ const listing = (over = {}) => ({
   const { status, json } = await post(listing());
   check('a listing with no build is accepted and built', status === 200 && json.accepted === true && json.build === 'template',
     json.accepted ? '' : (json.report || json.error || '').split('\n').filter((l) => l.startsWith('FAIL')).join(' | '));
-  check('the city derives the board line from the description',
-    typeof json.plot?.tagline === 'string' && json.plot.tagline.length <= 80 && json.plot.tagline.endsWith('…'), json.plot?.tagline);
+  // The board line is cut at a CLAUSE, not a word: a tagline that stops at a
+  // word leaves a sentence severed mid-thought, which is how PasteGuard's
+  // shopfront ended up saying "…and PII before pasting…" and stopping one word
+  // before the half that said what it was for. A clause cut needs no ellipsis
+  // because nothing is left dangling.
+  check('the board line is cut at a clause, and reads as a whole phrase',
+    typeof json.plot?.tagline === 'string' && json.plot.tagline.length <= 80
+    && !json.plot.tagline.endsWith('…') && json.plot.tagline.endsWith('does'), json.plot?.tagline);
   check('the stored plot records the template it was built with',
     json.plot?.template?.id === 'shopfront' && typeof json.plot.template.variant === 'string' && json.plot.type === 'shop');
   check('a listing lands on the road for its category',
     /^west-/.test(json.lot || '') && json.result.lot.mode === 'category', `${json.lot} ${json.result?.lot?.mode}`);
   check('an og:image the city cannot fetch is a warning, never a rejection',
-    json.accepted === true && /WARN {2}pictures/.test(json.report) && json.result.shopfront.pictures === 0);
+    json.accepted === true && /WARN {2}shopfront/.test(json.report) && json.result.shopfront.pictures === 0);
+  // Everything the city builds is a floor. The report is the only place a
+  // submitting agent finds out how to raise it, so the offer is a checked
+  // property of the response rather than a line somebody hopes stays put.
+  check('the report tells a listing how to get a better building',
+    /images/.test(json.report) && /logo/.test(json.report) && /colors/.test(json.report));
+  check('a shop with no logo says so and names the format that would work',
+    json.result.shopfront.logo === null && /monogram/.test(json.report) && /png/.test(json.report));
+  check('the name goes on the building, not just the kerb board',
+    new RegExp(`the sign over the door says "${json.plot.name}"`).test(json.report));
   check('the report says the city built it', /PASS {2}shopfront {6}built by the city/.test(json.report));
   check('it hands back the listing page', json.lot_url === `https://otra.city/lot/${json.lot}`);
 }

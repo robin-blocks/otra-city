@@ -23,7 +23,8 @@
     "venue:check": "node scripts/venue-check.mjs",
     "venue:shot": "node scripts/venue-shot.mjs",
     "venue:bench": "node scripts/venue-bench.mjs",
-    "broadcast:check": "node scripts/broadcast-check.mjs"
+    "broadcast:check": "node scripts/broadcast-check.mjs",
+    "shopfronts": "node scripts/rebuild-shopfronts.mjs"
   },
   "keywords": [],
   "author": "",

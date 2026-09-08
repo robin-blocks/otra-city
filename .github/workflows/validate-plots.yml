@@ -12,6 +12,11 @@ on:
       - 'public/plots/**'
       - 'scripts/render-posters.mjs'
       - 'lib/poster-paths.mjs'
+      - 'scripts/rebuild-shopfronts.mjs'
+      - 'lib/template-shop.mjs'
+      - 'lib/template-atlas.mjs'
+      - 'lib/pixel-canvas.mjs'
+      - 'lib/logo-voxels.mjs'
       - 'public/js/poster-frame.js'
       - 'public/preview.html'
   push:
@@ -20,6 +25,11 @@ on:
       - 'public/plots/**'
       - 'scripts/render-posters.mjs'
       - 'lib/poster-paths.mjs'
+      - 'scripts/rebuild-shopfronts.mjs'
+      - 'lib/template-shop.mjs'
+      - 'lib/template-atlas.mjs'
+      - 'lib/pixel-canvas.mjs'
+      - 'lib/logo-voxels.mjs'
       - 'public/js/poster-frame.js'
       - 'public/preview.html'
 jobs:
@@ -42,6 +52,19 @@ jobs:
       # ingest normalization — never serve agent bytes verbatim
       - run: node scripts/normalize-plots.mjs --write
 
+      # Bring the city's own shopfronts up to date BEFORE the posters, because
+      # a poster is rendered from the build: photograph a listing's page after
+      # its poster and the poster shows the placeholder for a version. This
+      # step photographs a listing that has no picture of its own, and rebuilds
+      # any template shop the template has moved past. It loads pages written
+      # by submitters, so it runs a SANDBOXED browser (lib/headless-chrome.mjs
+      # `sandbox: true`) — this runner holds a token that can write here. If
+      # that browser will not start it takes no screenshots and says so; it
+      # never retries without the sandbox.
+      - name: rebuild city shopfronts
+        continue-on-error: true
+        run: node scripts/rebuild-shopfronts.mjs
+
       # Poster stills, rendered from the merged build in the real client. A
       # nice-to-have for directories that thumbnail us, so it must never be
       # what stops an honest plot from landing: on failure the manifest simply
@@ -61,11 +84,16 @@ jobs:
       # placed on the street.
       - name: commit lot assignments + street manifest
         run: |
-          if ! git diff --quiet public/plots/ public/posters/ || \
+          # sitemap.xml is written by build-manifest.mjs and was NOT in this
+          # list, so every listing merged by the bot was regenerated into a
+          # sitemap that was then thrown away — PasteGuard was missing from
+          # otra.city's sitemap from the day it merged. Anything this job
+          # generates has to be committed by this job.
+          if ! git diff --quiet public/plots/ public/posters/ public/sitemap.xml || \
              [ -n "$(git ls-files --others --exclude-standard public/posters/)" ]; then
             git config user.name otra-city-bot
             git config user.email bot@otra.city
-            git add public/plots/ public/posters/
+            git add public/plots/ public/posters/ public/sitemap.xml
             # A push made with GITHUB_TOKEN never gets a follow-up run (GitHub
             # creates one and fails it with zero jobs), so the merge below
             # happens in THIS run; [skip ci] just suppresses that phantom run.

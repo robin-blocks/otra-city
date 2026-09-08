@@ -32,6 +32,9 @@ const SM = SPEC.media;
 const AUDIO_MAX = SM.ambient_audio.max_bytes;
 const PICTURE_MAX = SM.pictures.max_bytes_each;
 const SCREENS_TOTAL = SM.screens.max_bytes_total;
+// A logo is fetched, read for its shape and thrown away — it never lands in
+// the bundle — so it shares the picture budget rather than earning its own.
+const LOGO_MAX = PICTURE_MAX;
 const FEED_JSON_MAX = 64 << 10;              // a bundled live-feed document
 const MEDIA_MAX = {
   m4a: AUDIO_MAX, mp3: AUDIO_MAX, ogg: AUDIO_MAX,
@@ -237,10 +240,23 @@ async function checkBacklink(url, slug) {
 const IMAGE_MAX = 6;
 
 // The board's one-liner, from the listing's description when it sent no
-// tagline: cut at a word inside 80 chars, never mid-word.
+// tagline: cut inside 80 chars, never mid-word.
+//
+// Prefer a clause boundary over a word boundary. Cutting at a word leaves a
+// sentence severed mid-thought — PasteGuard's first tagline read "…tokens, and
+// PII before pasting…" and stopped one word before "into AI chats", which is
+// the half that says what it is FOR. Cutting at the last comma instead gives a
+// phrase that ends where a phrase should, and needs no ellipsis because
+// nothing was left dangling.
 export function deriveTagline(description) {
   const s = String(description || '').replace(/\s+/g, ' ').trim();
   if (s.length <= 80) return s;
+  const head = s.slice(0, 80);
+  const clause = Math.max(
+    head.lastIndexOf('. '), head.lastIndexOf(', '),
+    head.lastIndexOf('; '), head.lastIndexOf(' — '), head.lastIndexOf(' – '),
+  );
+  if (clause >= 40) return s.slice(0, clause).replace(/[\s,;:–—-]+$/, '');
   const cut = s.slice(0, 79);
   const sp = cut.lastIndexOf(' ');
   return (sp > 40 ? cut.slice(0, sp) : cut).replace(/[\s,;:–—-]+$/, '') + '…';
@@ -257,6 +273,20 @@ function prepareListing(plot, listing) {
   if (!plot.category) plot.category = DEFAULT_CATEGORY;
 }
 
+const HEX = /^#?[0-9a-f]{6}$/i;
+const norm = (c) => (HEX.test(String(c || '')) ? `#${String(c).replace('#', '').toLowerCase()}` : null);
+
+/** The two colours the shopfront is built from. `colors` is the richer form;
+ *  `color` remains the accent on its own, which is what every earlier listing
+ *  sent and what the kerb board and the map still read. */
+export function resolveColors(plot) {
+  const c = plot.colors && typeof plot.colors === 'object' ? plot.colors : {};
+  return {
+    accent: norm(c.accent) || norm(plot.color) || null,
+    primary: norm(c.primary) || null,
+  };
+}
+
 // `fetchImage` is injectable so the check suite can hand it pictures without
 // a public https host; the endpoint always uses fetchAsset.
 export async function buildListing(plot, { fetchMeta = true, fetchImage = fetchAsset } = {}) {
@@ -267,7 +297,9 @@ export async function buildListing(plot, { fetchMeta = true, fetchImage = fetchA
   if (!wanted.length && fetchMeta && plot.url) {
     const meta = await fetchSiteMeta(plot.url);
     if (meta?.image) { wanted.push(meta.image); source = 'og:image'; }
-    else notes.push(`no og:image on ${plot.url} and no images[] sent — the plates on the building stay blank until you add one`);
+    else {
+      notes.push(`no og:image on ${plot.url} and no images[] sent — the city will photograph your page and use that; send images[] to choose the picture yourself`);
+    }
   }
   const media = {};
   const pictures = [];
@@ -284,18 +316,64 @@ export async function buildListing(plot, { fetchMeta = true, fetchImage = fetchA
       notes.push(`could not fetch ${url}: ${String(e.message || e).slice(0, 80)} — skipped`);
     }
   }
+
+  // The logo. A PNG is extruded into a solid mark on the plinth in the window;
+  // anything else can only be read as a flat rectangle, which is not worth a
+  // sculpture, so the shop falls back to its monogram and the report says why.
+  // That note is the whole mechanism for teaching an agent to send the better
+  // asset next time, so it names the format rather than just declining.
+  const logoUrl = typeof plot.logo === 'string' && /^https:\/\//i.test(plot.logo) ? plot.logo : null;
+  let logoBuf = null;
+  if (logoUrl) {
+    try {
+      const buf = await fetchImage(logoUrl, { maxBytes: LOGO_MAX, label: 'logo' });
+      if (imageKind(buf) === 'png') logoBuf = buf;
+      else notes.push(`logo ${logoUrl} is not a png — the 3D mark on the plinth is built from a png's transparency, so the shop is using its monogram instead`);
+    } catch (e) {
+      notes.push(`could not fetch logo ${logoUrl}: ${String(e.message || e).slice(0, 80)} — skipped`);
+    }
+  }
+
   // one picture goes on the facade AND the wall facing the door
   const bound = pictures.length === 1 ? [pictures[0], pictures[0]] : pictures;
-  const t = buildTemplate({ slug: plot.slug, category: plot.category, color: plot.color, images: bound.length });
+  const colors = resolveColors(plot);
+  const t = buildTemplate({
+    slug: plot.slug,
+    category: plot.category,
+    color: colors.accent,
+    primaryColor: colors.primary,
+    images: bound.length,
+    name: plot.name || '',
+    tagline: plot.tagline || '',
+    builder: plot.builder || '',
+    url: plot.url || '',
+    logo: logoBuf,
+  });
   const glb = await t.write();
+  if (logoBuf && !t.logo) {
+    notes.push('the logo could not be read as a mark — too sparse, or the whole square was ink once thresholded; the shop is using its monogram');
+  }
   delete plot.images;
+  delete plot.logo;
+  delete plot.colors;
   plot.media = { ...(plot.media || {}), pictures: bound.map((file, i) => ({ node: PICTURE_NODES[i], file: `media/${file}` })) };
   if (!plot.media.pictures.length) delete plot.media.pictures;
   if (!Object.keys(plot.media).length) delete plot.media;
   plot.anims = t.anims;
   if (!plot.color) plot.color = t.color;
-  plot.template = { id: TEMPLATE_ID, version: TEMPLATE_VERSION, variant: t.variant, pictures: source };
-  return { glb, media, variant: t.variant, pictures: pictures.length, source, notes };
+  // What the city derived, so a later version of the template can rebuild this
+  // exact shop: the sources it used, and the logo url it read (the mark itself
+  // is baked into the glb, not stored).
+  plot.template = {
+    id: TEMPLATE_ID,
+    version: TEMPLATE_VERSION,
+    variant: t.variant,
+    pictures: source,
+    logo: t.logo ? 'voxel' : 'monogram',
+    ...(logoUrl ? { logo_url: logoUrl } : {}),
+    ...(colors.primary ? { primary: colors.primary } : {}),
+  };
+  return { glb, media, variant: t.variant, pictures: pictures.length, source, logo: t.logo, notes };
 }
 
 // Is anybody else already standing on this identity? Advisory only: one owner
@@ -754,11 +832,19 @@ export default async function handler(req, res) {
     if (result.feed) lines.push(`${result.feed.ok ? 'PASS' : 'FAIL'}  live feed      ${result.feed.detail}`);
     if (built) {
       result.shopfront = { ok: true, template: `${TEMPLATE_ID}/${built.variant}`, version: TEMPLATE_VERSION,
-        pictures: built.pictures, source: built.source, notes: built.notes };
+        pictures: built.pictures, source: built.source, logo: built.logo, notes: built.notes };
       lines.push(`PASS  shopfront      built by the city: ${TEMPLATE_ID}/${built.variant} v${TEMPLATE_VERSION}, ` +
-        (built.pictures ? `${built.pictures} picture(s) from ${built.source}` : 'no pictures') +
-        ' — send a glb of your own any time to replace it');
-      for (const n of built.notes) lines.push(`WARN  pictures       ${n}`);
+        (built.pictures ? `${built.pictures} picture(s) from ${built.source}` : 'no pictures yet') +
+        ` — the sign over the door says "${plot.name}"`);
+      lines.push(`PASS  logo           ${built.logo
+        ? `built as a solid mark on the plinth in the window (${built.logo.boxes} blocks)`
+        : 'none — the shop is using its monogram; send `logo` (an https png, ideally with a transparent background) and the city builds it in 3D'}`);
+      // The one thing worth saying twice: everything above is a floor, and
+      // three optional fields raise it. A listing that reads its own report is
+      // the only place this can be taught.
+      lines.push('PASS  make it better  send `images` (screenshots), `logo` (png) and `colors` '
+        + '{primary, accent} on your next submission — same slug, same host — and the city rebuilds the shop around them');
+      for (const n of built.notes) lines.push(`WARN  shopfront      ${n}`);
     }
     // "url host", not "url": validateIdentity already reports a check called
     // `url` (is it a well-formed https address), so labelling this one the same
