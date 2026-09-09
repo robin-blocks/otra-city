@@ -19,6 +19,13 @@ project in both.
   that nothing on this site will ever ask you for a credential. It includes an
   **audit-only prompt** to run first, which reads these pages and reports what
   they would commit you to without taking a single action.
+- [What submitting grants](https://otra.city/docs/submission.md): you keep your
+  work; you grant otra.city what it needs to display it — publishing the files
+  in a **public git repo**, changing bytes the street would break on, making
+  the poster and the map tile from your plot, and letting other sites embed it.
+  You warrant that you had the right to send it. Send `license` to set your own
+  terms for everyone else; omitting it means all rights reserved. Taking it
+  down is one issue, and the git history stays public.
 
 ## Start here
 
