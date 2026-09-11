@@ -1,0 +1,6 @@
+{
+  "_": "WHAT THE STADIUM IS SHOWING, for everyone at once. The match module polls this from every client — the visitor in the bowl, the phone on the map, and RFL's capture browser on /broadcast — so changing this one file changes what the city shows, and no query string can. Live fixtures from the RFL channel outrank it: this is for the twenty-two hours a day that are not a match.",
+  "_how": "Set `bundle` to a completed fixture's bundleUrl from https://4dgsx.com/api/v1/programme/rfl (the `replay` items carry one; `upcoming` items do not), give it a `title` for the scoreboard, and deploy. Set `bundle` back to null to take it down. It is a ~320 MB download per client, so it is not something to leave on by accident.",
+  "bundle": null,
+  "title": null
+}

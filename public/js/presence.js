@@ -30,9 +30,13 @@ export function createPresence(scene, player, urlOverride, opts = {}) {
   let sendBuf = '';
 
   const local = ['localhost', '127.0.0.1'].includes(location.hostname);
-  const url = urlOverride ||                         // ?ws= override, for testing
+  const base = urlOverride ||                        // ?ws= override, for testing
     (local ? `ws://${location.hostname}:8787`        // local dev server
            : 'wss://otra-city-presence.fly.dev');    // production
+  // A camera says so at the door. The server counts cameras separately and
+  // admits them past the room's cap, so a full house never takes the
+  // broadcast off the air — and it reconnects on the same terms.
+  const url = observe ? `${base}${base.includes('?') ? '&' : '?'}observe=1` : base;
 
   function addPeer(id, p) {
     if (peers.has(id)) return peers.get(id);

@@ -83,7 +83,7 @@ const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
 // page's behaviour changes. It is reported in `state().build` and on the note
 // line, so "the deployed page still says X" is settled by reading the page,
 // not by comparing memories of deploys.
-const BUILD = '2026-09-08';
+const BUILD = '2026-09-11';
 
 // Errors are evidence: a silent failure films a black hour, so every one is
 // kept for `state()`, echoed to the console the harness reads, and shown.
@@ -144,10 +144,13 @@ let camtrackUrl = params.get('camtrack') ? httpsOnly(params.get('camtrack')) : n
 if (params.get('camtrack') && !camtrackUrl) fail('camtrack', 'must be an https URL; ignored');
 // A live feed with no direction is a frozen frame of an empty pitch, which is
 // what /broadcast used to be and why it read as broken. Unless a camera or a
-// track is asked for by name, the live feed runs a looping cut-list: the bowl
-// from the air, then the stands where the visitors actually are, then the
-// pitch. Capture mode is never given a default — a harness says what it wants.
-if (live && !camtrackUrl && !params.get('camera')) camtrackUrl = '/broadcast/live-cutlist.json';
+// track is asked for by name, the live feed is directed from here: a looping
+// ambient cut-list between matches, and a different one — cuts, no drift —
+// while a match is on. Capture mode is never given a default; a harness says
+// what it wants, and a named camera or track turns the director off entirely.
+const autoDirect = live && !camtrackUrl && !params.get('camera');
+const AMBIENT_CUTLIST = '/broadcast/live-cutlist.json';
+const MATCH_CUTLIST = '/broadcast/match-cutlist.json';
 
 // Anything the brief names that this build still does not honour is reported
 // rather than ignored — a capture that silently got an empty crowd would be
@@ -167,7 +170,8 @@ document.getElementById('stage').appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0817);
 scene.fog = new THREE.Fog(0x0a0817, 32, 95);
-const camera = new THREE.PerspectiveCamera(50, W / H, 0.1, 220);
+const DEFAULT_FOV = 50;   // what a shot that does not state one is filmed at
+const camera = new THREE.PerspectiveCamera(DEFAULT_FOV, W / H, 0.1, 220);
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300),
   new THREE.MeshStandardMaterial({ color: 0x121017, roughness: 0.95 }));
 ground.rotation.x = -Math.PI / 2;
@@ -182,6 +186,20 @@ composer.addPass(new OutputPass());
 
 const loader = new GLTFLoader().setDRACOLoader(new DRACOLoader().setDecoderPath('/vendor/three/jsm/libs/draco/gltf/'));
 const media = createMediaSystem(camera);
+// THIS PAGE IS SILENT, AND SAYS SO.
+//
+// RFL play the match premix into the audio bus their encoder captures, and
+// that bus also carries this browser: anything the page emits is a second
+// commentary track laid over the first. Until today silence here was a
+// side-effect — no module, therefore no sound — and restoring the match
+// module would have ended it without anyone deciding to.
+//
+// So it is a decision now, made in one place. Muting the listener drops the
+// master gain to zero and tells every subscriber, which is how the match
+// module's own audio policy learns to keep the publisher's stems off. It
+// covers whatever the venue grows next, and `state().silent` lets RFL assert
+// it from outside rather than measure it off the bus.
+media.setMuted(true);
 const anims = createAnimSystem();
 const doors = createDoorSystem();
 
@@ -197,6 +215,14 @@ const viewer = {
 
 let def = null, venues = null, V = null, world = null, frame = 0, presence = null;
 let crowd = null, track = null, lastTrackCam = null;
+// The director's two cut-lists and the one in force. `cutFrom` is the frame a
+// list was cut to, so each one restarts at its own first shot instead of
+// joining wherever its loop happened to be — the change of programme reads as
+// a cut, which is what it is.
+let ambientCut = null, matchCut = null, cutNow = null, cutFrom = 0;
+// Where the live feed started counting, so `state().pace` can say whether
+// simulated time is keeping up with the wall. See the comment on the loop.
+let livePaceFrom = null;
 
 async function boot() {
   const street = withStreet ? await loadStreet(scene) : null;
@@ -213,14 +239,23 @@ async function boot() {
   if (!def) throw new Error(`no venue "${wantVenue}" in /venues/index.json`);
   def.tiers.unload_after_s = 0;
 
-  // Ambient mode is an empty pitch (§4). The match module's schedule path
-  // polls a programme feed on a 60 s wall-clock timer, which would be both
-  // network after load and a clock the capture cannot control — so with no
-  // bundle the module is removed rather than left idling.
+  // WHAT IS ON IS THE STADIUM'S BUSINESS, NOT THE URL'S.
+  //
+  // The live feed runs the venue's own match module, unchanged — the same
+  // schedule, from the same programme feed, that an ordinary visitor standing
+  // in the bowl is watching. A capture that had to be told which bundle to
+  // mount could disagree with the city; one that is handed the module cannot,
+  // because it is the city. This is the whole of RFL's §1 and it is a filter
+  // clause, not a feature: the module was always there, and only this page
+  // was throwing it away.
+  //
+  // Capture mode still strips it. The schedule path polls a programme feed on
+  // a 60 s wall clock — network after load, and a clock a harness cannot step
+  // — so a deterministic run films the bundle it names or an empty pitch.
   def.modules = (def.modules || []).filter((m) => {
     if (m.type !== 'match-4dgsx') return true;
-    if (!bundle) return false;
-    m.bundle = bundle;
+    if (capture && !bundle) return false;
+    if (bundle) m.bundle = bundle;          // a named bundle still wins, in either mode
     // No audio on a broadcast: RFL mixes crowd and commentary themselves, and
     // the venue's PA loads its commentary stem after the match has mounted,
     // without the mount awaiting it. That is a fetch during capture and an
@@ -228,6 +263,9 @@ async function boot() {
     // nobody records. Dropped rather than muted.
     delete m.pa;
     delete m.audio;
+    // The shared override is another wall-clock poll; capture answers to the
+    // harness alone.
+    if (capture) delete m.now;
     return true;
   });
 
@@ -245,14 +283,15 @@ async function boot() {
   // The camera track is loaded before anything is filmed: a segment naming a
   // camera that does not exist should stop the run now, not at frame 90,000.
   if (camtrackUrl) {
-    try {
-      const doc = await (await fetch(camtrackUrl, { credentials: 'omit' })).json();
-      track = await createTrack(doc, { fetchJson: async (u) => {
-        const abs = httpsOnly(u);
-        if (!abs) throw new Error(`explicit frames must be an https URL: ${u}`);
-        return (await fetch(abs, { credentials: 'omit' })).json();
-      } }).resolve();
-    } catch (e) { track = null; fail('camtrack', e); }
+    try { track = await loadTrack(camtrackUrl); } catch (e) { track = null; fail('camtrack', e); }
+  }
+  if (autoDirect) {
+    // Both lists are loaded before filming, for the same reason one is: a cut
+    // to a camera that does not exist should be found now, not at the first
+    // goal of a live match.
+    try { ambientCut = await loadTrack(AMBIENT_CUTLIST); } catch (e) { fail('cutlist', e); }
+    try { matchCut = await loadTrack(MATCH_CUTLIST); } catch (e) { fail('cutlist', e); }
+    cutNow = ambientCut;
   }
 
   if (crowdDensity > 0) {
@@ -299,6 +338,7 @@ async function boot() {
  */
 async function startLive() {
   const { createPresence } = await import('/js/presence.js');
+  livePaceFrom = { wall: performance.now(), sim: simT };
   // presence reports its own facing from the player's avatar; a camera has no
   // body, so it offers the one field that is read and nothing else.
   const asCitizen = { pos: viewer.pos, avatar: { group: { rotation: { y: 0 } } } };
@@ -307,6 +347,20 @@ async function startLive() {
   let last = performance.now();
   renderer.setAnimationLoop(() => {
     const now = performance.now();
+    // THE CLAMP IS LOAD-BEARING, AND IT HAS A COST WORTH KNOWING ABOUT.
+    //
+    // It stops one long stall (a tab in the background, a GC pause, a bundle
+    // landing) from advancing the world by a second in a single step. But it
+    // also means that a machine which cannot sustain 20 fps does not drop
+    // frames — it runs the WORLD slow, permanently, and a match plays in
+    // slow motion while the wall clock carries on. Measured in headless
+    // software rendering with a match mounted: 17 s of match in 171 s of wall
+    // time. On a machine with real acceleration it does not arise.
+    //
+    // It is not silently fixable here: handing the stage a 3-second dt is its
+    // own failure, and which one is worse depends on whose machine it is. So
+    // the page reports the ratio instead — `state().pace` — and a capture that
+    // cares can watch it rather than discover it on air.
     const dt = Math.min((now - last) / 1000, 0.05);
     last = now;
     advance(dt);
@@ -315,6 +369,7 @@ async function startLive() {
     // one rAF is not one frame at 50 fps, and a cut-list keyed to the frame
     // number would run 20% fast on a 60 Hz screen and stall in a background tab.
     frame = Math.round(simT * FPS);
+    direct();
     draw();
   });
 }
@@ -387,11 +442,68 @@ function aim({ pos, lookAt, fov, roll }) {
 // RFL's contracted position and the check verifies the authored value.
 const ANIMATED = new Set(['heli', 'stands', 'pitchside']);
 
+/** A camera authored in venue.json, by either spelling. Null if there is none. */
+function namedCamera(name) {
+  const c = def?.cameras?.[name] ?? def?.cameras?.[String(name).toLowerCase()];
+  return c ? { pos: c[0], lookAt: c[1], fov: null } : null;
+}
+
+/** Read a cut-list and resolve it against both the director's shots and the venue's own. */
+async function loadTrack(url) {
+  const doc = await (await fetch(url, { credentials: 'omit' })).json();
+  return createTrack(doc, {
+    named: namedCamera,
+    fetchJson: async (u) => {
+      const abs = httpsOnly(u);
+      if (!abs) throw new Error(`explicit frames must be an https URL: ${u}`);
+      return (await fetch(abs, { credentials: 'omit' })).json();
+    },
+  }).resolve();
+}
+
+/**
+ * Choose the programme, once per live frame.
+ *
+ * RFL's §2 asks for cuts rather than drift: their encoder is CBR, and a slow
+ * continuous move spends bitrate on every pixel of every frame. So the two
+ * cut-lists are different in kind, not just in shot order. Between matches the
+ * ambient list flies and pans, because there is nothing to lose and an empty
+ * bowl that never moves reads as a broken stream. Once a match is on the pitch
+ * the director changes to static cameras and hard cuts, and nothing moves
+ * except the match.
+ *
+ * A goal is the one moment the scoreboard is the picture rather than a prop:
+ * the module paints it for four seconds and the director cuts there, the way
+ * a gallery would, then cuts back.
+ */
+let goalCut = false;
+function direct() {
+  if (!autoDirect) return;
+  const m = matchState();
+  const onAir = m?.phase === 'match';
+  const want = (onAir ? matchCut : ambientCut) || ambientCut || matchCut;
+  if (want && want !== cutNow) { cutNow = want; cutFrom = frame; }
+  goalCut = onAir && m?.board === 'GOAL' && !!namedCamera('scoreboard');
+}
+
 function cameraAt(name, frameNo) {
   const key = String(name).toLowerCase();
   const t = frameNo / FPS;
-  if (track) {
-    const c = track.at(frameNo);
+  // A goal interrupts the cut-list, not the harness: an explicitly requested
+  // track or camera is never overridden by the director.
+  if (goalCut && !track) {
+    // fov is stated rather than inherited: an authored camera carries none of
+    // its own, and cutting here from the ambient orbit (46°) would otherwise
+    // film the whole match at the helicopter's framing.
+    const c = { ...namedCamera('scoreboard'), fov: DEFAULT_FOV, segment: -1, camera: 'scoreboard' };
+    lastTrackCam = c;
+    return c;
+  }
+  // An explicit `?camtrack=` is absolute; the director's lists run from the
+  // frame they were cut to, so each starts on its own first shot.
+  const cut = track || cutNow;
+  if (cut) {
+    const c = cut.at(track ? frameNo : frameNo - cutFrom);
     // Past the end of the track the last segment's final framing is held,
     // rather than snapping somewhere arbitrary mid-capture.
     if (c) { lastTrackCam = c; return c; }
@@ -400,8 +512,8 @@ function cameraAt(name, frameNo) {
   if (ANIMATED.has(key)) return CAMERAS[key](t, seed, {});
   // Authored names are lower-case in venue.json and RFL's brief writes every
   // camera in capitals, so an authored camera answers to either.
-  const c = def?.cameras?.[name] ?? def?.cameras?.[key];
-  if (c) return { pos: c[0], lookAt: c[1], fov: null };
+  const c = namedCamera(name);
+  if (c) return c;
   if (CAMERAS[key]) return CAMERAS[key](t, seed, {});
   return null;
 }
@@ -473,7 +585,8 @@ function draw() {
     note.textContent = `otra.city broadcast · ${wantVenue} · camera ${wantCam} · frame ${frame} `
       + `(${(frame / FPS).toFixed(2)}s @ ${FPS}fps) · ${W}×${H} · build ${BUILD} · ${r.calls} calls · ${r.triangles} tris`
       + (crowd ? ` · ${crowd.count} fans (${crowd.state.standing} up)` : '')
-      + (track && lastTrackCam ? ` · track seg ${lastTrackCam.segment} (${lastTrackCam.camera})` : '')
+      + ((track || cutNow) && lastTrackCam ? ` · ${track ? 'track' : cutNow === matchCut ? 'match cut' : 'ambient cut'}`
+          + ` seg ${lastTrackCam.segment} (${lastTrackCam.camera})` : '')
       + (live ? ` · LIVE ${presence?.count ?? 0}/${liveCap} peers${presence?.connected ? '' : ' (connecting…)'} — not reproducible` : '')
       + (unimplemented.length ? `\nnot in this build: ${unimplemented.join(' · ')}` : '');
   }
@@ -524,14 +637,47 @@ window.rflBroadcast = {
       width: W, height: H, pixelRatio: renderer.getPixelRatio(),
       tier: V?.tier ?? null, loaded: !!V?.near,
       bundle, seed, street: withStreet,
-      live: live ? { cap: liveCap, peers: presence?.count ?? 0, connected: !!presence?.connected,
+      // `cap` is how many peer avatars THIS browser draws — not a limit on
+      // joining, and nothing that can turn a camera away. Spelled out because
+      // it was read as a connection cap, which would make a busy match a risk
+      // to the stream.
+      live: live ? { cap: liveCap, capIs: 'peer avatars this browser draws', observer: true,
+                     peers: presence?.count ?? 0, connected: !!presence?.connected,
                      deterministic: false } : null,
       crowd: crowd ? { density: crowdDensity, fans: crowd.count, standing: crowd.state.standing,
                        seatsOffered: crowd.state.seatsOffered, cap: crowd.state.cap } : null,
       camtrack: track ? { segments: track.segments.length, lastFrame: track.lastFrame,
                           shot: lastTrackCam ? { camera: lastTrackCam.camera, segment: lastTrackCam.segment } : null } : null,
       timeofday,
-      match: (() => { const m = matchState(); return m ? { phase: m.phase, errors: m.errors ?? [] } : null; })(),
+      // Simulated seconds per wall second since the live feed started. 1.0 is
+      // keeping up; 0.5 is a world running at half speed on a machine that
+      // cannot paint fast enough, which looks like a slow-motion match rather
+      // than like dropped frames.
+      pace: livePaceFrom
+        ? +((simT - livePaceFrom.sim) / Math.max(0.001, (performance.now() - livePaceFrom.wall) / 1000)).toFixed(3)
+        : null,
+      // Silence is a promise to RFL, so it is reported rather than assumed.
+      silent: media.muted,
+      // What is on, named well enough that RFL can tell from outside whether
+      // the stadium and their encoder are showing the same fixture.
+      match: (() => {
+        const m = matchState();
+        if (!m) return null;
+        return {
+          phase: m.phase, sdk: m.sdk, source: m.source ?? null,
+          id: m.match?.id ?? null, title: m.match?.title ?? null,
+          state: m.stage ?? null, clock: m.clock ?? null, score: m.score ?? null,
+          next: m.next ? { id: m.next.bundleId, startsAt: m.next.startsAt } : null,
+          // what the big screen and the side panels are carrying — between
+          // matches that is the programme, not the plates they were painted with
+          screens: m.screens ?? null,
+          audio: m.audio ?? null, errors: m.errors ?? [],
+        };
+      })(),
+      director: autoDirect
+        ? { list: cutNow === matchCut ? 'match' : 'ambient', goal: goalCut,
+            shot: lastTrackCam ? lastTrackCam.camera : null }
+        : null,
       calls: r.calls, tris: r.triangles,
       unimplemented, errors: errors.slice(),
     };

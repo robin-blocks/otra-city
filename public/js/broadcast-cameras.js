@@ -148,8 +148,15 @@ export const CAMERAS = {
  *
  * `explicit` frames are indexed from the START of their segment, so a tracking
  * shot can be re-cut to a different point in the programme without re-exporting.
+ *
+ * `named` lets a caller offer cameras this module does not own — the venue's
+ * own authored positions. A cut-list of static shots is the only way to cut
+ * without drifting, and every static shot in the stadium is authored in
+ * `venue.json` rather than written as a function of time here. Built-in
+ * cameras still win on a name they share, so `GANTRY` and `PITCHSIDE` mean in
+ * a track file what they mean everywhere else.
  */
-export function createTrack(doc, { fetchJson } = {}) {
+export function createTrack(doc, { fetchJson, named = null } = {}) {
   const fps = doc.fps || 50;
   const segments = (doc.segments || []).map((s, i) => {
     const [a, b] = s.frames || [0, 0];
@@ -169,7 +176,7 @@ export function createTrack(doc, { fetchJson } = {}) {
       if (s.explicit && s.explicit.length < s.to - s.from) {
         throw new Error(`segment ${s.index}: ${s.explicit.length} explicit frames for ${s.to - s.from} frames of segment`);
       }
-      if (s.camera !== 'track' && !CAMERAS[s.camera]) {
+      if (s.camera !== 'track' && !CAMERAS[s.camera] && !named?.(s.camera)) {
         throw new Error(`segment ${s.index}: unknown camera "${s.camera}" — one of ${Object.keys(CAMERAS).join(', ')}, track`);
       }
     }
@@ -201,8 +208,13 @@ export function createTrack(doc, { fetchJson } = {}) {
       return { pos, lookAt, fov: fov ?? 50, segment: s.index, camera: 'track' };
     }
     // Named-camera segments run on their own clock from the segment's start,
-    // so a cut to HELI always begins at the same point in the orbit.
-    const c = CAMERAS[s.camera](( frame - s.from) / fps, s.seed, s.params);
+    // so a cut to HELI always begins at the same point in the orbit. An
+    // authored camera has no clock at all, which is the point of it.
+    const c = CAMERAS[s.camera] ? CAMERAS[s.camera]((frame - s.from) / fps, s.seed, s.params) : named?.(s.camera);
+    // resolve() proved every name, so this cannot be null — but it is read
+    // fifty times a second on a live feed, and a throw here would take the
+    // picture down rather than lose a shot.
+    if (!c) return null;
     return { ...c, fov: c.fov ?? 50, segment: s.index, camera: s.camera };
   }
 
