@@ -8,9 +8,13 @@
 //
 // Lifecycle (venues.js): create → activate (tier 2) → update per frame →
 // deactivate (tier 1, the match stays mounted but silent) → dispose (tier 0).
-// Between matches the SDK's countdown board stands on the pitch and the
-// scoreboard shows the next kick-off; there are no replays on the live site
-// (decided 2026-09-02) — a bundle is downloaded only while a match is live.
+// Between matches the scoreboard shows the next fixture and the pitch is
+// empty. A bundle is downloaded while a match is live — and, since 2026-09-11,
+// when the city itself puts one on: `cfg.now` is a document on our own origin
+// naming a replay to show, so that what is in the stadium is shared state
+// rather than one browser's query string. The 2026-09-02 rule it replaces was
+// "no replays on the live site"; what stands now is that nobody downloads a
+// bundle unless the city as a whole is showing it.
 import * as THREE from 'three';
 import { createPA } from '/js/pa-system.js';
 
@@ -43,6 +47,8 @@ function countdown(ms) {
 function bundleName(url) {
   try { return new URL(url).pathname.split('/').filter(Boolean).pop() || String(url); } catch { return String(url || ''); }
 }
+/** A bundle URL from shared state is data we hand the SDK: https, or this origin. */
+const httpsOnly = (u) => { try { const x = new URL(u, location.href); return x.protocol === 'https:' || x.origin === location.origin ? x.href : null; } catch { return null; } };
 function londonTime(iso) {
   try { return new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(iso)); } catch { return ''; }
 }
@@ -61,6 +67,11 @@ export function create(ctx) {
     phase: 'idle', sdk: 'unloaded', coarse, active: false, match: null, docks: [], stage: null,
     score: null, clock: null, next: null, live: null, recent: [], audio: 'off', board: '', errors: [], updates: 0,
     pa: null, sdkAudio: null,
+    // where what is on the pitch came from: the channel's schedule, a bundle
+    // named in the venue's own config, or the city's shared override
+    source: null, now: null, loadingNow: null,
+    // the programme, and what the big screen and side panels are showing
+    upcoming: [], screens: {},
   };
 
   // Screens get unlit materials that keep the authored plate as their map:
@@ -99,15 +110,16 @@ export function create(ctx) {
   // · Match 12: Singularity United vs Synthetic Athletic") is half again as
   // long as a season-3 one and ran 350 px off the board's edge, and the two
   // longest club names already ran past the edge and into the score.
-  function fitText(text, x, y, { weight = 500, size = 30, maxW, minSize = Math.round(size * 0.6) }) {
+  function fitTextOn(ctx, text, x, y, { weight = 500, size = 30, maxW, minSize = Math.round(size * 0.6) }) {
     let s = size;
     let t = String(text ?? '');
     const font = (px) => `${weight} ${px}px Menlo, monospace`;
-    g.font = font(s);
-    while (g.measureText(t).width > maxW && s > minSize) { s -= 1; g.font = font(s); }
-    while (g.measureText(t).width > maxW && t.length > 1) t = `${t.slice(0, -2)}…`;
-    g.fillText(t, x, y);
+    ctx.font = font(s);
+    while (ctx.measureText(t).width > maxW && s > minSize) { s -= 1; ctx.font = font(s); }
+    while (ctx.measureText(t).width > maxW && t.length > 1) t = `${t.slice(0, -2)}…`;
+    ctx.fillText(t, x, y);
   }
+  const fitText = (text, x, y, opts) => fitTextOn(g, text, x, y, opts);
 
   // The venue's tannoy, if it declared one. Built here rather than per match
   // so the speakers keep their places across mounts; it only carries sound
@@ -183,7 +195,10 @@ export function create(ctx) {
       g.textAlign = 'center';
       g.fillStyle = '#ffd479';
       g.font = '700 34px Menlo, monospace';
-      g.fillText(nx ? 'NEXT KICK-OFF' : state.live ? 'MATCH LOADING' : 'NO MATCH SCHEDULED', W / 2, 140);
+      // Not "NEXT KICK-OFF": the feed's startsAt is when the programme
+      // reaches the pitch, and the build-up runs before the whistle. The
+      // board counts down to the thing it can actually see arrive.
+      g.fillText(nx ? 'NEXT MATCH' : state.live ? 'MATCH LOADING' : 'NO MATCH SCHEDULED', W / 2, 140);
       if (nx) {
         const ms = Date.parse(nx.startsAt) - now();
         g.fillStyle = '#e9edf6';
@@ -193,7 +208,7 @@ export function create(ctx) {
         g.font = '700 40px Menlo, monospace';
         g.fillText(`${nx.home?.code || '?'}  v  ${nx.away?.code || '?'}`, W / 2, 372);
         g.fillStyle = '#b9bcd6';
-        fitText(`${nx.home?.name || ''} v ${nx.away?.name || ''} · ${londonTime(nx.startsAt)} London`, W / 2, 416, { size: 32, maxW: W - 88 });
+        fitText(`${nx.home?.name || ''} v ${nx.away?.name || ''} · on at ${londonTime(nx.startsAt)} London`, W / 2, 416, { size: 32, maxW: W - 88 });
         text = `next ${nx.home?.code}-${nx.away?.code} in ${countdown(ms)}`;
       } else {
         g.fillStyle = '#8a86a0';
@@ -218,12 +233,155 @@ export function create(ctx) {
     if (scoreMesh && scoreMesh.material.map !== boardTex) { scoreMesh.material.map = boardTex; scoreMesh.material.needsUpdate = true; }
   }
 
+  // ---- the screens between matches -------------------------------------------
+  //
+  // For roughly twenty-two hours a day there is no match, and for all of those
+  // hours the big screen and the two side panels were showing the plates they
+  // were painted with in Blender. That is fine as scenery and useless as a
+  // broadcast: the one thing a viewer arriving between matches wants is when
+  // the next one is, and it was on the scoreboard alone, behind them.
+  //
+  // So the docks carry the programme when nothing is mounted — the big screen
+  // a "coming up" card, the left panel the fixtures, the right panel the
+  // results. The `screen_main` camera frames all three at once, which is what
+  // makes it worth cutting to.
+  //
+  // The SDK takes the docks over on mount and hands back the AUTHORED plate on
+  // unmount, not ours — so re-applying is part of the paint, not a one-off.
+  const IDLE_SIZE = { main: [1024, 576], left: [696, 1024], right: [696, 1024] };
+  const idleScreens = {};
+  for (const slot of Object.keys(dockMeshes)) {
+    const [w, h] = IDLE_SIZE[slot] || [1024, 576];
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.flipY = false;            // glTF UVs, like every media node in the city
+    tex.anisotropy = 4;
+    idleScreens[slot] = { canvas: c, g: c.getContext('2d'), tex };
+  }
+
+  /** The common furniture: ground, border, heading, rule. Returns the first baseline. */
+  function cardFrame(ctx, W, H, heading) {
+    ctx.fillStyle = '#0b0714';
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = '#ffd479';
+    ctx.lineWidth = Math.round(W / 128);
+    ctx.strokeRect(10, 10, W - 20, H - 20);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ffd479';
+    ctx.font = `700 ${Math.round(W / 18)}px Menlo, monospace`;
+    ctx.fillText(heading, 40, 72);
+    ctx.fillStyle = '#31234f';
+    ctx.fillRect(40, 92, W - 80, 3);
+    return 150;
+  }
+
+  /** A column of fixtures or results, one row each. */
+  function paintList(slot, heading, rows) {
+    const s = idleScreens[slot];
+    if (!s) return '';
+    const ctx = s.g;
+    const W = s.canvas.width;
+    const H = s.canvas.height;
+    let y = cardFrame(ctx, W, H, heading);
+    if (!rows.length) {
+      ctx.fillStyle = '#8a86a0';
+      ctx.font = '500 30px Menlo, monospace';
+      ctx.fillText('nothing listed', 40, y);
+    }
+    // Sized from the frame, not from the canvas. A side panel is about a tenth
+    // of the width of the `screen_main` shot, so a row set at a comfortable
+    // reading size for someone standing in the bowl is six pixels on air. Four
+    // big rows beat six small ones on both.
+    for (const row of rows) {
+      if (y > H - 90) break;
+      ctx.fillStyle = '#e9edf6';
+      fitTextOn(ctx, row.a, 40, y, { weight: 900, size: 62, maxW: W - 80 });
+      ctx.fillStyle = row.tone || '#8a86a0';
+      fitTextOn(ctx, row.b, 40, y + 48, { size: 38, maxW: W - 80 });
+      y += 150;
+    }
+    s.tex.needsUpdate = true;
+    return `${heading}: ${rows.length}`;
+  }
+
+  /** The big screen: what is coming, in the largest type that fits. */
+  function paintComingUp() {
+    const s = idleScreens.main;
+    if (!s) return '';
+    const ctx = s.g;
+    const W = s.canvas.width;
+    const H = s.canvas.height;
+    cardFrame(ctx, W, H, (state.channelTitle || 'RFL').toUpperCase());
+    const nx = state.next;
+    ctx.textAlign = 'center';
+    if (nx) {
+      ctx.fillStyle = '#47f2ff';
+      ctx.font = '700 32px Menlo, monospace';
+      ctx.fillText('COMING UP', W / 2, 190);
+      ctx.fillStyle = '#e9edf6';
+      fitTextOn(ctx, `${nx.home?.code || '?'}  v  ${nx.away?.code || '?'}`, W / 2, 300,
+        { weight: 900, size: 96, maxW: W - 120 });
+      ctx.fillStyle = '#b9bcd6';
+      fitTextOn(ctx, `${nx.home?.name || ''} v ${nx.away?.name || ''}`, W / 2, 360,
+        { size: 34, maxW: W - 120 });
+      ctx.fillStyle = '#ffd479';
+      ctx.font = '700 56px Menlo, monospace';
+      ctx.fillText(countdown(Date.parse(nx.startsAt) - now()), W / 2, 448);
+      ctx.fillStyle = '#8a86a0';
+      fitTextOn(ctx, `on at ${londonTime(nx.startsAt)} London`, W / 2, 508, { size: 30, maxW: W - 120 });
+    } else {
+      ctx.fillStyle = '#8a86a0';
+      ctx.font = '500 40px Menlo, monospace';
+      ctx.fillText(state.sdk === 'loading' ? 'reading the programme…' : 'no match scheduled', W / 2, 300);
+    }
+    ctx.textAlign = 'left';
+    s.tex.needsUpdate = true;
+    return nx ? `coming up ${nx.home?.code}-${nx.away?.code}` : 'idle';
+  }
+
+  /**
+   * Paint the docks, and make sure they are still ours.
+   *
+   * Does nothing while a match is mounted: the SDK owns those surfaces then,
+   * and painting under it would be a fight nobody wins.
+   */
+  function paintIdleScreens() {
+    if (stage || !Object.keys(idleScreens).length) return;
+    const screens = {};
+    screens.main = paintComingUp();
+    // The slot named `right` is the one that reads on the LEFT of the
+    // `screen_main` shot — the camera looks up the +z axis, which puts +x to
+    // port. Checked against a render, not reasoned about: fixtures come before
+    // results left to right, which is the way round a viewer reads them.
+    screens.right = paintList('right', 'FIXTURES', (state.upcoming || []).slice(0, 4).map((i) => ({
+      a: `${i.home?.code || '?'}  v  ${i.away?.code || '?'}`,
+      b: londonTime(i.startsAt),
+    })));
+    screens.left = paintList('left', 'RESULTS', (state.recent || []).slice(0, 4).map((i) => ({
+      a: `${i.home?.code || '?'} ${i.score?.[0] ?? '–'} – ${i.score?.[1] ?? '–'} ${i.away?.code || '?'}`,
+      b: londonTime(i.startsAt),
+      tone: '#8a86a0',
+    })));
+    for (const [slot, mesh] of Object.entries(dockMeshes)) {
+      const s = idleScreens[slot];
+      if (s && mesh.material.map !== s.tex) { mesh.material.map = s.tex; mesh.material.needsUpdate = true; }
+    }
+    state.screens = screens;
+  }
+
   // ---- the SDK -----------------------------------------------------------------------
   let gsx = null;
   let slot = null;
   let stage = null;
   let disposed = false;
   let programmeTimer = 0;
+  let nowTimer = 0;
+  let override = null;
+  let overrideDoc = null;
+  let mountingNow = null;
   const mutedIds = new Set();
   const gestureFns = [];
   let unsubMute = null;
@@ -233,12 +391,19 @@ export function create(ctx) {
     skewMs = Date.now() - Date.parse(p.now || new Date().toISOString());
     state.channelTitle = p.channel?.title || null;
     state.live = p.items.find((i) => i.state === 'live') || null;
+    // Enough for the screens, not just the scoreboard's one line: between
+    // matches the big screen and the two side panels carry the programme, and
+    // a panel with a single fixture on it is a panel nobody reads.
+    state.upcoming = p.items.filter((i) => i.state === 'upcoming' && i.startsAt)
+      .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt)).slice(0, 6)
+      .map((i) => ({ home: i.home, away: i.away, startsAt: i.startsAt, title: i.title }));
     state.next = p.items.filter((i) => i.state === 'upcoming' && i.startsAt)
       .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))[0] || null;
     state.recent = p.items.filter((i) => i.state === 'replay' && i.startsAt)
-      .sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt)).slice(0, 2)
-      .map((i) => ({ home: i.home, away: i.away, score: i.score, title: i.title }));
+      .sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt)).slice(0, 6)
+      .map((i) => ({ home: i.home, away: i.away, score: i.score, title: i.title, startsAt: i.startsAt }));
     paintBoard();
+    paintIdleScreens();
   }
 
   function audioPolicy() {
@@ -271,9 +436,16 @@ export function create(ctx) {
     for (const ev of ['pointerdown', 'keydown']) { addEventListener(ev, once); gestureFns.push([ev, once]); }
   }
 
-  function onMount(st, item) {
+  function onMount(st, item, source = 'schedule', bundleUrl = null) {
+    // A live fixture always wins the pitch: if the stadium was showing a
+    // replay when kick-off came round, the replay comes down first, so the
+    // two can never be mounted at once.
+    if (source === 'schedule' && override) dropOverride();
     stage = st;
-    state.match = item ? { id: item.bundleId, title: item.title, state: item.state } : { id: 'bundle', title: bundleName(cfg.bundle) };
+    state.source = source;
+    state.match = item
+      ? { id: item.bundleId, title: item.title, state: item.state }
+      : { id: bundleName(bundleUrl || cfg.bundle), title: overrideDoc?.title || bundleName(bundleUrl || cfg.bundle) };
     st.group.position.set(0, 0, 0);
     pitch.add(st.group);
     state.docks = [];
@@ -296,7 +468,7 @@ export function create(ctx) {
     // so a PA that fails to load leaves commentary audible rather than gone.
     // `item` is absent when a bundle is mounted directly (the fixture's
     // ?bundle=), so the URL has to come from whichever path mounted us.
-    const stemFrom = item?.bundleUrl || cfg.bundle;
+    const stemFrom = item?.bundleUrl || bundleUrl || cfg.bundle;
     if (pa && stemFrom) {
       pa.load(stemFrom).then((ok) => {
         if (!ok || disposed) return;
@@ -320,8 +492,11 @@ export function create(ctx) {
     state.match = null;
     state.docks = [];
     state.stage = null;
+    state.source = null;
     state.phase = state.next ? 'countdown' : 'idle';
     paintBoard();
+    // The SDK hands back the authored plate, not ours; take the docks back.
+    paintIdleScreens();
   }
 
   async function ensureSdk() {
@@ -352,7 +527,7 @@ export function create(ctx) {
       try {
         const st = await sdk.mount({ bundleUrl: cfg.bundle, autoplay: false });
         if (disposed) { st.dispose(); return; }
-        onMount(st, null);
+        onMount(st, null, 'bundle', cfg.bundle);
         slot = { dispose() { onUnmount(); st.dispose(); } };
       } catch (e) {
         state.errors.push(`mount: ${e.message || e}`);
@@ -362,7 +537,7 @@ export function create(ctx) {
       return;
     }
     slot = sdk.schedule(cfg.channel || 'rfl', {
-      mount: (st, item) => onMount(st, item),
+      mount: (st, item) => onMount(st, item, 'schedule'),
       unmount: () => onUnmount(),
       onProgramme,
       // The SDK offers a countdown board to stand on the pitch. We decline
@@ -375,6 +550,80 @@ export function create(ctx) {
       pollS: cfg.poll_s || 60,
     });
   }
+  // ---- what the CITY says is on ---------------------------------------------
+  //
+  // A URL parameter can only ever change one browser. RFL's Twitch channel is
+  // a dumb capture of this page — whatever the stadium shows, they stream —
+  // so the one thing that must not live in a query string is which match is
+  // on: a parameter would make their stream and otra.city disagree, which is
+  // the split the whole arrangement exists to avoid.
+  //
+  // `cfg.now` names a small document on our own origin: the city's answer to
+  // "what is playing in the stadium right now". Every client that is inside
+  // the bowl polls it on the same clock — the module only runs at Tier 2 —
+  // so changing that one file puts a match in front of everyone who could
+  // see the pitch at all, the broadcast camera among them.
+  //
+  // The channel's own live fixtures always outrank it. This is for the other
+  // twenty-two hours: a replay we chose to put on.
+  async function pollNow() {
+    if (!cfg.now || disposed) return;
+    let doc = null;
+    try {
+      const r = await fetch(cfg.now, { credentials: 'omit', cache: 'no-store' });
+      if (r.ok) doc = await r.json();
+    } catch { return; }              // a poll that fails changes nothing
+    if (disposed) return;
+    const url = typeof doc?.bundle === 'string' ? httpsOnly(doc.bundle) : null;
+    if (doc?.bundle && !url) state.errors.push('now: bundle must be an https URL');
+    state.now = url ? { bundle: url, title: doc.title || null } : null;
+    // A mount is a ~320 MB download that outlives several polls. Without this
+    // the next tick would find no `override` yet, conclude nothing was on, and
+    // start the download again — and again every sixty seconds until the first
+    // one landed. Whatever the document says is reconciled by the poll after
+    // the mount finishes, which is soon enough for a thing that takes minutes.
+    if (mountingNow) return;
+    if (!url) { dropOverride(); return; }
+    if (override?.url === url) return;   // already showing it
+    dropOverride();
+    if (stage) return;                   // a live fixture has the pitch
+    overrideDoc = doc;
+    await mountOverride(url);
+  }
+
+  async function mountOverride(url) {
+    const sdk = await ensureSdk();
+    if (!sdk || disposed || stage) return;
+    state.phase = 'loading';
+    mountingNow = url;
+    state.loadingNow = url;
+    paintBoard();
+    try {
+      const st = await sdk.mount({ bundleUrl: url, autoplay: false });
+      // The download takes minutes; kick-off may have arrived while it ran.
+      if (disposed || stage) { st.dispose(); return; }
+      override = { url, st };
+      onMount(st, null, 'now', url);
+    } catch (e) {
+      state.errors.push(`now: ${e.message || e}`);
+      state.phase = state.next ? 'countdown' : 'idle';
+      overrideDoc = null;
+      paintBoard();
+    } finally {
+      mountingNow = null;
+      state.loadingNow = null;
+    }
+  }
+
+  function dropOverride() {
+    if (!override) return;
+    const { st } = override;
+    override = null;
+    overrideDoc = null;
+    onUnmount();
+    try { st.dispose(); } catch (e) { log.warn('match-4dgsx: override dispose', e); }
+  }
+
   // Phones only get the board: the match core is a ~39 MB download and the
   // SDK's stage is a desktop-class scene. The programme still tells them when.
   async function pollProgrammeOnly() {
@@ -391,8 +640,14 @@ export function create(ctx) {
       if (disposed) return;
       state.active = true;
       paintBoard();
+      paintIdleScreens();
       if (coarse) { pollProgrammeOnly(); programmeTimer = setInterval(pollProgrammeOnly, 60000); }
-      else startSchedule();
+      else {
+        startSchedule();
+        // A venue pinned to one bundle answers to nobody's schedule, its own
+        // included; everywhere else, ask the city what is on.
+        if (cfg.now && !cfg.bundle) { pollNow(); nowTimer = setInterval(pollNow, (cfg.poll_s || 60) * 1000); }
+      }
       if (!unsubMute && media?.subscribeMute) unsubMute = media.subscribeMute(() => audioPolicy());
       audioPolicy();
     },
@@ -430,11 +685,16 @@ export function create(ctx) {
       if (boardTimer <= 0 || (goalUntil > 0 && goalUntil <= simTime && goalUntil > simTime - dt)) {
         boardTimer = stage ? 0.25 : 1.0;
         paintBoard();
+        // Once a second while the pitch is empty: the countdown on the big
+        // screen has to tick, and the docks have to stay ours.
+        paintIdleScreens();
       }
     },
     dispose() {
       disposed = true;
       clearInterval(programmeTimer);
+      clearInterval(nowTimer);
+      dropOverride();
       for (const [ev, fn] of gestureFns) removeEventListener(ev, fn);
       gestureFns.length = 0;
       if (unsubMute) unsubMute();
@@ -443,6 +703,7 @@ export function create(ctx) {
       if (stage) { pitch.remove(stage.group); stage = null; }
       pa?.dispose();
       boardTex.dispose();
+      for (const s of Object.values(idleScreens)) s.tex.dispose();
       // hand every screen back the material it had, then drop ours: the venue
       // disposes what the scene graph holds, so what it holds must be the
       // venue's own again

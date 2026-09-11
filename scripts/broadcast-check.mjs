@@ -19,7 +19,7 @@
 // public/ locally — so "is production the build we described?" is a command
 // with a PASS line, not a comparison of memories. Everything else, the two
 // independent processes included, runs unchanged against it.
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { serve } from '../lib/static-server.mjs';
 import { launchChrome } from '../lib/headless-chrome.mjs';
@@ -45,7 +45,7 @@ const check = (name, ok, detail = '') => {
 };
 
 /** Open /broadcast in its own browser and expose the page's contract. */
-async function openBroadcast({ width = 1280, height = 720 } = {}) {
+async function openBroadcast({ width = 1280, height = 720, liveMode = false } = {}) {
   const { server, origin } = ORIGIN ? { server: null, origin: ORIGIN } : await serve(PUBLIC_DIR);
   const chrome = await launchChrome({ width, height, gpu: flag('gpu') });
   const problems = [];
@@ -54,13 +54,22 @@ async function openBroadcast({ width = 1280, height = 720 } = {}) {
   // and a harness that omits it gets live visitors and a wall clock. That is
   // exactly the mistake this flag is meant to make loud, so the gate proves it
   // by depending on it.
-  const q = new URLSearchParams({ camera: CAMERA, capture: '1' });
-  if (BUNDLE) q.set('bundle', BUNDLE);
-  if (CROWD) q.set('crowd', CROWD);
-  if (CAMTRACK) q.set('camtrack', CAMTRACK.startsWith('http') ? CAMTRACK : `${origin}${CAMTRACK}`);
+  // Live mode is opened BARE, on purpose: that is the URL RFL's encoder loads,
+  // and every parameter this gate otherwise passes would change the answer.
+  // `camtrack` in particular turns the director off, so a live run carrying it
+  // would fail the director check for a reason that has nothing to do with the
+  // page.
+  const q = new URLSearchParams();
+  if (!liveMode) {
+    q.set('camera', CAMERA);
+    q.set('capture', '1');
+    if (BUNDLE) q.set('bundle', BUNDLE);
+    if (CROWD) q.set('crowd', CROWD);
+    if (CAMTRACK) q.set('camtrack', CAMTRACK.startsWith('http') ? CAMTRACK : `${origin}${CAMTRACK}`);
+  }
   // The static host serves files, not vercel.json's rewrites: /broadcast is
   // the public route, /broadcast.html is the file behind it.
-  await chrome.goto(`${origin}/broadcast.html?${q}`);
+  await chrome.goto(`${origin}/broadcast.html${q.toString() ? `?${q}` : ''}`);
   const ev = (e) => chrome.evaluate(e);
   // Module scripts with top-level await may still be running after `load`.
   const deadline = Date.now() + 90000;
@@ -92,7 +101,7 @@ async function openBroadcast({ width = 1280, height = 720 } = {}) {
 console.log(`broadcast check — camera ${CAMERA}, ${FRAMES} frames${BUNDLE ? `, bundle ${BUNDLE}` : ', ambient'}`
   + `${CROWD ? `, crowd ${CROWD}` : ''}${CAMTRACK ? `, camtrack ${CAMTRACK}` : ''}${ORIGIN ? `, against ${ORIGIN}` : ''}\n`);
 
-let a = null, b = null, failed = 0;
+let a = null, b = null, lv = null, failed = 0;
 const report = { camera: CAMERA, frames: FRAMES, bundle: BUNDLE || null, origin: ORIGIN, checks };
 try {
   a = await openBroadcast();
@@ -210,6 +219,48 @@ try {
   check(`two independent runs give the same pixels at frame ${FRAMES}`, same, `${hashA} vs ${hashB}`);
   check('the second run agrees on the frame index', t2.frame === t1.frame, `${t2.frame} vs ${t1.frame}`);
 
+  // ---- the live feed: what a visitor and RFL's capture both get -----------
+  //
+  // Everything above is the deterministic surface. This is the other mode —
+  // the one that is actually on Twitch — and its contract is different: not
+  // "the same pixels twice" but "the same stadium as everyone else's", silent,
+  // and directed. Two of these three were broken by a filter clause on this
+  // page for a week without anything noticing, because nothing looked.
+  console.log('\nlive feed (§1, §2, §3)');
+  // The cut-lists are checked from here rather than in the page: "no shot in
+  // the match list moves" is the whole of RFL's §2, and it is a property of
+  // the file, provable without a browser or a match. It reads the repository's
+  // copy even under `--origin`, because what it is defending is the file about
+  // to be deployed; the browser checks below are the ones that ask production.
+  const venue = JSON.parse(readFileSync(join(PUBLIC_DIR, 'venues/stadium/venue.json'), 'utf8'));
+  const matchList = JSON.parse(readFileSync(join(PUBLIC_DIR, 'broadcast/match-cutlist.json'), 'utf8'));
+  const moving = matchList.segments
+    .map((seg) => String(seg.camera).toLowerCase())
+    .filter((name) => !venue.cameras?.[name] || ['heli', 'stands', 'pitchside'].includes(name));
+  check('every shot in the match cut-list is a static, authored camera',
+    moving.length === 0,
+    moving.length ? `these move or are not authored: ${[...new Set(moving)].join(', ')}`
+                  : `${matchList.segments.length} shots, all from venue.json`);
+
+  lv = await openBroadcast({ liveMode: true });
+  const sL = await lv.state();
+  report.live = sL;
+  // The bug this whole change exists to fix: /broadcast dropped the venue's
+  // match module unless a bundle was named in the URL, so the one page RFL
+  // capture from could never show a scheduled match — while every visitor
+  // standing in the same bowl could.
+  check('the live feed keeps the stadium\'s match module',
+    sL.match !== null, sL.match ? `phase "${sL.match.phase}", sdk "${sL.match.sdk}"` : 'no match module — the pitch can never fill');
+  // RFL play the premix into the bus that also captures this browser.
+  check('the live feed is silent', sL.silent === true, sL.silent ? 'listener muted' : 'THE PAGE CAN MAKE SOUND');
+  check('the director is running', !!sL.director, sL.director ? `${sL.director.list} list, shot ${sL.director.shot}` : 'no director — a locked-off frame');
+  const cutErrors = (sL.errors || []).filter((e) => String(e).includes('cutlist'));
+  check('both cut-lists loaded', cutErrors.length === 0, cutErrors.join(' | ') || 'ambient and match');
+  // 4dgsx being down is their outage, not our failure — but it must be said
+  // out loud rather than passed over in silence.
+  if (sL.match?.sdk === 'failed') console.log('  note  the 4DGSX SDK did not load from this runner; the module is present and would mount');
+  else if (sL.match?.next) console.log(`  note  next fixture ${sL.match.next.id} at ${sL.match.next.startsAt}`);
+
   if (SHOTS) {
     mkdirSync(SHOTS, { recursive: true });
     writeFileSync(join(SHOTS, `broadcast-${CAMERA}-a.png`), await a.png());
@@ -225,6 +276,7 @@ try {
 } finally {
   await a?.close();
   await b?.close();
+  await lv?.close();
 }
 
 failed = checks.filter((c) => !c.ok).length;

@@ -3244,6 +3244,7 @@
     {
       "type": "match-4dgsx",
       "channel": "rfl",
+      "now": "/broadcast/now.json",
       "pitch": "pitch_origin",
       "docks": {
         "main": "screen_main",

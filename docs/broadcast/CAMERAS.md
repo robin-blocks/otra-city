@@ -16,9 +16,16 @@ stadium's placement in the city (`x = 100`) never appears in a track file.
 
 ## Two modes
 
-**`/broadcast` is a LIVE FEED by default.** Realtime, a looping cut-list, and
+**`/broadcast` is a LIVE FEED by default.** Realtime, a directed cut-list, and
 every visitor standing in the stadium right now is in shot. It is not
 reproducible and does not pretend to be.
+
+**In live mode the page runs the venue's own match module.** The same schedule,
+read from the same programme feed, that a visitor standing in the bowl is
+watching — so whatever is in the stadium is in the broadcast, without anyone
+naming a bundle in a URL. `?bundle=` still works and still wins, but it is no
+longer how a scheduled match gets on the air. The live feed is also **silent**:
+the audio listener is muted outright and `state().silent` says so.
 
 **Deterministic capture must be asked for: `?capture=1`.** That is the mode
 this document's guarantees apply to — fixed timestep, no wall clock, no live
@@ -31,6 +38,42 @@ silently: hours of footage that simply never repeats.
 
 `?live=0` is accepted as a synonym for `?capture=1`.
 
+## What is on the pitch, and who decides
+
+Three things can put a match in the stadium. They are listed in the order they
+outrank each other.
+
+**1. `?bundle=` — one browser only.** Mounts that bundle here and nowhere else.
+Useful for a fixture or a bug; useless for broadcasting, because the stadium
+everyone else is looking at does not change. Stripped in capture mode unless it
+is the thing being captured.
+
+**2. The RFL channel's own schedule — the normal case.** The venue's match
+module runs `sdk.schedule('rfl')` against `https://4dgsx.com/api/v1/programme/rfl`
+and mounts a fixture when it goes live, for every client independently: the
+visitor in the bowl, the camera on `/broadcast`, all from the same feed on the
+same clock. Nothing on our side needs telling when a match starts.
+
+**3. `/broadcast/now.json` — the city's shared override.** A document on our own
+origin naming a bundle the city has decided to show:
+
+```json
+{ "bundle": "https://cdn.4dgsx.com/channels/rfl/bundles/…", "title": "…" }
+```
+
+Every client inside the bowl polls it every 60 s — the match module only runs
+at Tier 2 — so changing that one file puts a replay in front of everyone who
+could see the pitch at all, the broadcast camera among them. A live fixture
+always takes the pitch back from it. `"bundle": null` takes it down. It is a
+~320 MB download per client, so it is not something to leave on by accident.
+
+`state().match.source` says which of the three is on: `bundle`, `schedule` or
+`now`.
+
+Phones are the exception to all of this: the match core is a ~39 MB download
+and the SDK's stage is a desktop-class scene, so a coarse-pointer client gets
+the programme on the scoreboard and an empty pitch.
+
 ## Parameters
 
 | parameter | meaning |
@@ -38,7 +81,7 @@ silently: hours of footage that simply never repeats.
 | `capture=1` | deterministic capture mode; **required** for anything below that mentions frames |
 | `camera=<name>` | one named camera for the whole run (default `gantry` in capture mode) |
 | `camtrack=<https url>` | a camera track file; overrides `camera` |
-| `bundle=<https url>` | a 4DGSX bundle to play on the pitch; absent means an empty pitch |
+| `bundle=<https url>` | a 4DGSX bundle to play on the pitch. In capture mode, absent means an empty pitch. In live mode it overrides what the stadium would otherwise be showing — and because it changes only the browser that asked, it is a debugging tool, not a way to put a match on the air |
 | `crowd=0..1` | how full the stands are; `0` (default) is empty |
 | `seed=<int>` | selects one of many equally valid versions of the same shot and crowd |
 | `t0=<seconds>` | warm the scene to this point before frame 0 |
@@ -63,7 +106,9 @@ line at the bottom of the page) is the date the page's behaviour last
 changed. A harness that pins a copy of the page, or a proxy that holds one,
 will report an older date than `https://otra.city/broadcast` does — so a
 "the deployed page still says X" conversation is settled by reading it. The
-current build is **2026-09-08**. Bump the constant at the top of
+current build is **2026-09-11** (the live feed runs the stadium's match module,
+the director cuts during play, and the page is explicitly silent — before that,
+2026-09-08). Bump the constant at the top of
 `public/broadcast.html` whenever the page's behaviour changes.
 
 The gate asserts the field exists, and it can be pointed at the deployed
@@ -125,17 +170,73 @@ Camera state supplied per frame by the track file. See below.
 Every other name in `venue.json` (`approach`, `concourse`, `aerial`,
 `stand_high`, `scoreboard`, …) also works as a static view.
 
-## The live cut-list
+## The director
 
-With no `camera` and no `camtrack`, the live feed runs
-`/broadcast/live-cutlist.json`: a wide orbit of the bowl, two pushes into the
-stands where the visitors actually are, a pitch-level shot, and the gantry.
-It loops every **140 seconds**.
+With no `camera` and no `camtrack`, the live feed directs itself, and what it
+does depends on whether a match is on the pitch.
 
-It is deliberately unhurried. This runs for days, and a feed that cuts every
-few seconds is exhausting rather than alive.
+**Between matches — `/broadcast/live-cutlist.json`.** A wide orbit of the bowl,
+two pushes into the stands where the visitors actually are, a pitch-level shot,
+the gantry — and **two holds on the screens**, which are the only shots in it
+that carry information rather than atmosphere. It loops every **174 seconds**
+and is deliberately unhurried: this runs for days, and a feed that cuts every
+few seconds is exhausting rather than alive. Nothing is at stake in an empty
+bowl, so the camera is allowed to move.
 
-Capture mode is never given a default cut-list — a harness says what it wants.
+`SCREEN_MAIN` frames the big screen **and both side panels at once**, so one
+shot shows the coming-up card, the fixture list and the results; `SCOREBOARD`
+frames the countdown. Both are held long enough to read — 12 s and 10 s.
+
+## What the screens show when there is no match
+
+For roughly twenty-two hours a day the pitch is empty, and for all of them the
+big screen and the two side panels used to show the plates they were painted
+with in Blender. They now carry the programme instead, from the same feed the
+scoreboard reads:
+
+| surface | between matches | during a match |
+|---|---|---|
+| `screen_main` | coming up: the next fixture, a live countdown, the London time | the SDK's broadcast feed |
+| `panel_left` | FIXTURES — the next five, with times | the SDK's line-up panel |
+| `panel_right` | RESULTS — the last five, with scores | the SDK's stats panel |
+| `screen_score` | NEXT MATCH and the countdown | the live score and clock |
+
+Repainted once a second while the pitch is empty, so the countdown ticks. The
+SDK takes the docks over when a match mounts and hands back the *authored*
+plate when it unmounts, not ours — so the paint re-applies its own texture
+every tick rather than assuming it is still there. `state().match.screens`
+says what each one is showing.
+
+**The league table is not among them, because it is not in the feed.**
+`/api/v1/programme/rfl` carries fixtures, results and scores but no standings,
+and a table computed here from whichever results the feed happens to include
+would be a table that is sometimes wrong under somebody else's name. If RFL
+publish standings, the right panel is where they go.
+
+**During a match — `/broadcast/match-cutlist.json`. Cuts, never drift.** Every
+shot is a static camera authored in `venue.json`, so a change of shot is a cut
+and nothing in frame moves except the match. RFL's encoder is CBR and a slow
+continuous camera move spends bitrate on every pixel of every frame; the
+subject is the football, so the bitrate should be too. The gantry holds about
+three quarters of the loop (108 s), with brief cuts to `stand_low`,
+`stand_high`, `aerial` and the scoreboard.
+
+**A goal takes the scoreboard for four seconds**, then cuts back — the module
+paints `GOAL` there and the director goes to it, the way a gallery would. It
+interrupts the cut-list, never an explicitly requested `camera` or `camtrack`.
+
+The change of list is itself a cut: each list restarts on its own first shot
+rather than joining wherever its loop happened to be.
+
+`state().director` reports which list is in force, which shot is on, and
+whether a goal has the picture. Naming a `camera` or a `camtrack` turns the
+director off entirely, and capture mode never has one — a harness says what it
+wants.
+
+That a match cut-list contains no moving shot is checked in CI
+(`scripts/broadcast-check.mjs`), against the file rather than against a
+running match: any segment naming a camera that is not authored in
+`venue.json`, or naming `heli`, `stands` or `pitchside`, fails the gate.
 
 ## Camera track file
 

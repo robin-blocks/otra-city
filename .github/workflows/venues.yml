@@ -4,6 +4,10 @@
 # contract, the tier cycle (load → inside → unload with GPU memory returned),
 # walkability from the forecourt to the seats, and the fixture screenshots as
 # artifacts. Headless Chrome is the runner's Google Chrome, as for posters.
+#
+# server/ is here too. Nothing else in CI touches it, and the presence server
+# now carries a promise made to RFL in writing — a full house must not take the
+# broadcast off the air — which is exactly the kind of thing that rots quietly.
 name: venues
 on:
   pull_request:
@@ -18,6 +22,8 @@ on:
       - 'scripts/venue-*.mjs'
       - 'scripts/broadcast-check.mjs'
       - 'scripts/build-venues.mjs'
+      - 'scripts/presence-check.mjs'
+      - 'server/**'
       - 'lib/**'
       - 'docs/venues/venue-schema.json'
       - '.github/workflows/venues.yml'
@@ -34,6 +40,8 @@ on:
       - 'scripts/venue-*.mjs'
       - 'scripts/broadcast-check.mjs'
       - 'scripts/build-venues.mjs'
+      - 'scripts/presence-check.mjs'
+      - 'server/**'
       - 'lib/**'
 
 jobs:
@@ -50,6 +58,7 @@ jobs:
       - run: node scripts/broadcast-check.mjs --out poc/out/broadcast-check.json --shots poc/out/shots
       # the crowd and the cut-list have their own determinism to lose
       - run: node scripts/broadcast-check.mjs --frames 400 --crowd 0.7 --camtrack /broadcast/camtrack-example.json --out poc/out/broadcast-crowd.json
+      - run: node scripts/presence-check.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

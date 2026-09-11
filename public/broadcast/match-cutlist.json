@@ -1,0 +1,15 @@
+{
+  "_": "The stadium's direction WHILE A MATCH IS ON. Every shot is a static camera authored in venue.json, so every change of shot is a cut and nothing in frame moves but the match — RFL's encoder is CBR, and a slow camera move spends bitrate on every pixel of every frame. The main camera holds about three quarters of the time, the way a gallery would. Between matches /broadcast runs live-cutlist.json instead, which is allowed to fly.",
+  "fps": 50,
+  "loop": true,
+  "segments": [
+    { "frames": [0, 1000], "camera": "GANTRY" },
+    { "frames": [1000, 1450], "camera": "STAND_LOW" },
+    { "frames": [1450, 2450], "camera": "GANTRY" },
+    { "frames": [2450, 2850], "camera": "STAND_HIGH" },
+    { "frames": [2850, 3850], "camera": "GANTRY" },
+    { "frames": [3850, 4150], "camera": "AERIAL" },
+    { "frames": [4150, 5150], "camera": "GANTRY" },
+    { "frames": [5150, 5400], "camera": "SCOREBOARD" }
+  ]
+}

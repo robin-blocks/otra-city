@@ -1,1 +1,89 @@
-{"fps": 50, "loop": true, "segments": [{"frames": [0, 2250], "camera": "HELI", "seed": 11, "params": {"radius_m": 52, "height_m": 30, "period_s": 220, "turbulence": 0.8, "vfov_deg": 46}}, {"frames": [2250, 3500], "camera": "STANDS", "seed": 4, "params": {"side": 2, "from_m": 17, "period_s": 25, "vfov_deg": 30}}, {"frames": [3500, 4750], "camera": "STANDS", "seed": 19, "params": {"side": 0, "from_m": 15, "period_s": 25, "vfov_deg": 30}}, {"frames": [4750, 5750], "camera": "PITCHSIDE", "seed": 6, "params": {}}, {"frames": [5750, 7000], "camera": "GANTRY", "seed": 1, "params": {}}]}
+{
+  "_": "The stadium's direction BETWEEN matches. Allowed to move \u2014 there is no match to spend bitrate on, and an empty bowl that never moves reads as a broken stream. Two things are not scenery: SCREEN_MAIN frames the big screen and both side panels, which carry the coming-up card, the fixtures and the results while the pitch is empty, and SCOREBOARD frames the countdown. Both are held long enough to read. During a match /broadcast runs match-cutlist.json instead, which only cuts.",
+  "fps": 50,
+  "loop": true,
+  "segments": [
+    {
+      "frames": [
+        0,
+        2250
+      ],
+      "camera": "HELI",
+      "seed": 11,
+      "params": {
+        "radius_m": 52,
+        "height_m": 30,
+        "period_s": 220,
+        "turbulence": 0.8,
+        "vfov_deg": 46
+      }
+    },
+    {
+      "frames": [
+        2250,
+        2850
+      ],
+      "camera": "SCREEN_MAIN"
+    },
+    {
+      "frames": [
+        2850,
+        4100
+      ],
+      "camera": "STANDS",
+      "seed": 4,
+      "params": {
+        "side": 2,
+        "from_m": 17,
+        "period_s": 25,
+        "vfov_deg": 30
+      }
+    },
+    {
+      "frames": [
+        4100,
+        4600
+      ],
+      "camera": "SCOREBOARD"
+    },
+    {
+      "frames": [
+        4600,
+        5850
+      ],
+      "camera": "STANDS",
+      "seed": 19,
+      "params": {
+        "side": 0,
+        "from_m": 15,
+        "period_s": 25,
+        "vfov_deg": 30
+      }
+    },
+    {
+      "frames": [
+        5850,
+        6450
+      ],
+      "camera": "SCREEN_MAIN"
+    },
+    {
+      "frames": [
+        6450,
+        7450
+      ],
+      "camera": "PITCHSIDE",
+      "seed": 6,
+      "params": {}
+    },
+    {
+      "frames": [
+        7450,
+        8700
+      ],
+      "camera": "GANTRY",
+      "seed": 1,
+      "params": {}
+    }
+  ]
+}
