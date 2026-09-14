@@ -319,6 +319,18 @@ export function createVenues(scene, world, deps) {
     get(id) { return byId.get(id) || null; },
     forceTier(id, tier) { const V = byId.get(id); if (V) V.force = tier; },
     // for fixtures: wait until the near asset for `id` is resident (or failed)
+    /**
+     * A module's own instance, for a harness that needs to drive it.
+     *
+     * `state()` reports what a module is doing; this is how something can ask
+     * it to do a thing. Added because the replay loop only fires seventeen
+     * minutes into a match, which made it a feature nobody could ever test —
+     * and an untestable feature is one that quietly stops working.
+     */
+    module(id, type) {
+      const V = byId.get(id);
+      return V?.modules?.find((m) => m.cfg?.type === type)?.inst ?? null;
+    },
     async whenLoaded(id) { const V = byId.get(id); if (!V) return false; if (V.near) return true; if (V.loading) return V.loading; return false; },
     hudText() {
       let best = null;
