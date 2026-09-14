@@ -16,7 +16,7 @@
 // "no replays on the live site"; what stands now is that nobody downloads a
 // bundle unless the city as a whole is showing it.
 import * as THREE from 'three';
-import { createPA } from '/js/pa-system.js';
+import { createPA, mapTime } from '/js/pa-system.js';
 
 // The publisher ships every dynamic body twice: as indexed mesh geometry in
 // `prims`/`draws`, and as a surface-sampled gaussian cloud in `points.bin`.
@@ -458,6 +458,9 @@ export function create(ctx) {
   // A replay that has run out and is waiting to be sent round again. Guarded so
   // the seek happens once per ending rather than on every frame after it.
   let loopArmed = false;
+  // The publisher's match-time -> premix-time map, read from the bundle once
+  // per mount. See `buildBug`.
+  let audioMap = null;
   const mutedIds = new Set();
   const gestureFns = [];
   let unsubMute = null;
@@ -570,6 +573,16 @@ export function create(ctx) {
         audioPolicy();
       });
     }
+    // The map lives in the bundle's scene.json, which the SDK has already
+    // fetched, so this is a cache hit rather than a download. Failure is not
+    // worth an error: it costs `audioOffset` and nothing else.
+    audioMap = null;
+    if (url) {
+      fetch(`${String(url).replace(/\/+$/, '')}/scene.json`, { credentials: 'omit' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((scene) => { if (!disposed) audioMap = scene?.audio?.map || null; })
+        .catch(() => { /* no map, no offset, no harm */ });
+    }
     st.on('event', (e) => { if (e.type === 'goal') { goalUntil = simTime + 4; paintBoard(); } });
     st.on('statechange', (s) => { state.stage = s; paintBoard(); });
     state.stage = st.state;
@@ -597,6 +610,7 @@ export function create(ctx) {
     if (!teams || teams.length < 2) return null;
     const period = matchPeriod(hud, stage.time);
     if (!period) return null;
+    const t = stage.time;
     const sc = stage.score || { a: 0, b: 0 };
     const team = (t) => ({ code: t.code || '', name: t.name || '', color: Array.isArray(t.color) ? t.color.slice(0, 3) : [0.5, 0.5, 0.5] });
     return {
@@ -608,6 +622,22 @@ export function create(ctx) {
       // on must not, and the publisher's own state is what distinguishes them
       // — RFL asked us to use their truth rather than fake it.
       live: stage.state === 'live',
+      // WHERE THE SOUND SHOULD BE, and why this is here rather than left to
+      // whoever is playing it.
+      //
+      // RFL play the premix themselves and used to take the offset from a
+      // media element's currentTime — correct, because it accounts for the
+      // goal replays that hold the match clock while the audio runs on. We
+      // removed that element when the big screen stopped carrying their video,
+      // and the symptom was commentary arriving three minutes late: their
+      // premix opens with a 180 s pre-roll that is digital silence, so playing
+      // it unseeked against a picture at kick-off sounds exactly like that.
+      //
+      // `t` is the match clock. `audioOffset` is where the premix should be,
+      // through the publisher's own map, replay holds and all. Neither needs
+      // a surface we happen to be drawing.
+      t: +t.toFixed(3),
+      audioOffset: audioMap ? +mapTime(audioMap, t).toFixed(3) : null,
     };
   }
 
