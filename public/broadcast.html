@@ -347,20 +347,25 @@ async function startLive() {
   let last = performance.now();
   renderer.setAnimationLoop(() => {
     const now = performance.now();
-    // THE CLAMP IS LOAD-BEARING, AND IT HAS A COST WORTH KNOWING ABOUT.
+    // THE CLAMP IS LOAD-BEARING, AND IT COSTS LESS THAN IT LOOKS.
     //
-    // It stops one long stall (a tab in the background, a GC pause, a bundle
-    // landing) from advancing the world by a second in a single step. But it
-    // also means that a machine which cannot sustain 20 fps does not drop
-    // frames — it runs the WORLD slow, permanently, and a match plays in
-    // slow motion while the wall clock carries on. Measured in headless
-    // software rendering with a match mounted: 17 s of match in 171 s of wall
-    // time. On a machine with real acceleration it does not arise.
+    // It stops one long stall (a background tab, a GC pause, a bundle landing)
+    // from advancing the world by a second in a single step. The apparent cost
+    // is that a machine which cannot sustain 20 fps does not drop frames — it
+    // runs the WORLD slow, permanently.
     //
-    // It is not silently fixable here: handing the stage a 3-second dt is its
-    // own failure, and which one is worse depends on whose machine it is. So
-    // the page reports the ratio instead — `state().pace` — and a capture that
-    // cares can watch it rather than discover it on air.
+    // Which matters far less than it reads, and the difference is worth
+    // knowing. A LIVE fixture is never told to play: the SDK holds it against
+    // the programme's own wall clock, so a slow renderer drops frames and the
+    // match stays in real time. Measured on production during m28, with the
+    // renderer at pace 0.174: 67 s of wall, 67 s of match clock, 1.000x. Only
+    // a REPLAY — anything we mount and `play()` ourselves, including the
+    // bundle `now.json` names — advances on this dt, and that is where slow
+    // motion comes from (m27: 40 s of match in 418 s of wall).
+    //
+    // So the clamp stays, and the page reports the ratio — `state().pace` —
+    // which a capture should read as "the picture is dropping frames", not
+    // "the match is running slow". See docs/broadcast/REPLY-5-ADDENDUM.md.
     const dt = Math.min((now - last) / 1000, 0.05);
     last = now;
     advance(dt);
@@ -650,9 +655,11 @@ window.rflBroadcast = {
                           shot: lastTrackCam ? { camera: lastTrackCam.camera, segment: lastTrackCam.segment } : null } : null,
       timeofday,
       // Simulated seconds per wall second since the live feed started. 1.0 is
-      // keeping up; 0.5 is a world running at half speed on a machine that
-      // cannot paint fast enough, which looks like a slow-motion match rather
-      // than like dropped frames.
+      // keeping up; 0.5 is a machine that cannot paint fast enough. A LIVE
+      // match still runs in real time under a low pace — the SDK holds it to
+      // the programme's clock — so this reads as a rough picture, not a slow
+      // match. A replay mounted from `now.json` does run slow: it is played on
+      // this dt.
       pace: livePaceFrom
         ? +((simT - livePaceFrom.sim) / Math.max(0.001, (performance.now() - livePaceFrom.wall) / 1000)).toFixed(3)
         : null,
