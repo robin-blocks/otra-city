@@ -912,6 +912,9 @@ window.rflBroadcast = {
           // the module counted, the page never said.
           loops: m.loops ?? 0,
           layers: m.layers ?? [],
+          // the publisher's canvas sprites, and how many times one was
+          // re-allocated because its canvas changed size (see the module)
+          labels: m.labels ?? null,
           // what the big screen and the side panels are carrying — between
           // matches that is the programme, not the plates they were painted with
           screens: m.screens ?? null,

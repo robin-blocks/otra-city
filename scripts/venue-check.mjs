@@ -203,6 +203,23 @@ for (const id of ids) {
           check('match: screens carry the SDK textures, glTF-oriented', mainOk && scoreOk && dom.maps.every(([, t]) => !t.endsWith('/flipY')), dom.maps.map((m) => m.join('=')).join(', '));
           const ms2 = (await mx.state()).venues.find((x) => x.id === id).modules[0]?.state;
           check('match: scoreboard paints hud truth', /[A-Z]{2,4} \d+-\d+ [A-Z]{2,4} \d+:\d\d/.test(ms2?.board || ''), `board "${ms2?.board}", clock ${ms2?.clock}, stage ${ms2?.stage}`);
+          // The publisher's shouts are canvas sprites whose canvas is resized for
+          // every message, and three allocates a texture's storage once — so the
+          // module re-allocates a label whenever its canvas changes size
+          // (refitLabels). The evidence from outside is the GL context: a grown
+          // canvas that was NOT re-allocated is an INVALID_VALUE nobody logs, and
+          // the old text stretched over the new sprite. Forty seconds from
+          // kick-off is enough for several shouts to change size.
+          await mx.evaluate(`window.__venue.venues.module(${JSON.stringify(id)}, 'match-4dgsx')?.seek(0)`);
+          await mx.evaluate('window.__venue.renderer.getContext().getError()');   // clear whatever came before
+          let glErr = 0;
+          for (let i = 0; i < 8 && !glErr; i++) {
+            await mx.step(300);
+            glErr = Number(await mx.evaluate('window.__venue.renderer.getContext().getError()')) || 0;
+          }
+          const msL = (await mx.state()).venues.find((x) => x.id === id).modules[0]?.state;
+          check('match: shouts re-fit their textures when the canvas changes size', glErr === 0 && (msL?.labels?.refits ?? 0) > 0,
+            `${msL?.labels?.sprites ?? 0} label sprites, ${msL?.labels?.refits ?? 0} re-fits in 40 s from kick-off, GL error ${glErr}`);
           const sm = await mx.stats();
           check('match: draw calls with a match on', sm.calls <= MATCH_CALLS, `${sm.calls} (max ${MATCH_CALLS}), ${sm.tris} tris`);
           // A distributed PA is only a PA if the arrival delay follows the
