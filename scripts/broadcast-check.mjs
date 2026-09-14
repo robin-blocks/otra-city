@@ -292,6 +292,8 @@ try {
     sM = await lv.state();
   }
   if (sM.match?.phase === 'match') {
+    // The atlas loads once per module, asynchronously; give it a moment.
+    for (const until = Date.now() + 15000; Date.now() < until && sM.match?.boards?.atlas === 'loading';) { await sleep(500); sM = await lv.state(); }
     const bo = sM.match.boards;
     check('every arena board found is dressed', !!bo && bo.found === bo.textured && bo.atlas !== 'failed',
       bo ? `${bo.found} boards, ${bo.textured} dressed (${JSON.stringify(bo.kinds || {})}), atlas ${bo.atlas}` : 'no boards field');
@@ -302,8 +304,14 @@ try {
     // match that is not the city's replay must report its own clock, not the
     // map's pre-roll (the m33 regression of 2026-09-14).
     if (sM.match.source !== 'now') {
-      check('a fixture the city did not put on keeps its own clock', sM.scorebug?.programmeT == null && sM.scorebug?.preroll !== true,
-        `source ${sM.match.source}, tag ${sM.scorebug?.tag}, programmeT ${sM.scorebug?.programmeT}`);
+      // A live fixture is driven through its programme on the wall clock and
+      // says so; anything else the city did not put on keeps its own clock.
+      const wall = sM.match.drive === 'wall';
+      check(wall ? 'a live fixture is driven through its programme on the wall clock'
+                 : 'a fixture the city did not put on keeps its own clock',
+        wall ? (sM.scorebug?.programmeT != null && sM.scorebug?.live === true)
+             : (sM.scorebug?.programmeT == null && sM.scorebug?.preroll !== true),
+        `source ${sM.match.source}, drive ${sM.match.drive}, tag ${sM.scorebug?.tag}, clock ${sM.scorebug?.clock}, programmeT ${sM.scorebug?.programmeT}, audioOffset ${sM.scorebug?.audioOffset}`);
     }
     check('the bundle\'s bodies are reachable by name', bd?.ok === true,
       bd ? `${bd.agreed}/${bd.checked} players\' anchors where their body says, ball ${bd.ball ? 'present' : 'absent'}` : 'not verified');
@@ -332,6 +340,51 @@ try {
       check('and the picture is handed back after it', !!back, back ? `shot ${back.director?.shot}, bug ${back.scorebug?.replay ? 'still REPLAY' : 'clear'}` : 'still on the head cam 6 s after the hold');
     } else {
       console.log(`  note  replay not exercised: ${!g0 ? 'no goals in this bundle' : sM.match.source !== 'now' ? `source ${sM.match.source}` : !sM.match.replayCam ? 'replay cam not armed' : 'bodies unverified'}`);
+    }
+    // ---- a live fixture, rehearsed --------------------------------------
+    // The scheduled path airs three times a day and CI is not there for any
+    // of them. So the harness plays the schedule with the bundle already in
+    // memory: hand it over as a live item whose programme started 60 s ago
+    // (the pre-roll: the venue's own screens, a countdown, the ambient list),
+    // then 200 s ago (play: the publisher's panels, the gantry), then on a
+    // goal's hold (the replay from the scorer's head, on a LIVE fixture).
+    const bundleUrl = sM.match.bundleUrl;
+    if (bundleUrl && g0 && sM.match.source === 'now') {
+      const at = (secondsAgo) => new Date(Date.now() - secondsAgo * 1000).toISOString();
+      const rehearse = async (secondsAgo) => {
+        const ok = await lv.evaluate(`window.rflBroadcast.rehearseLive({ bundleUrl: ${JSON.stringify(bundleUrl)}, startsAt: ${JSON.stringify(at(secondsAgo))} })`, { timeoutMs: 120000 });
+        // The new stage is up when the promise resolves; the bug and the
+        // director follow on the next ticks. Wait for the programme clock to
+        // read the NEW start, not the previous rehearsal's.
+        let x = null;
+        for (let i = 0; i < 40; i++) { await sleep(250); x = await lv.state(); if (x.match?.drive === 'wall' && (x.scorebug?.programmeT ?? -1) >= secondsAgo) break; }
+        return { ok, x };
+      };
+      const pre = await rehearse(60);
+      check('a live fixture 60 s into its programme is in the pre-roll, on the venue\'s own screens',
+        pre.ok === true && pre.x.match?.drive === 'wall' && pre.x.scorebug?.tag === 'Kick-off' && pre.x.scorebug?.live === true
+          && pre.x.director?.list === 'ambient' && !(pre.x.match?.docks || []).some((d) => d.attached) && /coming up/i.test(pre.x.match?.screens?.main || ''),
+        `drive ${pre.x?.match?.drive}, tag ${pre.x?.scorebug?.tag} ${pre.x?.scorebug?.clock}, live ${pre.x?.scorebug?.live}, list ${pre.x?.director?.list}, docks ${JSON.stringify((pre.x?.match?.docks || []).map((d) => d.attached))}, screen "${pre.x?.match?.screens?.main}"`);
+      const play = await rehearse(200);
+      check('at 200 s it has kicked off: the publisher\'s panels, the gantry, the premix 200 s in',
+        play.ok === true && play.x.scorebug?.playing === true && play.x.director?.list === 'match'
+          && (play.x.match?.docks || []).some((d) => d.attached) && Math.abs((play.x.scorebug?.audioOffset ?? 0) - 200) < 8,
+        `tag ${play.x?.scorebug?.tag} ${play.x?.scorebug?.clock}, list ${play.x?.director?.list} shot ${play.x?.director?.shot}, docks ${JSON.stringify((play.x?.match?.docks || []).map((d) => d.attached))}, audioOffset ${play.x?.scorebug?.audioOffset}`);
+      // Just before the goal, so the hold arrives while we watch, however long
+      // the mount from cache took.
+      const hold = await rehearse(180 + g0.t - 1.5);
+      let seen = null;
+      for (let i = 0; i < 40 && !seen; i++) { const x = i ? await lv.state() : hold.x; if (x.match?.replay && x.director?.shot === 'headcam') seen = x; else await sleep(250); }
+      check('on a goal\'s hold a LIVE fixture replays from the scorer\'s head',
+        !!seen && seen.scorebug?.replay === true && seen.scorebug?.live === true,
+        seen ? `goal ${g0.t}s by ${g0.player}: replay t=${seen.match.replay.t}, shot ${seen.director?.shot}, bug ${seen.scorebug?.replay ? 'REPLAY' : 'no tag'}, LIVE ${seen.scorebug?.live}` : `no replay: drive ${hold.x?.match?.drive}, replay ${JSON.stringify(hold.x?.match?.replay)}, shot ${hold.x?.director?.shot}`);
+      const down = await lv.evaluate('window.rflBroadcast.rehearseLive(null)', { timeoutMs: 60000 });
+      let after = await lv.state();
+      for (let i = 0; i < 12 && after.match?.drive === 'wall'; i++) { await sleep(250); after = await lv.state(); }
+      check('and the rehearsal comes down cleanly', down === true && after.match?.drive !== 'wall' && !(after.match?.errors || []).length,
+        `drive ${after.match?.drive}, phase ${after.match?.phase}, errors ${JSON.stringify(after.match?.errors || [])}`);
+    } else {
+      console.log('  note  live fixture not rehearsed: no bundle on the live page');
     }
   } else {
     console.log(`  note  nothing mounted on the live page (phase "${sM.match?.phase ?? 'none'}"); boards, bodies and the replay were not exercised`);

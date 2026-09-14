@@ -156,8 +156,9 @@ line at the bottom of the page) is the date the page's behaviour last
 changed. A harness that pins a copy of the page, or a proxy that holds one,
 will report an older date than `https://otra.city/broadcast` does — so a
 "the deployed page still says X" conversation is settled by reading it. The
-current build is **2026-09-14b** (crests on the scorebug, the arena boards
-dressed, head-cam replays on a replay the city put on — before that,
+current build is **2026-09-14c** (a live fixture follows its programme:
+pre-roll, kick-off, holds, post-roll — before that, 2026-09-14b: crests on the
+scorebug, the arena boards dressed, head-cam replays on a replay the city put on;
 2026-09-14: the live feed runs the stadium's match module, the director cuts
 during play, the sound switch; and 2026-09-11). Bump the constant at the top of
 `public/broadcast.html` whenever the page's behaviour changes.
@@ -380,6 +381,40 @@ client in the bowl and not only the broadcast.
 When the SDK learns `tex.proj`, a bundle whose boards already carry a texture
 should be left alone; that is the one change this will need.
 
+## A live fixture follows its programme
+
+RFL pin a fixture's `startsAt` to the STREAM START: programme time 0, the
+first frame of the pre-roll, with kick-off 180 s later. The SDK's schedule
+hands over a stage locked to the wall clock with match t = 0 at `startsAt`,
+which put the stadium 180 s ahead of RFL's broadcast from the first fixture it
+ever mounted, skipped every goal hold, and could not be seeked — and on
+2026-09-14 (build `2026-09-14`) also made the scorebug read pre-roll for the
+whole match, which sent RFL's premix out from 0.00 s.
+
+So the module adopts a live fixture and drives it itself. The SDK's stage is
+kept and never posed or shown (the schedule tears it down when the fixture
+ends); our own unlocked copy is mounted from the same URL — the bundle's files
+are immutable and cached, so that costs no download — and placed every frame at
+`unmapTime(program.map, (now − startsAt))`, `now` corrected by the feed's own
+clock, so every client agrees the way the lock made them agree. On air:
+
+- **the pre-roll**: the players held at the kick-off pose, the venue's own
+  screens up (the big screen counting down to *this* kick-off), the scorebug
+  reading `Kick-off 2:31` and LIVE, the director on the ambient list;
+- **kick-off at `startsAt` + 180 s**: the publisher's panels take the screens,
+  the gantry, `audioOffset` = programme time, so a premix started there has its
+  commentary begin with the match;
+- **the holds**: on `/broadcast`, the replays from the scorer's head;
+- **the post-roll**: Full Time, the screens back to the venue's own, the
+  ambient list, until the schedule takes the fixture down.
+
+`state().match.drive` says `wall` for this, `dt` for a replay the city put on,
+`null` for a stage on the publisher's own clock. `"live_programme": false` in
+the module config restores the SDK's clock. A harness can rehearse the whole
+path from any bundle with `rflBroadcast.rehearseLive({ bundleUrl, startsAt })`
+and take it down with `rehearseLive(null)` — the gate does, at 60 s (pre-roll),
+200 s (play) and on a goal's hold.
+
 ## Head-cam replays
 
 RFL's programme holds the match clock for `replay_s` seconds at every goal
@@ -401,10 +436,8 @@ the scoreboard hold, and hands back to the cut-list when the hold ends.
 - **Head height is RFL's own number**: the anchor offset, 0.62 m up the
   pelvis. It looks at the ball, because the ball is the story and a pelvis has
   no agreed forward axis; the look target is smoothed (τ = 0.12 s). FOV 68°.
-- **Replays the city put on only.** A live fixture's clock is the publisher's
-  wall clock and its stage refuses a seek, so a scheduled match still dwells.
-  It gets replays when the live fixture is driven through `program.map` from
-  `startsAt` on this side — the remaining §5 item.
+- **Live fixtures too.** A scheduled fixture is driven through its programme
+  on the wall clock (below), so its holds are replays here as well.
 - Visitors' clients keep the dwell: `replayCam(true)` is asked for by the
   broadcast page, not set in the venue config. A capture (`?capture=1`) never
   arms it.
@@ -490,7 +523,6 @@ the board — season-4 titles are half again as long.
 
 ## What is not built
 
-- Head-cam replays on a LIVE fixture (see above: the clock is the publisher's).
 - The tracked gantry RFL said yes to (their spec is in their note of 14 Sep).
 - Match-event crowd reactions (§6, explicitly a later phase).
 - Crowd audio of any kind — no audio at all is produced; the venue PA is

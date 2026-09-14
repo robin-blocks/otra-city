@@ -48,6 +48,10 @@ const BOARD_PROUD = 0.004;     // metres in front of the bundle's own face — f
 const HEADCAM_FOV = 68;
 const HEADCAM_FORWARD = 0.24;  // metres in front of the head centre, along the look
 const HEADCAM_UP = 0.03;
+// RFL's pre-roll, in seconds of programme before kick-off (PRE_S in their
+// broadcast.py). The bundle's own `program.segments` says so too, and is
+// preferred once it has been read; this is for the second before it has.
+const PRE_ROLL_S = 180;
 const BOARD_H = 576;
 let sdkPromise = null;
 // A rejected import must not be cached: the module retries the SDK on the
@@ -165,6 +169,10 @@ export function create(ctx) {
     // the arena boards we dressed, whether the bundle's bodies are reachable,
     // the goals in this match, and the replay + head cam when one is running
     boards: null, bodies: null, goals: [], replay: null, headcam: null, replayCam: false,
+    // how the mounted match's clock is driven: 'wall' (a live fixture, through
+    // its programme on the wall clock), 'dt' (a replay, on our frame time),
+    // or null (the publisher's own clock)
+    drive: null, programmeT: null,
   };
 
   // Screens get unlit materials that keep the authored plate as their map:
@@ -409,7 +417,7 @@ export function create(ctx) {
     const W = s.canvas.width;
     const H = s.canvas.height;
     cardFrame(ctx, W, H, (state.channelTitle || 'RFL').toUpperCase());
-    const nx = state.next;
+    const nx = comingUp();
     ctx.textAlign = 'center';
     if (nx) {
       ctx.fillStyle = '#47f2ff';
@@ -442,8 +450,8 @@ export function create(ctx) {
    * Does nothing while a match is mounted: the SDK owns those surfaces then,
    * and painting under it would be a fight nobody wins.
    */
-  function paintIdleScreens() {
-    if (stage || !Object.keys(idleScreens).length) return;
+  function paintIdleScreens(force = false) {
+    if ((stage && !force) || !Object.keys(idleScreens).length) return;
     const screens = {};
     screens.main = paintComingUp();
     // The slot named `right` is the one that reads on the LEFT of the
@@ -503,6 +511,16 @@ export function create(ctx) {
   let boardsTex = null;
   let lookSmooth = null;
   const _hv = new THREE.Vector3(), _bv = new THREE.Vector3(), _fv = new THREE.Vector3();
+  // A scheduled fixture driven by us through its programme: when its
+  // programme started on the wall clock, and how long its pre-roll is. The
+  // SDK's own stage for it is kept but never posed or shown; ours is the one
+  // on the pitch. See `adoptScheduled`.
+  let wallDrive = null;
+  let sdkStage = null;
+  let ownStage = null;
+  // Whether the publisher's dock panels are on the screens (in play) or the
+  // venue's own (pre-roll and post-roll, like between matches).
+  let docksOn = false;
 
   /** The stage's match-space root: one group per body lives directly under it, the static world first. */
   function matchRootOf(st) {
@@ -733,11 +751,113 @@ export function create(ctx) {
    * through the live match, and `audioOffset` read 0.
    */
   function driving() {
-    return state.source === 'now' && !!programme?.map;
+    return !!programme?.map && (state.source === 'now' || !!wallDrive);
   }
   /** Match time as the programme has it while we drive; the stage's own otherwise. */
   function programmeMatchT() {
-    return driving() ? unmapTime(programme.map, programmeT) : (stage?.time ?? 0);
+    if (driving()) return unmapTime(programme.map, programmeT);
+    if (wallDrive) return programmeT - wallDrive.preS;   // the map has not landed yet
+    return stage?.time ?? 0;
+  }
+  /**
+   * Programme seconds since the fixture's programme started, clamped to the
+   * programme. On the machine's own clock, like the lock it replaces: the
+   * feed's `now` is the generation time of a response the CDN caches for
+   * 30 s, so correcting by it put the programme up to half a minute behind
+   * — measured at 11 s — and by a different amount on every client.
+   */
+  function wallProgrammeT() {
+    const p = (Date.now() - wallDrive.startsAtMs) / 1000;
+    const total = programme?.duration_s || Infinity;
+    return Math.min(Math.max(0, p), total);
+  }
+  /**
+   * A scheduled fixture, driven by us through its programme.
+   *
+   * The SDK hands over a stage locked to the wall clock with match t = 0 at
+   * `startsAt`. RFL pin `startsAt` to the STREAM START — programme time 0,
+   * the first frame of the pre-roll — so that clock runs 180 s ahead of their
+   * broadcast, skips every goal hold, and refuses a seek. Their programme is
+   * in the bundle's `program.map`, and the stadium now follows it: the
+   * pre-roll with the players held at the kick-off pose and the venue's own
+   * screens up, kick-off at startsAt + 180 with the premix's commentary,
+   * the holds (on /broadcast, the replays), the post-roll. Every client takes
+   * programme time from the same wall clock corrected by the feed's own
+   * `now`, so they agree the way the lock made them agree.
+   *
+   * The SDK's stage is kept and left alone: the schedule tears it down itself
+   * when the fixture ends, and it is never posed or rendered. The bundle's
+   * files are immutable and cached, so mounting our own unlocked copy costs
+   * no download. Set `"live_programme": false` in the module config to have
+   * the publisher's clock back.
+   */
+  async function adoptScheduled(st, item) {
+    const startsAtMs = item?.state === 'live' && item?.startsAt ? Date.parse(item.startsAt) : NaN;
+    const url = item?.bundleUrl;
+    if (!Number.isFinite(startsAtMs) || !url || cfg.live_programme === false || !gsx) { onMount(st, item, 'schedule'); return; }
+    // A live fixture wins the pitch: whatever is on comes down BEFORE our
+    // stage exists, because `onMount` drops an override through `onUnmount`,
+    // and that would dispose the very stage being mounted.
+    if (override) dropOverride();
+    if (ownStage || wallDrive) onUnmount();
+    sdkStage = st;
+    state.phase = 'loading';
+    paintBoard();
+    try {
+      const own = await gsx.mount({ bundleUrl: url, autoplay: false, splats: useSplats });
+      if (disposed || sdkStage !== st) { own.dispose(); return; }   // the fixture ended while we mounted
+      ownStage = own;
+      wallDrive = { startsAtMs, preS: PRE_ROLL_S };
+      programmeT = wallProgrammeT();
+      onMount(own, item, 'schedule', url);
+    } catch (e) {
+      state.errors.push(`live mount: ${e.message || e}`);
+      sdkStage = null;
+      onMount(st, item, 'schedule');          // the publisher's clock beats an empty pitch
+    }
+  }
+  /** The publisher's dock panels onto the venue's screens (in play). */
+  function attachDocks(st) {
+    state.docks = [];
+    for (const [slotName, mesh] of Object.entries(dockMeshes)) {
+      // One slot can be reserved for the venue's own live feed — the big
+      // screen showing the broadcast rather than a recording of it. The
+      // publisher's dock is not attached there, so nothing decodes a video
+      // into a texture that would immediately be painted over.
+      if (slotName === cfg.live_screen) { state.docks.push({ slot: slotName, attached: false, reason: 'live screen' }); continue; }
+      let ok = false;
+      try { ok = st.docks.attach(slotName, mesh); } catch (e) { state.errors.push(`dock ${slotName}: ${e.message}`); }
+      state.docks.push({ slot: slotName, attached: ok });
+    }
+    docksOn = true;
+  }
+  /** The venue's own screens back (pre-roll, post-roll): the publisher hands back the AUTHORED plate, so ours is painted over it. */
+  function detachDocks(st) {
+    for (const slotName of Object.keys(dockMeshes)) {
+      if (slotName === cfg.live_screen) continue;
+      try { st.docks.detach(slotName); } catch { /* not attached */ }
+    }
+    state.docks = [];
+    docksOn = false;
+    paintIdleScreens(true);
+  }
+  /** Screens follow the programme: the publisher's panels only while the match is on. */
+  function dockPolicy() {
+    if (!stage) return;
+    const want = !wallDrive || (programmeT >= wallDrive.preS && !state.bug?.over);
+    if (want && !docksOn) attachDocks(stage);
+    else if (!want && docksOn) detachDocks(stage);
+  }
+  /** What the big screen counts down to: this fixture's kick-off during its pre-roll, the next fixture otherwise. */
+  function comingUp() {
+    if (wallDrive && stage && programmeT < wallDrive.preS) {
+      const teams = stage.hud?.teams || [];
+      return {
+        home: state.matchItem?.home || teams[0] || null, away: state.matchItem?.away || teams[1] || null,
+        startsAt: new Date(wallDrive.startsAtMs + wallDrive.preS * 1000).toISOString(), title: state.match?.title || '',
+      };
+    }
+    return state.next;
   }
   /** The stage's score, except during a replay, when it is the score at the held time — the stage is rewound. */
   function heldScore(st) {
@@ -885,17 +1005,10 @@ export function create(ctx) {
     attachBoards(st);
     labels = collectLabels(st.group);
     state.labels = { sprites: labels.length, refits: 0 };
-    state.docks = [];
-    for (const [slotName, mesh] of Object.entries(dockMeshes)) {
-      // One slot can be reserved for the venue's own live feed — the big
-      // screen showing the broadcast rather than a recording of it. The
-      // publisher's dock is not attached there, so nothing decodes a video
-      // into a texture that would immediately be painted over.
-      if (slotName === cfg.live_screen) { state.docks.push({ slot: slotName, attached: false, reason: 'live screen' }); continue; }
-      let ok = false;
-      try { ok = st.docks.attach(slotName, mesh); } catch (e) { state.errors.push(`dock ${slotName}: ${e.message}`); }
-      state.docks.push({ slot: slotName, attached: ok });
-    }
+    // In play the publisher's panels take the screens; a fixture we drive
+    // through its programme keeps the venue's own up through the pre-roll.
+    docksOn = false;
+    if (!wallDrive) attachDocks(st); else { state.docks = []; paintIdleScreens(true); }
     const anchor = nodes[cfg.attribution || 'attribution_anchor'];
     if (anchor && st.attribution) st.attribution.position.copy(anchor.position);
     try {
@@ -943,8 +1056,9 @@ export function create(ctx) {
     }
     // A goal the replay runs across again is the same goal: no second flash.
     st.on('event', (e) => { if (e.type === 'goal' && !state.replay) { goalUntil = simTime + 4; paintBoard(); } });
-    st.on('statechange', (s) => { state.stage = s; paintBoard(); });
-    state.stage = st.state;
+    // A fixture we drive is LIVE by the feed's word, whatever its unlocked stage says.
+    st.on('statechange', (s) => { state.stage = wallDrive ? 'live' : s; paintBoard(); });
+    state.stage = wallDrive ? 'live' : st.state;
     // What the publisher's own UI offers and whether it is on. Their layer
     // list is the difference between drawing a scorebug ourselves and asking
     // for theirs, and it is not knowable from the outside without this.
@@ -996,12 +1110,13 @@ export function create(ctx) {
     return {
       home: team(teams[0], 'home'), away: team(teams[1], 'away'),
       a: sc.a ?? 0, b: sc.b ?? 0,
-      tag: period.tag, clock: mmss(period.remain),
+      // Before kick-off the clock counts down to it; the tag says so.
+      tag: period.preroll ? 'Kick-off' : period.tag, clock: mmss(period.preroll ? -t : period.remain),
       half: period.half, playing: period.playing, over: period.over,
       // Only a genuinely scheduled fixture wears LIVE. A replay the city put
       // on must not, and the publisher's own state is what distinguishes them
       // — RFL asked us to use their truth rather than fake it.
-      live: stage.state === 'live',
+      live: state.match?.state === 'live' || stage.state === 'live',
       // a goal being run again from the scorer's head
       replay: !!state.replay,
       // WHERE THE SOUND SHOULD BE, and why this is here rather than left to
@@ -1062,12 +1177,18 @@ export function create(ctx) {
    * programme runs on. Playing the match straight skips every one of them.
    */
   function driveProgramme(dt) {
-    if (state.source !== 'now' || !stage || !programme?.map) return;
+    if (!stage || !driving()) return;
     const total = programme.duration_s || 0;
-    programmeT += dt;
-    if (total > 0 && programmeT >= total) {
-      if (!state.now?.loop) { programmeT = total; }
-      else { programmeT = 0; state.loops += 1; goalUntil = -1; }
+    if (wallDrive) {
+      // A live fixture is where the wall clock says, every frame: a slow
+      // renderer drops frames and stays in time, like the lock it replaces.
+      programmeT = wallProgrammeT();
+    } else {
+      programmeT += dt;
+      if (total > 0 && programmeT >= total) {
+        if (!state.now?.loop) { programmeT = total; }
+        else { programmeT = 0; state.loops += 1; goalUntil = -1; }
+      }
     }
     let want = unmapTime(programme.map, programmeT);
     // THE GOAL REPLAY. A hold in the map is broadcast time inserted with the
@@ -1167,6 +1288,13 @@ export function create(ctx) {
   function onUnmount() {
     pa?.stop();
     dropBoards();
+    // Ours to dispose: the schedule only knows about its own stage.
+    if (ownStage) { const own = ownStage; ownStage = null; try { own.dispose(); } catch (e) { log.warn('match-4dgsx: own stage dispose', e); } }
+    wallDrive = null;
+    sdkStage = null;
+    docksOn = false;
+    state.drive = null;
+    state.programmeT = null;
     if (stage) pitch.remove(stage.group);
     stage = null;
     goals = [];
@@ -1229,7 +1357,7 @@ export function create(ctx) {
       return;
     }
     slot = sdk.schedule(cfg.channel || 'rfl', {
-      mount: (st, item) => onMount(st, item, 'schedule'),
+      mount: (st, item) => { void adoptScheduled(st, item); },
       unmount: () => onUnmount(),
       onProgramme,
       // The SDK offers a countdown board to stand on the pitch. We decline
@@ -1363,6 +1491,9 @@ export function create(ctx) {
         state.score = heldScore(stage);
         state.clock = heldClockOf(stage) || null;
         state.bug = buildBug();
+        dockPolicy();
+        state.drive = wallDrive ? 'wall' : (driving() ? 'dt' : null);
+        state.programmeT = driving() ? +programmeT.toFixed(2) : null;
         loopReplay();
         refitLabels();
         // The SDK paints textures with three's default orientation; our screens
@@ -1376,7 +1507,7 @@ export function create(ctx) {
           // exactly the thing worth seeing in the state
           state.pa = pa.state;
           if (pa.state.ready) {
-            const t = stage.score?.t ?? 0;
+            const t = programmeMatchT();
             if (!pa.state.playing && state.audio === 'on') pa.start(t);
             pa.sync(t);
             pa.update();            // arrival delays follow the visitor
@@ -1387,9 +1518,10 @@ export function create(ctx) {
       if (boardTimer <= 0 || (goalUntil > 0 && goalUntil <= simTime && goalUntil > simTime - dt)) {
         boardTimer = stage ? 0.25 : 1.0;
         paintBoard();
-        // Once a second while the pitch is empty: the countdown on the big
-        // screen has to tick, and the docks have to stay ours.
-        paintIdleScreens();
+        // Once a second while the pitch is empty — or the screens are ours
+        // through a pre-roll or post-roll: the countdown has to tick, and the
+        // docks have to stay ours.
+        paintIdleScreens(!!stage && !docksOn);
       }
     },
     dispose() {
@@ -1405,6 +1537,8 @@ export function create(ctx) {
       if (stage) { pitch.remove(stage.group); stage = null; }
       pa?.dispose();
       dropBoards();
+      if (ownStage) { try { ownStage.dispose(); } catch { /* already gone */ } ownStage = null; }
+      wallDrive = null;
       boardsTex?.dispose();
       boardTex.dispose();
       for (const s of Object.values(idleScreens)) s.tex.dispose();
@@ -1418,6 +1552,41 @@ export function create(ctx) {
       }
       state.phase = 'disposed';
       state.active = false;
+    },
+    /**
+     * Rehearse a live fixture from any bundle, for a harness.
+     *
+     * The scheduled path can only be watched at RFL's three slots a day, and
+     * the one part of it that is ours — a stage handed over by the schedule,
+     * adopted and driven through its programme from `startsAt` on the wall
+     * clock — is exactly the part CI could never reach. So a harness can play
+     * the schedule: mount the bundle the way the SDK would, hand it over with
+     * an item whose `startsAt` puts the programme wherever the test wants
+     * (60 s in: the pre-roll; 200 s: play; 180 s + a goal: a hold), and take
+     * it down again with `null`. Nothing in the venue calls this.
+     */
+    async rehearseLive(opts) {
+      if (!opts) {
+        if (!wallDrive && !sdkStage) return false;
+        const theirs = sdkStage;
+        onUnmount();
+        try { theirs?.dispose(); } catch { /* already gone */ }
+        return true;
+      }
+      const sdk = await ensureSdk();
+      if (!sdk || disposed) return false;
+      const bundleUrl = httpsOnly(opts.bundleUrl);
+      if (!bundleUrl) return false;
+      dropOverride();
+      if (wallDrive || sdkStage) { const theirs = sdkStage; onUnmount(); try { theirs?.dispose(); } catch { /* gone */ } }
+      const st = await sdk.mount({ bundleUrl, autoplay: false, splats: useSplats });
+      if (disposed) { st.dispose(); return false; }
+      const item = {
+        bundleId: opts.bundleId || bundleName(bundleUrl), bundleUrl, state: 'live', startsAt: opts.startsAt,
+        title: opts.title || `Rehearsal · ${bundleName(bundleUrl)}`, home: opts.home || null, away: opts.away || null,
+      };
+      await adoptScheduled(st, item);
+      return !!wallDrive;
     },
     /**
      * Put the mounted match at `t`, in match seconds. Returns where it landed.
