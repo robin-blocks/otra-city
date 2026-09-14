@@ -227,6 +227,52 @@ bowl, so the camera is allowed to move.
 shot shows the coming-up card, the fixture list and the results; `SCOREBOARD`
 frames the countdown. Both are held long enough to read — 12 s and 10 s.
 
+## The scorebug
+
+The broadcast graphics — a compact bug top left, a LIVE tag top right, and a
+full scoreboard bottom centre. RFL asked us to take these over (their note of
+2026-09-14 §2) and sent the spec their own renderer used; it is implemented in
+`public/js/scorebug.js` in **an 854 x 480 layout space scaled to the real
+frame**, which is how theirs worked and why the spec talks in proportions
+rather than pixels.
+
+Their SDK does carry a `match.scorebug` layer, and it is on. It reports
+`scene: false` — it draws into their own HTML viewer and cannot reach a frame
+we composite — so this is not a duplicate of something we could have switched
+on. `match.panel3d` ("Stadium score panel", `scene: true`) is left **off** on
+purpose: we paint our own board on `screen_score` from hud truth, and a second
+score panel standing on the turf is the thing we declined their countdown board
+over.
+
+**It is drawn before the big screen takes its copy**, so the screen carries the
+broadcast as broadcast, graphics and all.
+
+**LIVE appears only on a genuinely scheduled fixture.** A replay the city put on
+does not wear it. `stage.state` is the publisher's own truth for that, and RFL
+asked us to use it rather than infer one.
+
+### The clock
+
+The publisher's `hud.clock` is the whole of it:
+
+```json
+{ "mode": "down", "duration_s": 600, "halves": 2, "half_breaks": [300],
+  "buzzers": [ {"kind": "half", "t": 300, "restart_t": 317}, {"kind": "full", "t": 617} ] }
+```
+
+Two things about it are easy to get wrong, and both are handled by
+`matchPeriod()` in the match module rather than in the page:
+
+- **The stage's own `clock` counts down across the whole match** —
+  `duration_s - t`, which is what their SDK computes — while a scorebug counts
+  down *within the current half*. So the halves are derived, not read off it.
+- **It runs on playing time.** It stops at the buzzer and does not move again
+  until play restarts, so the interval is a period of its own: from
+  `buzzers[i].t` to `restart_t`, reading `00:00` and tagged `Half Time`.
+
+Tags are `First Half`, `Second Half`, `Half Time`, `Full Time`, and
+`state().scorebug` reports exactly what is being drawn.
+
 ## What the screens show when there is no match
 
 For roughly twenty-two hours a day the pitch is empty, and for all of them the
