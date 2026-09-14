@@ -128,6 +128,83 @@ try {
   }
   if (CAMTRACK) check('the camera track loaded', (s0.camtrack?.segments ?? 0) > 0, `${s0.camtrack?.segments} segments to frame ${s0.camtrack?.lastFrame}`);
   if (BUNDLE) check('the match is mounted before ready resolves', s0.match?.phase === 'match', `phase "${s0.match?.phase ?? 'none'}"`);
+  if (BUNDLE && s0.match?.phase === 'match') {
+    // The match is a picture, not geometry: the SDK's shader writes display-
+    // ready colour, and a composer that tone maps it again makes a grey-green
+    // pitch. js/after-tonemap.js draws it after the output pass; this is the
+    // page saying that it did.
+    const at = s0.afterToneMap || {};
+    check('the match is drawn after the city\'s tone mapping', at.roots === 1 && !at.error,
+      `${at.roots ?? 0} root(s) composited${at.error ? `, error: ${at.error}` : ''}`);
+    // The publisher's glass panels are recorded physics with nothing left to
+    // do but veil the pitch; the module hides every one it finds unless the
+    // venue asks for them (match-4dgsx.js, `glass`).
+    const g = s0.match.glass || {};
+    check('the publisher\'s glass panels are not drawn', g.shown ? true : (g.found ?? -1) >= 0 && g.hidden === g.found,
+      g.shown ? `${g.found} panel(s), drawn because the venue asks for them` : g.found ? `${g.hidden} of ${g.found} panels hidden` : 'this bundle has no glass');
+    // And the pitch at the publisher's own colour, checked against arithmetic
+    // rather than a golden image. Their shader lights a flat surface to a
+    // value the bundle alone predicts: the pitch texture's own texel — read
+    // back from the very image the SDK loaded — through their lighting (sun
+    // (0.25, 0.15, 1); 0.34 + 0.30·hemi + 0.48·dif; a 0.03 specular) and
+    // their gamma (pow 0.9091). That is what 4dgsx.com/watch draws, verified
+    // against their served player on 2026-09-14. If anyone tone maps the
+    // stage again, decodes the texture again, or the publisher changes how a
+    // pitch is lit, this line says so. Sampled at 36 points along whole
+    // stripes and judged by the median error, so a robot standing on a patch
+    // does not fail the run.
+    const got = await a.evaluate(`(async () => {
+      const THREE = await import('/vendor/three/three.module.js');
+      const { scene, camera, renderer } = window.rflBroadcast.three;
+      const space = scene.getObjectByName('4dgsx-match-space');
+      if (!space) return { error: 'no 4dgsx-match-space in the scene' };
+      let pitch = null;
+      space.traverse((o) => { const u = o.isMesh && o.material?.uniforms; if (u?.uColor && u.uTurf?.value === 2 && !pitch) pitch = o; });
+      const img = pitch?.material.uniforms.uTex.value?.image;
+      if (!img?.width) return { error: pitch ? 'the pitch texture has not loaded' : 'no textured pitch draw (uTurf 2) in the stage' };
+      const c2 = document.createElement('canvas');
+      c2.width = img.width; c2.height = img.height;
+      const g2 = c2.getContext('2d');
+      g2.drawImage(img, 0, 0);
+      const data = g2.getImageData(0, 0, img.width, img.height).data;
+      const xf = pitch.material.uniforms.uTexXf.value;      // 1/scale.xy, offset.xy — world-planar tiling
+      const sunZ = 1 / Math.hypot(0.25, 0.15, 1);
+      const lit = (t) => Math.pow(t / 255 * (0.34 + 0.30 + 0.48 * sunZ) + Math.pow(sunZ, 8) * 0.03, 0.9091) * 255;
+      // the texel their shader samples at match point (mx, my): the same
+      // mapping, wrapped, and flipped the way both their player and three
+      // upload an image
+      const texel = (mx, my) => {
+        const u = ((mx - xf.z) * xf.x) % 1, v = ((my - xf.w) * xf.y) % 1;
+        const px = Math.min(img.width - 1, Math.floor((u < 0 ? u + 1 : u) * img.width));
+        const py = Math.min(img.height - 1, Math.floor((1 - (v < 0 ? v + 1 : v)) * img.height));
+        const i = (py * img.width + px) * 4;
+        return [data[i], data[i + 1], data[i + 2]].map(lit);
+      };
+      const gl = renderer.getContext();
+      const W = renderer.domElement.width, H = renderer.domElement.height;
+      const buf = new Uint8Array(4);
+      const read = (mx, my) => {
+        const v = space.localToWorld(new THREE.Vector3(mx, my, 0)).project(camera);
+        gl.readPixels(Math.round((v.x + 1) / 2 * W), Math.round((v.y + 1) / 2 * H), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+        return [buf[0], buf[1], buf[2]];
+      };
+      // a stripe runs the length of the pitch (x); 3 and -1 are light bands,
+      // 1 and -3 dark ones on a 4 m period — 9 points along each
+      const errs = [], samples = [];
+      for (const x of [3, 1, -1, -3]) {
+        for (let y = -3.5; y <= 3.5; y += 0.875) {
+          const want = texel(x, y), have = read(x, y);
+          errs.push(Math.max(...have.map((h, i) => Math.abs(h - want[i]))));
+          samples.push({ at: [x, y], want: want.map(Math.round), have });
+        }
+      }
+      errs.sort((p, q) => p - q);
+      return { medianError: errs[errs.length >> 1], worst: errs[errs.length - 1], example: samples[0], examples: samples };
+    })()`);
+    check('the pitch renders at the publisher\'s own colour', !got.error && got.medianError <= 6,
+      got.error || `median error ${got.medianError}/255 over ${got.examples.length} points (worst ${got.worst}); at (${got.example.at}) drew [${got.example.have}] for [${got.example.want}]`);
+    report.pitch = got.error ? { error: got.error } : { medianError: got.medianError, worst: got.worst, examples: got.examples };
+  }
   check('drawing buffer matches the contract', ...(await (async () => {
     const d = await a.evaluate('JSON.stringify([window.rflBroadcast.three.renderer.domElement.width, window.rflBroadcast.three.renderer.domElement.height])').then(JSON.parse);
     return [d[0] === 1280 && d[1] === 720, `canvas ${d[0]}x${d[1]}`];
