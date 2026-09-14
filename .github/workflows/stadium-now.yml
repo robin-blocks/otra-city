@@ -1,0 +1,58 @@
+# Put a match on in the stadium, from the Actions tab, without a pull request.
+#
+# What the whole city shows is shared state, and REPLY-5 promised RFL that
+# changing it stays "a commit and a deploy, in public, with a name on it" —
+# no token, no write endpoint, nothing anyone outside the repository can drive.
+# A dispatch keeps every word of that true while removing the part that was
+# actually slow: opening and merging a PR to edit one field.
+#
+#   gh workflow run stadium-now.yml -f bundle=s3-m31
+#   gh workflow run stadium-now.yml -f bundle=off
+#
+# or the "Run workflow" button on the Actions tab.
+name: stadium — put a match on
+on:
+  workflow_dispatch:
+    inputs:
+      bundle:
+        description: 'bundle id (e.g. s3-m31), a cdn.4dgsx.com url, or "off"'
+        required: true
+        default: 'off'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stadium-now          # two people changing what is on would race the push
+  cancel-in-progress: false
+
+jobs:
+  put-on:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      # The script resolves a bundle id against RFL's programme feed and
+      # refuses any host but theirs, so the worst a mistake can do is show a
+      # different RFL match.
+      - run: node scripts/stadium-now.mjs "${{ inputs.bundle }}"
+      - name: commit
+        run: |
+          if git diff --quiet -- public/broadcast/now.json; then
+            echo "already showing that — nothing to commit"
+            exit 0
+          fi
+          git config user.name  "otra-city-bot"
+          git config user.email "noreply@otra.city"
+          git add public/broadcast/now.json
+          git commit -m "chore(stadium): now showing ${{ inputs.bundle }}
+
+          Dispatched by @${{ github.actor }} from the Actions tab."
+          git push
+      - name: what is on
+        run: |
+          node -e "const d=require('./public/broadcast/now.json');
+            console.log(d.bundle ? 'ON  ' + d.title + '\n    ' + d.bundle : 'OFF — the pitch is empty');
+            console.log('\nLive within ~60 s of the deploy finishing (clients poll once a minute).')"
