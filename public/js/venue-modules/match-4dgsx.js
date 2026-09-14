@@ -720,7 +720,17 @@ export function create(ctx) {
     geo.computeVertexNormals();
     // Unlit: an LED board is its own light. The offset keeps it in front of the
     // bundle's face at any distance, on top of the 4 mm it already stands proud.
-    const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.FrontSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    //
+    // `toneMapped: false` is the other half of "its own light", and it is not
+    // optional: this mesh is parented INTO the publisher's stage, whose own
+    // shader writes finished colour and is never tone mapped. A stock material
+    // in there is ACES'd on its own, against a wall that is not — measured on
+    // s3-m28, the boards' dark ground came out at 7 against artwork of 15,
+    // beside a wall at full value. A board renders as authored, like their
+    // pitch. js/after-tonemap.js enforces the same rule for anything else that
+    // reaches the stage; this states it where the material is made, which is
+    // also what the fixture (no composer, so per-material tone mapping) needs.
+    const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.FrontSide, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.name = 'otra-boards';
     mesh.frustumCulled = false;

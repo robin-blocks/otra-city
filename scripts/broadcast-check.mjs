@@ -136,6 +136,40 @@ try {
     const at = s0.afterToneMap || {};
     check('the match is drawn after the city\'s tone mapping', at.roots === 1 && !at.error,
       `${at.roots ?? 0} root(s) composited${at.error ? `, error: ${at.error}` : ''}`);
+    // NOTHING IN THAT PASS MAY STILL BE TONE MAPPED. Their shader is a raw one
+    // three injects nothing into, but our own geometry inside their scene —
+    // the advertising boards — is a stock material, and three tone maps those
+    // per material when it draws to the canvas. A board ACES'd on its own,
+    // against a wall that is not, is the same defect as the one this whole
+    // pass exists to fix, in miniature. after-tonemap.js clears the flag; this
+    // reads the live scene graph, so it fails if anything is added to the
+    // stage later and missed (the boards arrive when their atlas downloads,
+    // long after the first frame).
+    const tm = await a.evaluate(`(async () => {
+      const { scene } = window.rflBroadcast.three;
+      const stage = scene.getObjectByName('4dgsx-stage');
+      if (!stage) return { error: 'no 4dgsx-stage in the scene' };
+      const still = [];
+      let materials = 0;
+      stage.traverse((o) => {
+        for (const m of [].concat(o.material || [])) {
+          if (!m) continue;
+          materials += 1;
+          if (m.toneMapped === true) still.push(o.name || m.type);
+        }
+      });
+      return { materials, still: [...new Set(still)] };
+    })()`);
+    check('nothing drawn after the tone mapping is tone mapped again', !tm.error && tm.still.length === 0,
+      tm.error || `${tm.materials} materials in the stage, ${tm.still.length ? `still tone mapped: ${tm.still.join(', ')}` : 'none tone mapped'}`);
+    // And the boards are actually there, so the line above is not passing on
+    // an empty arena. RFL's own boards reach us as flat colour, so these are
+    // ours, dressed onto the shapes their exporter flattened.
+    const b = s0.match.boards || {};
+    if (!b.off) {
+      check('the arena boards are dressed', (b.textured ?? 0) > 0 && b.atlas === 'ready',
+        b.found ? `${b.textured} of ${b.found} found boards carry artwork (atlas ${b.atlas})` : `no boards detected in this bundle (atlas ${b.atlas})`);
+    }
     // The publisher's glass panels are recorded physics with nothing left to
     // do but veil the pitch; the module hides every one it finds unless the
     // venue asks for them (match-4dgsx.js, `glass`).
@@ -369,6 +403,16 @@ try {
     sM = await lv.state();
   }
   if (sM.match?.phase === 'match') {
+    // The boards are dressed AFTER the mount, when their atlas finishes
+    // downloading, so "mounted" is not "dressed" — reading them the moment
+    // the phase flips is a race, and it lost here on 2026-09-14 (21 boards,
+    // 0 dressed, atlas still loading) on a build where they were fine a
+    // second later. Wait for the atlas to settle the same way the mount is
+    // waited for; `failed` is a settled state too, and still fails the check.
+    for (const until = Date.now() + 30000; Date.now() < until && sM.match?.boards?.atlas === 'loading';) {
+      await sleep(500);
+      sM = await lv.state();
+    }
     const bo = sM.match.boards;
     check('every arena board found is dressed', !!bo && bo.found === bo.textured && bo.atlas !== 'failed',
       bo ? `${bo.found} boards, ${bo.textured} dressed (${JSON.stringify(bo.kinds || {})}), atlas ${bo.atlas}` : 'no boards field');

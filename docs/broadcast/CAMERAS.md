@@ -119,6 +119,19 @@ from an offline renderer whose greens run about 20% brighter than their
 player's (`[110,208,112]` for the same stripe). The stadium shows the match
 as 4DGSX's player shows it, which is the live look their SDK is built for.
 
+**The rule that follows, for anything we put inside their scene.** Their
+shader is a raw one three injects nothing into, so it is never tone mapped.
+Our own geometry parented into the stage — the advertising boards — is a
+stock material, and three tone maps those per material when it draws to the
+canvas, which is exactly where this pass draws. A board ACES'd on its own,
+against a wall that is not, is the same defect in miniature: measured on
+s3-m28, the boards' dark ground came out at 7 against artwork of 15. So
+anything in that pass renders as authored. `after-tonemap.js` clears the flag
+on every material it draws, including ones that arrive late (the boards are
+attached when their atlas finishes downloading), and `broadcast-check
+--bundle` walks the live stage and fails if anything in it is still tone
+mapped.
+
 Two consequences worth knowing. `timeofday` no longer touches the match — it
 was never meant to; their arena is lit by their sun whatever the city's hour.
 And the publisher's **glass panels** are not drawn: s3-m28 arrived with twelve

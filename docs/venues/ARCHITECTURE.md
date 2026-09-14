@@ -99,6 +99,14 @@ match. `venues.afterToneMap()` lists what the modules want drawn that way and
 `js/after-tonemap.js` does the drawing, depth-tested against the city. The
 fixture renders straight to the canvas and needs neither.
 
+Anything a module parents INTO that stage renders as authored, and must say
+so: a stock three material is tone mapped per material when it is drawn to
+the canvas, so it would be ACES'd alone against a publisher's surface that
+is not. `after-tonemap.js` clears the flag on everything it draws, late
+arrivals included, and the arena boards set `toneMapped: false` where the
+material is made — which is also what the fixture needs, since it has no
+composer to enforce anything.
+
 ### `public/venues/index.json` (generated)
 
 `{ "venues": [ { ...venue.json, "base": "/venues/stadium/", "bounds": { "min": [x,z], "max": [x,z] } } ] }`
