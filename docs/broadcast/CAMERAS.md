@@ -156,9 +156,10 @@ line at the bottom of the page) is the date the page's behaviour last
 changed. A harness that pins a copy of the page, or a proxy that holds one,
 will report an older date than `https://otra.city/broadcast` does — so a
 "the deployed page still says X" conversation is settled by reading it. The
-current build is **2026-09-14** (the live feed runs the stadium's match module,
-the director cuts during play, and the city can switch the sound on for a
-replay it put on — before that, 2026-09-11). Bump the constant at the top of
+current build is **2026-09-14b** (crests on the scorebug, the arena boards
+dressed, head-cam replays on a replay the city put on — before that,
+2026-09-14: the live feed runs the stadium's match module, the director cuts
+during play, the sound switch; and 2026-09-11). Bump the constant at the top of
 `public/broadcast.html` whenever the page's behaviour changes.
 
 The gate asserts the field exists, and it can be pointed at the deployed
@@ -334,6 +335,83 @@ That a match cut-list contains no moving shot is checked in CI
 running match: any segment naming a camera that is not authored in
 `venue.json`, or naming `heli`, `stands` or `pitchside`, fails the gate.
 
+## Crests
+
+The bottom bar carries each club's crest at 26 x 26, where RFL's spec puts
+it, with the kit chip as the fallback while an image loads and for good if a
+club has none. Two sources, in order:
+
+1. a `crest` URL on the team object in RFL's data (hud.json or the programme
+   feed) — they have not published one yet, and when they do it wins;
+2. the city's own copies, `/broadcast/crests/<CODE>.png`, listed in
+   `/broadcast/crests.json` and keyed by the three-letter club code both the
+   feed and hud.json carry. Eleven clubs today, 128 px, transparent, cut from
+   the badges RFL supplied.
+
+A publisher URL has to be served with CORS headers: the scorebug is a canvas
+that becomes a texture, and a tainted canvas cannot. `state().crests` reports
+the manifest and how many images have landed.
+
+## The arena boards
+
+RFL's bundles carry their advertising boards as flat dark boxes — their
+exporter can emit textured faces (scene 0.4 `tex.proj`) but their SDK does
+not draw them — so the artwork is put on here, by the match module, for every
+client in the bowl and not only the broadcast.
+
+- **Found by shape, not by name.** The SDK's meshes are unnamed. A board is a
+  thin upright panel: under 3 cm through, 0.6–1.0 m tall, at least 0.8 m long.
+  Bounds are computed per mesh from its own index range, because every prim in
+  a bundle shares one vertex buffer and three's bounding box would be the
+  whole arena.
+- **Dressed with RFL's own panels.** `/broadcast/boards.json` + one atlas
+  (`boards/atlas.png`) of the six LED designs their renderer used — `url` and
+  `league`, in the touchline (2.12 m), end-wall (1.20 m) and outer (2.26 m)
+  widths — laid out as their arena builder lays them: alternating along each
+  touchline, the south run offset by one, league above the goal line and URL
+  below it at the ends. One mesh, one draw call for the whole ring.
+- **Both faces of every board are dressed**, 4 mm proud. The face against the
+  wall is inside it and never seen, and drawing both means no rule about which
+  way a board faces has to be right. Text reads correctly from in front of
+  either face (the reading direction is up × normal).
+- `state().match.boards` reports `found`, `textured`, the atlas state and the
+  kinds. `"boards": false` in the module config turns it off.
+
+When the SDK learns `tex.proj`, a bundle whose boards already carry a texture
+should be left alone; that is the one change this will need.
+
+## Head-cam replays
+
+RFL's programme holds the match clock for `replay_s` seconds at every goal
+(measured on m32: sixteen holds, fifteen goals, each exactly on the goal and
+exactly 5.0 s). Their render showed the goal again in that span; the stadium
+dwelled. On `/broadcast` the hold is now the replay: the stage runs the last
+`replay_s` seconds up to the goal once more, from the scorer's head, while the
+programme clock — and so the scorebug's clock and score — stays where the
+hold is. The bug wears REPLAY; the director cuts to `headcam`, which outranks
+the scoreboard hold, and hands back to the cut-list when the hold ends.
+
+- **The scorer's body is reached by name, and only once verified.** The SDK
+  builds one group per body in body order under its match root (static world
+  at 0, body *i* at *i* + 1) and hangs each nameplate on its body at the
+  player's anchor offset. So every player's sprite must sit where their anchor
+  says, on the group their body index names; if all do, the layout is the one
+  we think it is and any body — the ball included — is reachable. If any does
+  not, the head cam is not used. `state().match.bodies` says which.
+- **Head height is RFL's own number**: the anchor offset, 0.62 m up the
+  pelvis. It looks at the ball, because the ball is the story and a pelvis has
+  no agreed forward axis; the look target is smoothed (τ = 0.12 s). FOV 68°.
+- **Replays the city put on only.** A live fixture's clock is the publisher's
+  wall clock and its stage refuses a seek, so a scheduled match still dwells.
+  It gets replays when the live fixture is driven through `program.map` from
+  `startsAt` on this side — the remaining §5 item.
+- Visitors' clients keep the dwell: `replayCam(true)` is asked for by the
+  broadcast page, not set in the venue config. A capture (`?capture=1`) never
+  arms it.
+
+`rflBroadcast.seekMatch(t)` onto a goal's own time is a replay on demand,
+which is how the gate proves it without waiting for one.
+
 ## Camera track file
 
 A worked example ships at `/broadcast/camtrack-example.json` and is used as
@@ -412,6 +490,8 @@ the board — season-4 titles are half again as long.
 
 ## What is not built
 
+- Head-cam replays on a LIVE fixture (see above: the clock is the publisher's).
+- The tracked gantry RFL said yes to (their spec is in their note of 14 Sep).
 - Match-event crowd reactions (§6, explicitly a later phase).
 - Crowd audio of any kind — no audio at all is produced; the venue PA is
   stripped from the module config on this page.

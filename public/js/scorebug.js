@@ -16,6 +16,13 @@
 // EVERYTHING IS IN AN 854 x 480 LAYOUT SPACE, scaled to the real frame. That
 // is how theirs worked and it is why the spec talks in proportions: the same
 // numbers land correctly at 1280 x 720 or anywhere else.
+//
+// CRESTS. The spec draws a club's crest at 26 x 26 at both ends of the bottom
+// bar and falls back to a kit chip. A `crest` URL on the team object (RFL's
+// data, when they publish one) is used first; otherwise the city's own copy,
+// keyed by the club CODE the feed and hud.json both carry, from
+// `/broadcast/crests.json`. Images arrive after the first paint, so a load
+// invalidates the last-drawn key and the next frame repaints.
 import * as THREE from 'three';
 
 const LAYOUT_W = 854;
@@ -28,6 +35,8 @@ const TAG_GREY = 'rgb(150,160,190)';
 const DIVIDER = 'rgb(255,200,60)';
 const CENTRE_BLOCK = 'rgb(26,28,44)';
 const LIVE_RED = 'rgb(235,55,45)';
+const REPLAY_AMBER = 'rgb(255,190,60)';
+const CRESTS_URL = '/broadcast/crests.json';
 
 const rgb = (c) => `rgb(${c.slice(0, 3).map((v) => Math.round(v * 255)).join(',')})`;
 
@@ -58,7 +67,7 @@ function fitTextOn(ctx, text, x, y, { weight = 500, size, maxW, minSize = Math.r
  * @param {number} o.width   the real frame, in pixels
  * @param {number} o.height
  */
-export function createScorebug({ width, height }) {
+export function createScorebug({ width, height, crests = CRESTS_URL } = {}) {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
@@ -80,6 +89,42 @@ export function createScorebug({ width, height }) {
   const px = (v) => v * S;
   const font = (weight, size) => `${weight} ${Math.round(px(size))}px Menlo, monospace`;
   let painted = null;
+
+  // ---- crests -------------------------------------------------------------
+  // code -> url, from the city's manifest; a publisher URL on the team wins.
+  let manifest = null;               // null until fetched; {} if it failed
+  const images = new Map();          // url -> { img, ok }
+  const crestStat = { manifest: 'loading', loaded: 0, failed: 0 };
+  if (crests) {
+    fetch(crests, { credentials: 'omit' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((doc) => {
+        const base = new URL(crests, location.href);
+        manifest = {};
+        for (const [code, file] of Object.entries(doc?.crests || {})) manifest[code] = new URL(file, base).href;
+        crestStat.manifest = 'ready';
+        painted = null;              // whatever is up gets its crests next frame
+      })
+      .catch(() => { manifest = {}; crestStat.manifest = 'failed'; });
+  } else { manifest = {}; crestStat.manifest = 'off'; }
+  const crestUrlFor = (team) => team?.crest || (manifest && team?.code ? manifest[team.code] : null) || null;
+  /** The image for a URL if it has arrived; starts the load the first time. */
+  function crestImage(url) {
+    if (!url) return null;
+    let rec = images.get(url);
+    if (!rec) {
+      const img = new Image();
+      // Same-origin for the city's copies; a publisher's CDN must send CORS
+      // headers, or a tainted canvas could never become a texture.
+      img.crossOrigin = 'anonymous';
+      rec = { img, ok: false };
+      images.set(url, rec);
+      img.onload = () => { rec.ok = true; crestStat.loaded += 1; painted = null; };
+      img.onerror = () => { rec.ok = false; rec.failed = true; crestStat.failed += 1; };
+      img.src = url;
+    }
+    return rec.ok ? rec.img : null;
+  }
 
   /** Draw one state. Returns false when nothing changed and the canvas was left alone. */
   function draw(bug) {
@@ -119,17 +164,22 @@ export function createScorebug({ width, height }) {
     g.fillText(bug.tag, px(372) - clockW - px(10), midY);
 
     // ---- b. LIVE, top right — only when it really is ---------------------
-    if (bug.live) {
+    // ...and REPLAY while a goal is being run again from the scorer's head.
+    // A replay the city put on is never LIVE, so the two never compete.
+    const tag = bug.live ? { text: 'LIVE', colour: LIVE_RED, w: 66 }
+              : bug.replay ? { text: 'REPLAY', colour: REPLAY_AMBER, w: 92 } : null;
+    if (tag) {
+      const x0 = W - 12 - tag.w;
       g.fillStyle = PANEL;
-      roundRect(g, px(W - 78), px(8), px(66), px(26), px(7));
-      g.fillStyle = LIVE_RED;
+      roundRect(g, px(x0), px(8), px(tag.w), px(26), px(7));
+      g.fillStyle = tag.colour;
       g.beginPath();
-      g.arc(px(W - 78 + 15), px(21), px(5), 0, Math.PI * 2);
+      g.arc(px(x0 + 15), px(21), px(5), 0, Math.PI * 2);
       g.fill();
       g.fillStyle = '#ffffff';
       g.font = font(700, 14);
       g.textAlign = 'left';
-      g.fillText('LIVE', px(W - 78 + 26), px(21));
+      g.fillText(tag.text, px(x0 + 26), px(21));
     }
 
     // ---- c. the full scoreboard, bottom centre ---------------------------
@@ -156,7 +206,7 @@ export function createScorebug({ width, height }) {
     // Athletic" is eighteen characters and ran under the away kit chip: a
     // 26-character limit is a guess about width made in units that are not
     // width. The gap is from the name's inner edge to the chip, less a margin.
-    const nameW = px(210 - 58 - 34);
+    const nameW = px(210 - 58 - 40);
     g.fillStyle = '#e9edf6';
     g.textAlign = 'right';
     // Both in REAL pixels: `fitTextOn` measures against the canvas, and
@@ -165,11 +215,16 @@ export function createScorebug({ width, height }) {
     g.textAlign = 'left';
     fitTextOn(g, bug.away.name, cx + px(58), midBar, { size: px(15), maxW: nameW });
 
-    // No badges exist for these clubs, so the spec's own fallback: a kit chip.
-    g.fillStyle = rgb(bug.home.color);
-    g.fillRect(cx - half + px(14), midBar - px(7), px(14), px(14));
-    g.fillStyle = rgb(bug.away.color);
-    g.fillRect(cx + half - px(28), midBar - px(7), px(14), px(14));
+    // The crest at 26 x 26 where the spec puts it; the kit chip until one has
+    // loaded, and for good if the club has none.
+    const crest = (team, x) => {
+      const img = crestImage(crestUrlFor(team));
+      if (img) { g.drawImage(img, x, midBar - px(13), px(26), px(26)); return; }
+      g.fillStyle = rgb(team.color);
+      g.fillRect(x + px(6), midBar - px(7), px(14), px(14));
+    };
+    crest(bug.home, cx - half + px(8));
+    crest(bug.away, cx + half - px(8) - px(26));
 
     tex.needsUpdate = true;
     return true;
@@ -184,6 +239,9 @@ export function createScorebug({ width, height }) {
       renderer.render(scene, cam);
       renderer.autoClear = wasAutoClear;
     },
-    dispose() { tex.dispose(); mat.dispose(); },
+    /** Whether the crests are there: the manifest, and how many images landed. */
+    get crests() { return { ...crestStat }; },
+    crestFor: (team) => crestUrlFor(team),
+    dispose() { tex.dispose(); mat.dispose(); for (const r of images.values()) r.img.src = ''; images.clear(); },
   };
 }

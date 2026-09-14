@@ -84,7 +84,7 @@ const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
 // page's behaviour changes. It is reported in `state().build` and on the note
 // line, so "the deployed page still says X" is settled by reading the page,
 // not by comparing memories of deploys.
-const BUILD = '2026-09-14';
+const BUILD = '2026-09-14b';
 
 // Errors are evidence: a silent failure films a black hour, so every one is
 // kept for `state()`, echoed to the console the harness reads, and shown.
@@ -642,6 +642,9 @@ async function loadTrack(url) {
  * a gallery would, then cuts back.
  */
 let goalCut = false;
+// Whether the match module has been asked to run goal holds again from the
+// scorer's head. Once, on the live feed only: a capture must not rewind.
+let replayArmed = false;
 
 /**
  * Whether this page should make a sound — decided by the city, not the URL.
@@ -669,6 +672,10 @@ function wantSound() {
 
 function direct() {
   if (!autoDirect) return;
+  if (live && !replayArmed) {
+    const mod = venues?.module?.(wantVenue, 'match-4dgsx');
+    if (mod?.replayCam) { mod.replayCam(true); replayArmed = true; }
+  }
   const m = matchState();
   const onAir = m?.phase === 'match';
   // RFL's §4: during play, the gantry essentially throughout — two-a-side robot
@@ -691,6 +698,19 @@ function applySound() {
 function cameraAt(name, frameNo) {
   const key = String(name).toLowerCase();
   const t = frameNo / FPS;
+  // THE HEAD CAM. While the module is running a goal again it says where the
+  // scorer's head is and where they are looking, every frame, in venue-local
+  // metres like every other camera here. It outranks the scoreboard hold —
+  // the replay is what a goal cuts to — and, like it, never a harness's own
+  // camera or track.
+  if (autoDirect && live && !track) {
+    const hc = matchState()?.headcam;
+    if (hc?.pos && hc?.lookAt) {
+      const c = { pos: hc.pos, lookAt: hc.lookAt, fov: hc.fov || DEFAULT_FOV, segment: -1, camera: 'headcam' };
+      lastTrackCam = c;
+      return c;
+    }
+  }
   // A goal interrupts the cut-list, not the harness: an explicitly requested
   // track or camera is never overridden by the director.
   if (goalCut && !track) {
@@ -912,6 +932,15 @@ window.rflBroadcast = {
           // the module counted, the page never said.
           loops: m.loops ?? 0,
           layers: m.layers ?? [],
+          // the goal being run again, if one is; the head cam, if it has one;
+          // the arena boards we dressed; whether the bundle's bodies were
+          // reachable; the goals in this match, so a harness can find one
+          replay: m.replay ?? null,
+          headcam: m.headcam ? { player: m.headcam.player, fov: m.headcam.fov } : null,
+          replayCam: m.replayCam === true,
+          boards: m.boards ?? null,
+          bodies: m.bodies ?? null,
+          goals: m.goals ?? [],
           // what the big screen and the side panels are carrying — between
           // matches that is the programme, not the plates they were painted with
           screens: m.screens ?? null,
@@ -930,6 +959,8 @@ window.rflBroadcast = {
       // the broadcast graphics: what they are showing, or null when there is
       // nothing to show
       scorebug: live ? (matchState()?.bug ?? null) : null,
+      // the crests behind the scorebug: the manifest, and how many images landed
+      crests: live && scorebug?.crests ? scorebug.crests : null,
       calls: r.calls, tris: r.triangles,
       unimplemented, errors: errors.slice(),
     };
