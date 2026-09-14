@@ -69,7 +69,7 @@ export function create(ctx) {
     pa: null, sdkAudio: null,
     // where what is on the pitch came from: the channel's schedule, a bundle
     // named in the venue's own config, or the city's shared override
-    source: null, now: null, loadingNow: null,
+    source: null, now: null, loadingNow: null, layers: [],
     // the programme, and what the big screen and side panels are showing
     upcoming: [], screens: {},
   };
@@ -479,6 +479,10 @@ export function create(ctx) {
     st.on('event', (e) => { if (e.type === 'goal') { goalUntil = simTime + 4; paintBoard(); } });
     st.on('statechange', (s) => { state.stage = s; paintBoard(); });
     state.stage = st.state;
+    // What the publisher's own UI offers and whether it is on. Their layer
+    // list is the difference between drawing a scorebug ourselves and asking
+    // for theirs, and it is not knowable from the outside without this.
+    try { state.layers = (st.layers || []).map((l) => ({ ...l })); } catch { state.layers = []; }
     if (!item || item.state === 'replay') st.play();
     state.phase = 'match';
     armGesture();
