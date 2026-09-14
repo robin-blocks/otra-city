@@ -880,6 +880,24 @@ export function create(ctx) {
       state.phase = 'disposed';
       state.active = false;
     },
+    /**
+     * Put the mounted match at `t`, in match seconds. Returns where it landed.
+     *
+     * For a harness. Nothing in the venue calls it: a scheduled fixture is the
+     * publisher's to position and a replay plays from its own start. It exists
+     * because the end of a match is seventeen minutes away and the things that
+     * happen there — the loop, Full Time on the board — were otherwise beyond
+     * reach of any test that could run in CI.
+     */
+    seek(t) {
+      if (!stage) return null;
+      try {
+        if (typeof stage.seek === 'function') stage.seek(t); else stage.time = t;
+        state.bug = buildBug();
+        paintBoard();
+        return stage.time ?? null;
+      } catch (e) { state.errors.push(`seek: ${e.message || e}`); return null; }
+    },
     get state() { return { ...state, errors: state.errors.slice(-5) }; },
   };
 }

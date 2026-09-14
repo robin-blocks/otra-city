@@ -834,6 +834,12 @@ window.rflBroadcast = {
     return buf;
   },
 
+  /**
+   * Drive the mounted match's clock, in match seconds. Returns where it landed,
+   * or null when nothing is mounted. A harness affordance — see the module.
+   */
+  seekMatch(t) { return venues?.module(wantVenue, 'match-4dgsx')?.seek?.(Number(t)) ?? null; },
+
   camera: (name) => useCamera(name),
   // every name `camera=` accepts: the venue's authored views and the director's shots
   cameras: () => [...new Set([...Object.keys(def?.cameras || {}), ...Object.keys(CAMERAS)])],
@@ -884,6 +890,10 @@ window.rflBroadcast = {
           next: m.next ? { id: m.next.bundleId, startsAt: m.next.startsAt } : null,
           // what the city says is on, the sound switch included
           now: m.now ?? null,
+          // how many times a looping replay has been round. Reported because
+          // it was not, which made the loop look broken when it was working:
+          // the module counted, the page never said.
+          loops: m.loops ?? 0,
           layers: m.layers ?? [],
           // what the big screen and the side panels are carrying — between
           // matches that is the programme, not the plates they were painted with
