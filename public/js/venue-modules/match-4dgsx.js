@@ -142,7 +142,7 @@ export function create(ctx) {
     pa: null, sdkAudio: null,
     // where what is on the pitch came from: the channel's schedule, a bundle
     // named in the venue's own config, or the city's shared override
-    source: null, now: null, loadingNow: null, layers: [], splats: useSplats, bug: null,
+    source: null, now: null, loadingNow: null, layers: [], splats: useSplats, bug: null, loops: 0,
     // the programme, and what the big screen and side panels are showing
     upcoming: [], screens: {},
   };
@@ -455,6 +455,9 @@ export function create(ctx) {
   let override = null;
   let overrideDoc = null;
   let mountingNow = null;
+  // A replay that has run out and is waiting to be sent round again. Guarded so
+  // the seek happens once per ending rather than on every frame after it.
+  let loopArmed = false;
   const mutedIds = new Set();
   const gestureFns = [];
   let unsubMute = null;
@@ -608,6 +611,40 @@ export function create(ctx) {
     };
   }
 
+  /**
+   * Send a finished replay round again.
+   *
+   * A match ends and the stage holds on the last frame, which for a scheduled
+   * fixture is right — the programme is over. For a replay the city put on it
+   * is not: the stadium stops being a broadcast and becomes a photograph of
+   * one, and it stays that way until somebody notices. m27, m31 and m30 all
+   * froze on Full Time before this existed.
+   *
+   * `seek` rather than a re-mount, which matters: a re-mount is another 320 MB
+   * off the CDN for every client in the bowl, and the stage already holds the
+   * whole match. Looping is opt-in per replay, because a fixture that is meant
+   * to end should end.
+   */
+  function loopReplay() {
+    // `state.now` and not `overrideDoc`: the latter is captured at mount and
+    // would be a stale copy of the document for as long as the replay runs,
+    // so turning looping on for something already playing would do nothing.
+    // The poll refreshes `state.now` every minute whether the bundle changed
+    // or not, which is exactly the freshness this needs.
+    if (state.source !== 'now' || !state.now?.loop || !stage) { loopArmed = false; return; }
+    if (!state.bug?.over) { loopArmed = false; return; }
+    if (loopArmed) return;
+    loopArmed = true;
+    const back = stage.t0 ?? 0;
+    try {
+      if (typeof stage.seek === 'function') stage.seek(back); else stage.time = back;
+      stage.play?.();
+      state.loops += 1;
+      goalUntil = -1;                 // a goal from the last time round is not news
+      paintBoard();
+    } catch (e) { state.errors.push(`loop: ${e.message || e}`); }
+  }
+
   function onUnmount() {
     pa?.stop();
     if (stage) pitch.remove(stage.group);
@@ -702,7 +739,7 @@ export function create(ctx) {
     if (doc?.bundle && !url) state.errors.push('now: bundle must be an https URL');
     // `audio` is carried through because /broadcast reads it: the page is
     // silent by contract with RFL, and this is the one thing that lifts it.
-    state.now = url ? { bundle: url, title: doc.title || null, audio: doc.audio === true } : null;
+    state.now = url ? { bundle: url, title: doc.title || null, audio: doc.audio === true, loop: doc.loop === true } : null;
     // A mount is a ~320 MB download that outlives several polls. Without this
     // the next tick would find no `override` yet, conclude nothing was on, and
     // start the download again — and again every sixty seconds until the first
@@ -790,6 +827,7 @@ export function create(ctx) {
         state.score = stage.score || null;
         state.clock = stage.clock || null;
         state.bug = buildBug();
+        loopReplay();
         // The SDK paints textures with three's default orientation; our screens
         // carry glTF UVs (v = 0 at the top), so its maps must not flip.
         for (const mesh of Object.values(dockMeshes)) {

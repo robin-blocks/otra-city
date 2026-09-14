@@ -18,6 +18,11 @@ on:
         description: 'bundle id (e.g. s3-m31), a cdn.4dgsx.com url, or "off"'
         required: true
         default: 'off'
+      loop:
+        description: 'send it round again when it ends (a replay otherwise freezes on Full Time)'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -37,7 +42,7 @@ jobs:
       # The script resolves a bundle id against RFL's programme feed and
       # refuses any host but theirs, so the worst a mistake can do is show a
       # different RFL match.
-      - run: node scripts/stadium-now.mjs "${{ inputs.bundle }}"
+      - run: node scripts/stadium-now.mjs "${{ inputs.bundle }}" ${{ inputs.loop && '--loop' || '' }}
       - name: commit
         run: |
           if git diff --quiet -- public/broadcast/now.json; then
