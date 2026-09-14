@@ -1,6 +1,7 @@
 // Put a match on in the stadium, or take it down.
 //
 //   node scripts/stadium-now.mjs s3-m31            # by bundle id, resolved from the feed
+//   node scripts/stadium-now.mjs s3-m31 --loop     # ...and send it round again when it ends
 //   node scripts/stadium-now.mjs <https url>       # by bundle url
 //   node scripts/stadium-now.mjs off               # clear it
 //   node scripts/stadium-now.mjs --list            # what is available to show
@@ -19,6 +20,9 @@ const FILE = 'public/broadcast/now.json';
 const argv = process.argv.slice(2);
 const want = argv.find((a) => !a.startsWith('--'));
 const list = argv.includes('--list');
+// A replay that runs out leaves the stadium showing a photograph of a match.
+// Looping is opt-in because a fixture that is meant to end should end.
+const loop = argv.includes('--loop');
 
 async function programme() {
   const r = await fetch(FEED, { headers: { 'user-agent': 'otra-city/1.0' } });
@@ -52,6 +56,7 @@ const doc = JSON.parse(readFileSync(FILE, 'utf8'));
 if (/^(off|none|null|clear)$/i.test(want)) {
   doc.bundle = null;
   doc.title = null;
+  doc.loop = false;
   delete doc._put_on;
   writeFileSync(FILE, JSON.stringify(doc, null, 2) + '\n');
   console.log('stadium: nothing on. The pitch goes back to empty at the next poll.');
@@ -84,6 +89,7 @@ if (!ALLOWED_HOSTS.includes(u.host)) {
 
 doc.bundle = u.href;
 doc.title = title || doc.title || 'Replay';
+doc.loop = loop;
 doc._put_on = `${new Date().toISOString().slice(0, 10)} — put on with scripts/stadium-now.mjs. Take it down with: off`;
 writeFileSync(FILE, JSON.stringify(doc, null, 2) + '\n');
-console.log(`stadium: ${doc.title}\n  ${doc.bundle}`);
+console.log(`stadium: ${doc.title}${loop ? ' — on a loop' : ''}\n  ${doc.bundle}`);

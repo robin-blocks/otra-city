@@ -73,6 +73,16 @@ always takes the pitch back from it. `"bundle": null` takes it down. It is a
 `state().match.source` says which of the three is on: `bundle`, `schedule` or
 `now`.
 
+**A replay can be told to loop:** `"loop": true` alongside the bundle. Without
+it a replay runs once and the stage holds on the last frame, which is right for
+a fixture that is meant to end and wrong for the stadium — it stops being a
+broadcast and becomes a photograph of one. Looping seeks the stage back rather
+than re-mounting, so it costs nothing: the bundle is already in memory and
+nobody downloads 320 MB again. `state().match.loops` counts the times round.
+
+The flag is read from the poll rather than from the document captured at mount,
+so it can be turned on for something already playing.
+
 Phones are the exception to all of this: the match core is a ~39 MB download
 and the SDK's stage is a desktop-class scene, so a coarse-pointer client gets
 the programme on the scoreboard and an empty pitch.
