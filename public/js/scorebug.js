@@ -42,7 +42,16 @@ function roundRect(g, x, y, w, h, r) {
   g.fill();
 }
 
-const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+/** One line, shrunk to fit `maxW` and then ellipsised if it still will not. */
+function fitTextOn(ctx, text, x, y, { weight = 500, size, maxW, minSize = Math.round(size * 0.66) }) {
+  let s = size;
+  let t = String(text ?? '');
+  const font = (n) => `${weight} ${Math.round(n)}px Menlo, monospace`;
+  ctx.font = font(s);
+  while (ctx.measureText(t).width > maxW && s > minSize) { s -= 1; ctx.font = font(s); }
+  while (ctx.measureText(t).width > maxW && t.length > 1) t = `${t.slice(0, -2)}…`;
+  ctx.fillText(t, x, y);
+}
 
 /**
  * @param {object} o
@@ -143,12 +152,18 @@ export function createScorebug({ width, height }) {
     g.fillStyle = DIVIDER;
     g.fillRect(cx - px(1), top + px(6), px(2), barH - px(12));
 
-    g.font = font(500, 15);
+    // Fitted to the space, not clipped at a character count. "Synthetic
+    // Athletic" is eighteen characters and ran under the away kit chip: a
+    // 26-character limit is a guess about width made in units that are not
+    // width. The gap is from the name's inner edge to the chip, less a margin.
+    const nameW = px(210 - 58 - 34);
     g.fillStyle = '#e9edf6';
     g.textAlign = 'right';
-    g.fillText(clip(bug.home.name, 26), cx - px(58), midBar);
+    // Both in REAL pixels: `fitTextOn` measures against the canvas, and
+    // everything else in this function speaks layout units through px().
+    fitTextOn(g, bug.home.name, cx - px(58), midBar, { size: px(15), maxW: nameW });
     g.textAlign = 'left';
-    g.fillText(clip(bug.away.name, 26), cx + px(58), midBar);
+    fitTextOn(g, bug.away.name, cx + px(58), midBar, { size: px(15), maxW: nameW });
 
     // No badges exist for these clubs, so the spec's own fallback: a kit chip.
     g.fillStyle = rgb(bug.home.color);
