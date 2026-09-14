@@ -868,6 +868,7 @@ export function create(ctx) {
     // is never attached and that element may not exist. Rather than keep a
     // second video decoding to feed a string they need, the string is reported.
     const url = item?.bundleUrl || bundleUrl || cfg.bundle || null;
+    state.matchItem = item ? { home: item.home || null, away: item.away || null } : null;
     state.match = item
       ? { id: item.bundleId, title: item.title, state: item.state, bundleUrl: url }
       : { id: bundleName(url), title: overrideDoc?.title || bundleName(url), bundleUrl: url };
@@ -977,9 +978,17 @@ export function create(ctx) {
     // stage: during a replay the stage is rewound to before the goal, and the
     // score must not go back with it.
     const sc = scoreAtT(hud, t) || stage.score || { a: 0, b: 0 };
-    const team = (t) => ({ code: t.code || '', name: t.name || '', color: Array.isArray(t.color) ? t.color.slice(0, 3) : [0.5, 0.5, 0.5] });
+    // A crest URL rides through from wherever RFL put one: `crest` (what we
+    // asked for) or `badge` (the field their feed's own type reserves), on the
+    // hud team or on the programme item. None today; the scorebug falls back.
+    const item = state.matchItem || {};
+    const team = (t, side) => ({
+      code: t.code || '', name: t.name || '',
+      color: Array.isArray(t.color) ? t.color.slice(0, 3) : [0.5, 0.5, 0.5],
+      crest: t.crest || t.badge || item[side]?.crest || item[side]?.badge || null,
+    });
     return {
-      home: team(teams[0]), away: team(teams[1]),
+      home: team(teams[0], 'home'), away: team(teams[1], 'away'),
       a: sc.a ?? 0, b: sc.b ?? 0,
       tag: period.tag, clock: mmss(period.remain),
       half: period.half, playing: period.playing, over: period.over,
@@ -1119,6 +1128,7 @@ export function create(ctx) {
     bodyOk = false;
     sceneBodies = null;
     state.match = null;
+    state.matchItem = null;
     state.docks = [];
     state.stage = null;
     state.source = null;

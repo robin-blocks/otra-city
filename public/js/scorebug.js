@@ -107,7 +107,7 @@ export function createScorebug({ width, height, crests = CRESTS_URL } = {}) {
       })
       .catch(() => { manifest = {}; crestStat.manifest = 'failed'; });
   } else { manifest = {}; crestStat.manifest = 'off'; }
-  const crestUrlFor = (team) => team?.crest || (manifest && team?.code ? manifest[team.code] : null) || null;
+  const crestUrlFor = (team) => team?.crest || team?.badge || (manifest && team?.code ? manifest[team.code] : null) || null;
   /** The image for a URL if it has arrived; starts the load the first time. */
   function crestImage(url) {
     if (!url) return null;

@@ -53,6 +53,25 @@ ahead of your programme. Both are fixed by the same change, driving a live
 fixture through `program.map` from `startsAt` on our side, which we will do
 once m33 has shown the scheduled mount working.
 
+## What m33 showed, and a fault of ours it exposed
+
+The deployed page mounted m33 from your schedule at 19:02:21Z — the first
+scheduled fixture either side has seen land on `/broadcast` at kick-off —
+and your supervisor took the bundle from `state().match.bundleUrl` and played
+the premix. That path is proven now.
+
+But it played it **from 0.00 s**, and the director flew the helicopter through
+a live match. Both were us. Our build of 14 Sep read the match time through
+`program.map` for every mounted bundle, while the programme clock behind that
+map only advances for a replay the city puts on — so for a scheduled fixture
+the scorebug reported *First Half 05:00, playing false, pre-roll, audioOffset
+0* for the whole match (measured on production at 19:06Z, 4-1 and five minutes
+in). Fixed in the build that carries this letter: the programme clock speaks
+only while we drive, a live fixture reports its own clock and its
+`audioOffset` through `audio.map` as before, and the gate now asserts it
+against a fixture the city did not put on. The `offset 0.00s` in your log
+tonight was our field, not your reading of it.
+
 ## Not changed tonight
 
 The tracked gantry — your yes with the `football.py` numbers is received and
