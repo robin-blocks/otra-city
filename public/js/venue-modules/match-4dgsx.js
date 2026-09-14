@@ -147,6 +147,9 @@ export function create(ctx) {
     // where what is on the pitch came from: the channel's schedule, a bundle
     // named in the venue's own config, or the city's shared override
     source: null, now: null, loadingNow: null, layers: [], splats: useSplats, bug: null, loops: 0,
+    // the publisher's name plates and shouts: how many canvas sprites, and how
+    // many times one had to be re-allocated because its canvas changed size
+    labels: null,
     // the programme, and what the big screen and side panels are showing
     upcoming: [], screens: {},
   };
@@ -453,6 +456,7 @@ export function create(ctx) {
   let gsx = null;
   let slot = null;
   let stage = null;
+  let labels = [];
   let disposed = false;
   let programmeTimer = 0;
   let nowTimer = 0;
@@ -548,6 +552,8 @@ export function create(ctx) {
       : { id: bundleName(url), title: overrideDoc?.title || bundleName(url), bundleUrl: url };
     st.group.position.set(0, 0, 0);
     pitch.add(st.group);
+    labels = collectLabels(st.group);
+    state.labels = { sprites: labels.length, refits: 0 };
     state.docks = [];
     for (const [slotName, mesh] of Object.entries(dockMeshes)) {
       // One slot can be reserved for the venue's own live feed — the big
@@ -740,10 +746,56 @@ export function create(ctx) {
     } catch (e) { state.errors.push(`loop: ${e.message || e}`); }
   }
 
+  /**
+   * Every canvas sprite the SDK hung on the stage: the name plates, the shouts
+   * ("radio bubbles"), its attribution mark, its fixture board. Only the shouts
+   * ever change size, but the list is cheap and the rule below is a no-op for
+   * a canvas that stays put.
+   */
+  function collectLabels(group) {
+    const found = [];
+    group.traverse((o) => {
+      const map = o.isSprite ? o.material?.map : null;
+      if (map?.isCanvasTexture && map.image) found.push({ map, w: map.image.width, h: map.image.height });
+    });
+    return found;
+  }
+  /**
+   * The SDK draws each shout on a canvas it RESIZES for every line — a new
+   * width per message, a new height when one wraps — and hands three the same
+   * CanvasTexture with needsUpdate set. Since r137 three allocates a texture's
+   * storage ONCE, immutable, at the size of the first upload (texStorage2D);
+   * every later upload is a sub-image into that allocation. A canvas that grew
+   * is refused outright — INVALID_VALUE, nothing logged, the previous text now
+   * stretched over the bigger sprite — and one that shrank lands in a corner
+   * of the old pixels, so the last shout shows through beside the new one.
+   * That is "got it" in forty-point letters next to a two-line ghost, and
+   * it is what every bubble looked like from its second message on.
+   *
+   * Their API does not say when the text changed, but the canvas does. When a
+   * label's canvas is not the size it was, dispose the texture: that frees the
+   * GPU copy and nothing else, so the next render allocates it again, at the
+   * right size, from the object the SDK still holds. Runs after the SDK's
+   * update, which is the only place it sets text, and before the frame is
+   * drawn.
+   */
+  function refitLabels() {
+    for (const l of labels) {
+      const img = l.map.image;
+      if (img.width === l.w && img.height === l.h) continue;
+      l.w = img.width;
+      l.h = img.height;
+      l.map.dispose();
+      if (state.labels) state.labels.refits += 1;
+    }
+  }
+
   function onUnmount() {
     pa?.stop();
     if (stage) pitch.remove(stage.group);
     stage = null;
+    labels = [];
+    state.labels = null;
     state.match = null;
     state.docks = [];
     state.stage = null;
@@ -924,6 +976,7 @@ export function create(ctx) {
         driveProgramme(dt);
         state.bug = buildBug();
         loopReplay();
+        refitLabels();
         // The SDK paints textures with three's default orientation; our screens
         // carry glTF UVs (v = 0 at the top), so its maps must not flip.
         for (const mesh of Object.values(dockMeshes)) {
