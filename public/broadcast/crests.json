@@ -1,0 +1,16 @@
+{
+ "_": "Club crests for the broadcast scorebug, keyed by the club CODE the programme feed and hud.json use. Drawn 26 x 26 at both ends of the bottom bar. A `crest` URL on the team object in RFL's data outranks these; a code with no entry gets the kit chip.",
+ "crests": {
+  "CDX": "crests/CDX.png",
+  "DSK": "crests/DSK.png",
+  "DYD": "crests/DYD.png",
+  "FAB": "crests/FAB.png",
+  "GEM": "crests/GEM.png",
+  "GLM": "crests/GLM.png",
+  "MNS": "crests/MNS.png",
+  "MSP": "crests/MSP.png",
+  "RMA": "crests/RMA.png",
+  "SGU": "crests/SGU.png",
+  "SYA": "crests/SYA.png"
+ }
+}
