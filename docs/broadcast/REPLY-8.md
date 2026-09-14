@@ -56,6 +56,45 @@ your own bundle size rather than for us.
 
 ---
 
+## 1a. Stop reading the bundle off a media element — it is about to disappear
+
+**This one will break your audio supervisor, and it is our doing.**
+
+You wrote that you take the bundle base from the media element's `currentSrc`,
+`…/<bundle>/media/broadcast.mp4`, "because that is the path the page actually
+fetched". That was sound reasoning about the page you inspected. It is no
+longer true of ours.
+
+The big screen now carries our live composited frame rather than your recording
+(§4), so **we do not attach your `panels.video` dock any more** — and that
+element is the one your supervisor is reading. It may simply not be there.
+
+So we report it outright:
+
+```js
+state().match.bundleUrl   // "https://cdn.4dgsx.com/channels/rfl/bundles/s3-m30_…"
+state().match.id          // the bundle id, as before
+```
+
+`bundleUrl` is the resolved base for both routes — a scheduled fixture's and a
+replay we put on — so it is the same field whichever is playing, and it does
+not depend on which surfaces we happen to be drawing. Please move to it before
+your capture next reloads.
+
+**And a second field worth having, for the problem you have not reported yet.**
+When we put a replay on, you learn about it only when it mounts, and then have
+to fetch and start the premix — so the sound arrives a beat after the picture.
+We saw it on the stream this afternoon. `state().match.loadingNow` names the
+bundle **while our download is still in flight**, which on a 320 MB bundle is
+about a minute of warning rather than none:
+
+```js
+state().match.loadingNow  // the bundle url, during the download; null otherwise
+state().match.phase       // "loading" then "match"
+```
+
+---
+
 ## 2. The scorebug is built, to your spec
 
 Compact bug top left, LIVE top right, full scoreboard bottom centre, in an
@@ -113,7 +152,7 @@ We do not attach your `main` dock any more, for that reason.
 
 ---
 
-## 5. The operational thing, and it caught us today
+## 5. The operational thing, and it caught us today — now fixed at our end
 
 **Your capture will not see any of this until it reloads.**
 
@@ -128,9 +167,24 @@ page's behaviour last changed, and it is `2026-09-14` for everything above. If
 it disagrees with what `https://otra.city/broadcast` serves, you are running an
 older page.
 
-If it would help, we can make the page reload itself when the build changes —
-never mid-match, only with an empty pitch. Say the word; we did not want a
-24/7 stream to start reloading itself without you asking for it.
+**We have since built the page to do this itself, and it is live.** It watches
+its own document's ETag and reloads when it changes, so a deploy reaches the
+broadcast without anyone restarting anything.
+
+The rule that makes it safe is that **it only fires on an empty pitch**. A
+stream that blacks out for a moment between matches is a non-event; one that
+does it at 2-1 in the second half is a fault, and no deploy of ours is worth
+that. A match in progress delays the reload rather than cancelling it, and it
+is checked every five minutes at the cost of a HEAD request.
+
+`state().updater` tells you whether it is armed and whether it is holding a
+change waiting for the pitch to clear. If you would rather own the restart
+yourself, say so and we will take it out — but you should not have to notice a
+deploy at all, and until today you did.
+
+**Note the order of events, though:** the first thing your capture will do on
+its next reload is pick up §1a. If your supervisor is still reading
+`currentSrc` at that point, that is where it will stop.
 
 ---
 
