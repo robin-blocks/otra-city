@@ -18,6 +18,23 @@
 import * as THREE from 'three';
 import { createPA } from '/js/pa-system.js';
 
+// The publisher ships every dynamic body twice: as indexed mesh geometry in
+// `prims`/`draws`, and as a surface-sampled gaussian cloud in `points.bin`.
+// Their SDK draws one or the other, and the choice is the CALLER'S — `splats`
+// defaults to true, which is why the robots have been point clouds since the
+// day the stadium opened, with the solid geometry loaded and switched off
+// behind them. RFL measured it from the outside (179 hidden meshes against
+// 178 body-bound draws) and their exporter comment calls the file "splat
+// preview points for the reference viewer": it was built for their own
+// player and has been driving the stadium by accident ever since.
+//
+// A stadium wants bodies, not a preview. So we ask for the meshes — and it is
+// not free: measured on s3-m31, 292 draw calls and ~35k triangles become 420
+// calls and 2.07M. The call budget is 480, so the headroom drops from 188 to
+// 60. Worth it for players you can see the joints of, but a venue that cannot
+// afford it can set `"splats": true` in its module config and have the clouds
+// back without a code change.
+const SPLATS_DEFAULT = false;
 const SDK_URL = 'https://4dgsx.com/sdk/v1/three.js';
 const FEED_ORIGIN = 'https://4dgsx.com';
 const BOARD_W = 1024;
@@ -56,6 +73,7 @@ function londonTime(iso) {
 export function create(ctx) {
   const { venue, cfg, root, nodes, camera, renderer, media, log = console } = ctx;
   const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  const useSplats = cfg.splats === true ? true : SPLATS_DEFAULT;
   const pitch = nodes[cfg.pitch] || root;
   const scoreMesh = findMesh(nodes[cfg.scoreboard]);
   const dockMeshes = {};
@@ -69,7 +87,7 @@ export function create(ctx) {
     pa: null, sdkAudio: null,
     // where what is on the pitch came from: the channel's schedule, a bundle
     // named in the venue's own config, or the city's shared override
-    source: null, now: null, loadingNow: null, layers: [],
+    source: null, now: null, loadingNow: null, layers: [], splats: useSplats,
     // the programme, and what the big screen and side panels are showing
     upcoming: [], screens: {},
   };
@@ -437,6 +455,10 @@ export function create(ctx) {
   }
 
   function onMount(st, item, source = 'schedule', bundleUrl = null) {
+    // The scheduled path mounts inside `sdk.schedule()`, which takes no mount
+    // options, so a stage that arrived that way is told here instead. Same
+    // switch either way — `setSplats` is public on the stage.
+    try { st.setSplats?.(useSplats); } catch (e) { state.errors.push(`splats: ${e.message}`); }
     // A live fixture always wins the pitch: if the stadium was showing a
     // replay when kick-off came round, the replay comes down first, so the
     // two can never be mounted at once.
@@ -529,7 +551,7 @@ export function create(ctx) {
       state.phase = 'loading';
       paintBoard();
       try {
-        const st = await sdk.mount({ bundleUrl: cfg.bundle, autoplay: false });
+        const st = await sdk.mount({ bundleUrl: cfg.bundle, autoplay: false, splats: useSplats });
         if (disposed) { st.dispose(); return; }
         onMount(st, null, 'bundle', cfg.bundle);
         slot = { dispose() { onUnmount(); st.dispose(); } };
@@ -605,7 +627,7 @@ export function create(ctx) {
     state.loadingNow = url;
     paintBoard();
     try {
-      const st = await sdk.mount({ bundleUrl: url, autoplay: false });
+      const st = await sdk.mount({ bundleUrl: url, autoplay: false, splats: useSplats });
       // The download takes minutes; kick-off may have arrived while it ran.
       if (disposed || stage) { st.dispose(); return; }
       override = { url, st };
