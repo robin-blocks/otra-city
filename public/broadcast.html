@@ -225,6 +225,9 @@ let ambientCut = null, matchCut = null, cutNow = null, cutFrom = 0;
 // Where the live feed started counting, so `state().pace` can say whether
 // simulated time is keeping up with the wall. See the comment on the loop.
 let livePaceFrom = null;
+// The big screen's texture: a copy of the frame this page just drew.
+let feedTex = null, feedMesh = null;
+const feedStat = { wanted: false, mesh: null, slot: null, attached: false, copies: 0, error: null };
 
 async function boot() {
   const street = withStreet ? await loadStreet(scene) : null;
@@ -270,6 +273,9 @@ async function boot() {
     // The publisher's own sources stay: placed, and silent until asked for.
     delete m.pa;
     if (capture) { delete m.audio; delete m.now; }
+    // The big screen carries the live feed rather than the bundle's recording
+    // of the match, so the publisher's `main` dock is not attached to it.
+    if (live) m.live_screen = 'main';
     return true;
   });
 
@@ -380,6 +386,7 @@ async function startLive() {
     frame = Math.round(simT * FPS);
     direct();
     applySound();
+    updateFeedScreen();
     draw();
   });
 }
@@ -451,6 +458,80 @@ function aim({ pos, lookAt, fov, roll }) {
 // other name resolves to the authored camera, `gantry` included: that one is
 // RFL's contracted position and the check verifies the authored value.
 const ANIMATED = new Set(['heli', 'stands', 'pitchside']);
+
+/**
+ * The stadium's big screen, showing the broadcast.
+ *
+ * A ground's screen carries the television feed. Ours carried a video file out
+ * of the match bundle — the right match, correctly, but a recording: nothing
+ * that happened in this stadium could ever appear on it, and it was a second
+ * video decode for a surface a few hundred pixels wide.
+ *
+ * This takes the frame we have already drawn. `copyFramebufferToTexture` is a
+ * copy on the GPU of the composited canvas — the same pixels the encoder gets,
+ * whatever is in them, so anything ever drawn into the frame appears on the
+ * screen without this code learning about it. It adds no draw calls and no
+ * second pass over the scene, which the obvious implementation (render the
+ * world again from a second camera) very much does: a match runs ~292 calls
+ * against a budget of 480, and doubling it would have cost the budget rather
+ * than bought anything.
+ *
+ * The screen therefore shows the frame before this one, which is what a real
+ * screen does, and it shows itself showing itself — the feed camera can see it.
+ * That regress converges to nothing within two or three nestings because the
+ * screen is a small part of the frame, so it reads as a screen in shot rather
+ * than as a fault.
+ */
+function findMeshIn(node) {
+  let m = null;
+  node?.traverse?.((o) => { if (!m && o.isMesh) m = o; });
+  return m;
+}
+
+function ensureFeed() {
+  if (feedTex || !live) return;
+  // Whichever node the module reserved, by the name the venue gave it.
+  const mod = def?.modules?.find((m) => m.live_screen);
+  const nodeName = mod?.docks?.[mod.live_screen];
+  feedStat.wanted = !!nodeName;
+  feedStat.slot = nodeName || null;
+  if (!nodeName) return;
+  feedMesh = findMeshIn(V?.nodes?.[nodeName]);
+  feedStat.mesh = feedMesh ? (feedMesh.name || '(unnamed)') : null;
+  if (!feedMesh) { feedStat.error = `no mesh under "${nodeName}"`; return; }
+  // FramebufferTexture, not Texture: three has a separate upload path for a
+  // texture that is filled by a copy rather than from an image, and a plain
+  // Texture with a made-up `image` hits the wrong one.
+  feedTex = new THREE.FramebufferTexture(W, H);
+  // NOT SRGBColorSpace, however much the pixels deserve it. Marking it sRGB
+  // makes three allocate an SRGB8_ALPHA8 texture, and copyTexSubImage2D from
+  // the default framebuffer into one of those is INVALID_OPERATION — which it
+  // reports by setting an error flag rather than throwing, so every counter
+  // reads healthy and the screen is simply black. Measured: gl error 0x502 on
+  // every copy. Left linear, the already-encoded bytes pass through and get
+  // encoded once more by the output pass, which lifts the screen slightly.
+  // A stadium screen being a little hot is a fair price for one that works.
+  feedTex.minFilter = THREE.LinearFilter;
+  feedTex.magFilter = THREE.LinearFilter;
+  feedTex.generateMipmaps = false;
+  // A framebuffer is written bottom-up; every media surface in this city
+  // carries glTF UVs, which are not.
+  feedTex.flipY = false;
+  feedTex.repeat.set(1, -1);
+  feedTex.offset.set(0, 1);
+}
+
+/** Hand the screen the feed while a match is on, and the plate back when it is not. */
+function updateFeedScreen() {
+  if (!live) return;
+  ensureFeed();
+  if (!feedMesh || !feedTex) return;
+  const onAir = matchState()?.phase === 'match';
+  const want = onAir ? feedTex : null;
+  // Between matches the module paints its own card here; leave it alone.
+  if (want && feedMesh.material.map !== feedTex) { feedMesh.material.map = feedTex; feedMesh.material.needsUpdate = true; }
+  feedStat.attached = feedMesh.material.map === feedTex;
+}
 
 /** A camera authored in venue.json, by either spelling. Null if there is none. */
 function namedCamera(name) {
@@ -618,6 +699,23 @@ function draw() {
   if (crowd) crowd.update(frame / FPS);
   renderer.info.reset();
   composer.render();
+  // The screen takes the frame that was just composited — after the bloom and
+  // the output pass, so it is the encoded picture and not an intermediate.
+  if (feedTex && feedMesh && feedMesh.material.map === feedTex) {
+    try {
+      renderer.copyFramebufferToTexture(feedTex);
+      feedStat.copies += 1;
+      // copyTexSubImage2D fails by setting an error flag, not by throwing: a
+      // mismatched internal format on the destination is silent, and the
+      // symptom is a screen that stays black while every counter says fine.
+      if (feedStat.copies <= 3) {
+        const gl = renderer.getContext();
+        const err = gl.getError();
+        if (err) feedStat.error = `gl error 0x${err.toString(16)} on copy`;
+      }
+    }
+    catch (e) { feedStat.error = e.message || String(e); fail('feed', e); feedTex = null; }
+  }
   // finish() blocks until the driver has actually drawn: without it `frame()`
   // can read a buffer the GPU has not finished writing.
   renderer.getContext().finish();
@@ -719,6 +817,8 @@ window.rflBroadcast = {
           audio: m.audio ?? null, errors: m.errors ?? [],
         };
       })(),
+      // the big screen: is it carrying the broadcast, and is the copy running
+      feed: live ? { ...feedStat } : null,
       director: autoDirect
         ? { list: cutNow === matchCut ? 'match' : 'ambient', goal: goalCut,
             shot: lastTrackCam ? lastTrackCam.camera : null }

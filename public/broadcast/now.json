@@ -4,6 +4,6 @@
   "bundle": "https://cdn.4dgsx.com/channels/rfl/bundles/s3-m31_real_machina_frontier_fable-1f32c76a582ffe511306331b",
   "title": "RFL S3 M31 \u2014 Real Machina vs AFC Fable (replay)",
   "_put_on": "2026-09-14, second pass with sound on, for Robin's stream test. TAKE IT DOWN AFTERWARDS: bundle/title to null.",
-  "audio": true,
-  "_audio": "Whether /broadcast itself makes a sound. FALSE BY DEFAULT and false for scheduled fixtures: RFL premix those and play them into the same bus their capture records, so a page that emits during a live match puts two commentary tracks on air. True only for a replay the city put on, which they cannot have premixed. Tell RFL before changing it \u2014 they asked."
+  "audio": false,
+  "_audio": "Whether /broadcast itself makes a sound. FALSE, and it should normally stay false. RFL premix the match audio and play it into the same bus their encoder records, so a page that emits at the same time puts two commentary tracks on air. As of 2026-09-14 they handle REPLAYS too \u2014 they key off state().match.id by prefix and take the bundle base from the media element's currentSrc \u2014 so there is no longer a case where the sound has to come from here. The switch stays because their supervisor was dead for three days without anyone noticing; if that happens again this is the lever. Tell them before using it."
 }
