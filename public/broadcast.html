@@ -76,6 +76,7 @@ import { createVenues } from '/js/venues.js';
 import { createDoorSystem } from '/js/doors.js';
 import { createCrowd } from '/js/crowd.js';
 import { CAMERAS, createTrack } from '/js/broadcast-cameras.js';
+import { createScorebug } from '/js/scorebug.js';
 
 const FPS = 50;                 // the brief's timebase; one step is 20 ms
 const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
@@ -227,6 +228,9 @@ let ambientCut = null, matchCut = null, cutNow = null, cutFrom = 0;
 let livePaceFrom = null;
 // The big screen's texture: a copy of the frame this page just drew.
 let feedTex = null, feedMesh = null;
+// The broadcast graphics. Live only: a deterministic capture would have to
+// reproduce the clock exactly, and the clock comes off the publisher's stage.
+const scorebug = live ? createScorebug({ width: W, height: H }) : null;
 const feedStat = { wanted: false, mesh: null, slot: null, attached: false, copies: 0, error: null };
 
 async function boot() {
@@ -597,7 +601,13 @@ function direct() {
   if (!autoDirect) return;
   const m = matchState();
   const onAir = m?.phase === 'match';
-  const want = (onAir ? matchCut : ambientCut) || ambientCut || matchCut;
+  // RFL's §4: during play, the gantry essentially throughout — two-a-side robot
+  // football is small in frame and every cut away costs the viewer the thread.
+  // Half time and full time are the natural place for the stands and the
+  // aerial, so the intervals get the ambient list back. `bug.playing` is the
+  // publisher's own clock truth, derived from their buzzers.
+  const inPlay = onAir && matchState()?.bug?.playing !== false;
+  const want = (inPlay ? matchCut : ambientCut) || ambientCut || matchCut;
   if (want && want !== cutNow) { cutNow = want; cutFrom = frame; }
   goalCut = onAir && m?.board === 'GOAL' && !!namedCamera('scoreboard');
 }
@@ -699,8 +709,15 @@ function draw() {
   if (crowd) crowd.update(frame / FPS);
   renderer.info.reset();
   composer.render();
-  // The screen takes the frame that was just composited — after the bloom and
-  // the output pass, so it is the encoded picture and not an intermediate.
+  // The graphics go on before the screen takes its copy, so the big screen
+  // carries the broadcast as broadcast — scorebug and all — which is what a
+  // ground's screen actually shows. It nests, because the feed camera can see
+  // the screen; it converges within a nesting or two and reads as a screen in
+  // shot.
+  if (scorebug) {
+    scorebug.draw(matchState()?.bug ?? null);
+    scorebug.render(renderer);
+  }
   if (feedTex && feedMesh && feedMesh.material.map === feedTex) {
     try {
       renderer.copyFramebufferToTexture(feedTex);
@@ -824,6 +841,9 @@ window.rflBroadcast = {
         ? { list: cutNow === matchCut ? 'match' : 'ambient', goal: goalCut,
             shot: lastTrackCam ? lastTrackCam.camera : null }
         : null,
+      // the broadcast graphics: what they are showing, or null when there is
+      // nothing to show
+      scorebug: live ? (matchState()?.bug ?? null) : null,
       calls: r.calls, tris: r.triangles,
       unimplemented, errors: errors.slice(),
     };

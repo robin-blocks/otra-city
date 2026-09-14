@@ -64,6 +64,61 @@ function countdown(ms) {
 function bundleName(url) {
   try { return new URL(url).pathname.split('/').filter(Boolean).pop() || String(url); } catch { return String(url || ''); }
 }
+const HALF_NAMES = ['First Half', 'Second Half', 'Third Period', 'Fourth Period'];
+
+/**
+ * Where a match is in its own programme: which half, how long is left of it,
+ * and whether the whistle has gone.
+ *
+ * The publisher's `hud.clock` block is the whole of it. From m27:
+ *
+ *   { mode:"down", duration_s:600, halves:2, half_breaks:[300],
+ *     buzzers:[ {kind:"half", t:300, play_end_t:305, restart_t:317},
+ *               {kind:"full", t:617, …} ] }
+ *
+ * Two things about it are easy to get wrong, and RFL warned about both.
+ *
+ * The stage's own `clock` counts down across the WHOLE match — `duration_s - t`,
+ * which we read out of their SDK — while a scorebug counts down within the
+ * current half. So the halves are derived here rather than taken from it.
+ *
+ * And the clock runs on PLAYING time: it stops at the buzzer and does not move
+ * again until play restarts. The break is therefore a period of its own, from
+ * `buzzers[i].t` to `restart_t`, during which the clock reads nothing left.
+ */
+export function matchPeriod(hud, t) {
+  const c = hud?.clock;
+  if (!c || !Number.isFinite(t)) return null;
+  const halves = Math.max(1, c.halves || 1);
+  const halfLen = (c.duration_s || 0) / halves;
+  const buzzers = Array.isArray(c.buzzers) ? c.buzzers : [];
+  const breaks = buzzers.filter((b) => b.kind === 'half').sort((a, b) => a.t - b.t);
+  const full = buzzers.find((b) => b.kind === 'full');
+
+  if (full && t >= full.t) return { tag: 'Full Time', remain: 0, half: halves, over: true, playing: false };
+
+  for (let i = 0; i < halves; i += 1) {
+    const start = i === 0 ? 0 : (breaks[i - 1]?.restart_t ?? 0);
+    const end = breaks[i]?.t ?? (full?.t ?? Infinity);
+    if (t < end) {
+      return { tag: HALF_NAMES[i] || `Period ${i + 1}`, remain: Math.max(0, halfLen - (t - start)),
+               half: i + 1, over: false, playing: true };
+    }
+    // between the buzzer and the restart: the interval
+    const restart = breaks[i]?.restart_t;
+    if (restart !== undefined && t < restart) {
+      return { tag: 'Half Time', remain: 0, half: i + 1, over: false, playing: false };
+    }
+  }
+  return { tag: 'Full Time', remain: 0, half: halves, over: true, playing: false };
+}
+
+/** m:ss, the way a clock is read rather than the way a duration is written. */
+export function mmss(seconds) {
+  const s = Math.max(0, Math.round(seconds));
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
 /** A bundle URL from shared state is data we hand the SDK: https, or this origin. */
 const httpsOnly = (u) => { try { const x = new URL(u, location.href); return x.protocol === 'https:' || x.origin === location.origin ? x.href : null; } catch { return null; } };
 function londonTime(iso) {
@@ -87,7 +142,7 @@ export function create(ctx) {
     pa: null, sdkAudio: null,
     // where what is on the pitch came from: the channel's schedule, a bundle
     // named in the venue's own config, or the city's shared override
-    source: null, now: null, loadingNow: null, layers: [], splats: useSplats,
+    source: null, now: null, loadingNow: null, layers: [], splats: useSplats, bug: null,
     // the programme, and what the big screen and side panels are showing
     upcoming: [], screens: {},
   };
@@ -516,6 +571,34 @@ export function create(ctx) {
     audioPolicy();
     paintBoard();
   }
+  /**
+   * Everything a broadcast scorebug needs, from the publisher's own truth.
+   *
+   * Derived here rather than in the page because this is where `stage.hud`
+   * lives: the page knows the frame, the module knows the match, and neither
+   * has to learn the other's job.
+   */
+  function buildBug() {
+    if (!stage) return null;
+    const hud = stage.hud;
+    const teams = hud?.teams;
+    if (!teams || teams.length < 2) return null;
+    const period = matchPeriod(hud, stage.time);
+    if (!period) return null;
+    const sc = stage.score || { a: 0, b: 0 };
+    const team = (t) => ({ code: t.code || '', name: t.name || '', color: Array.isArray(t.color) ? t.color.slice(0, 3) : [0.5, 0.5, 0.5] });
+    return {
+      home: team(teams[0]), away: team(teams[1]),
+      a: sc.a ?? 0, b: sc.b ?? 0,
+      tag: period.tag, clock: mmss(period.remain),
+      half: period.half, playing: period.playing, over: period.over,
+      // Only a genuinely scheduled fixture wears LIVE. A replay the city put
+      // on must not, and the publisher's own state is what distinguishes them
+      // — RFL asked us to use their truth rather than fake it.
+      live: stage.state === 'live',
+    };
+  }
+
   function onUnmount() {
     pa?.stop();
     if (stage) pitch.remove(stage.group);
@@ -524,6 +607,7 @@ export function create(ctx) {
     state.docks = [];
     state.stage = null;
     state.source = null;
+    state.bug = null;
     state.phase = state.next ? 'countdown' : 'idle';
     paintBoard();
     // The SDK hands back the authored plate, not ours; take the docks back.
@@ -696,6 +780,7 @@ export function create(ctx) {
         stage.update(dt, camera, renderer.domElement.clientHeight || 720);
         state.score = stage.score || null;
         state.clock = stage.clock || null;
+        state.bug = buildBug();
         // The SDK paints textures with three's default orientation; our screens
         // carry glTF UVs (v = 0 at the top), so its maps must not flip.
         for (const mesh of Object.values(dockMeshes)) {
