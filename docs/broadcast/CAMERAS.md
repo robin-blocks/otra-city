@@ -87,6 +87,48 @@ Phones are the exception to all of this: the match core is a ~39 MB download
 and the SDK's stage is a desktop-class scene, so a coarse-pointer client gets
 the programme on the scoreboard and an empty pitch.
 
+## The look: the match is a picture, not geometry
+
+The city is rendered scene-referred — HDR floodlights, signs above 1.0 — and
+finished by an ACES output pass at exposure 1.15. The 4DGSX stage is not: its
+shader lights the match itself and writes a display-ready colour, the same
+bytes their own player puts on the canvas. Until 2026-09-14 the stage went
+through the city's output pass as well, so the finished picture was tone
+mapped and encoded a second time. Measured on s3-m28 from the gantry, the
+pitch's light stripe came out `[122,182,119]` where their player draws
+`[94,166,96]`: lifted, grey-green, kits desaturated — the "washed out" that
+Robin saw against RFL's rendered matches.
+
+Two things fix it, and both were needed. The stage is drawn AFTER the output
+pass (`js/after-tonemap.js`): the city goes through the composer without it,
+the scene's depth is copied into the canvas, and the stage is drawn straight
+to the canvas, depth-tested against the city, with no tone mapping and no
+encoding — one full-screen triangle. And the pitch texture is sampled as
+stored: their three.js SDK tags it sRGB, which three decodes to linear on the
+GPU, while their own player (a hand-written WebGL2 renderer at
+`4dgsx.com/watch`, running the identical shader) uploads it as plain RGBA.
+Drawn raw with the decode still on, the stripe read `[30,88,31]`; with the
+texture retagged, `[95,167,97]` — their player's value to within one level.
+`state().afterToneMap.roots` is 1 while a match is mounted,
+`state().match.look` says what was retagged, and `broadcast-check --bundle`
+reads the pitch back at 36 points and compares each with what their shader
+predicts from the texel it samples there.
+
+What this does not do is reproduce RFL's rendered videos exactly: those come
+from an offline renderer whose greens run about 20% brighter than their
+player's (`[110,208,112]` for the same stripe). The stadium shows the match
+as 4DGSX's player shows it, which is the live look their SDK is built for.
+
+Two consequences worth knowing. `timeofday` no longer touches the match — it
+was never meant to; their arena is lit by their sun whatever the city's hour.
+And the publisher's **glass panels** are not drawn: s3-m28 arrived with twelve
+translucent panels standing 1.6 m above the arena wall, put there so a lofted
+ball stays in play. A bundle is a recording, so the physics has already
+happened; all the panels did here was lie across the lower half of every
+gantry frame and lift the near pitch by half. The match module hides every
+translucent standing panel it finds (`state().match.glass`), and
+`"glass": true` in the venue's module config draws them again.
+
 ## Parameters
 
 | parameter | meaning |

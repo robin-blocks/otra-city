@@ -208,7 +208,6 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
@@ -223,6 +222,7 @@ import { createPresence } from '/js/presence.js';
 import { loadWorld } from '/js/world.js';
 import { buildRoads } from '/js/roads.js';
 import { createVenues } from '/js/venues.js';
+import { createAfterToneMap } from '/js/after-tonemap.js';
 import { createDoorSystem } from '/js/doors.js';
 import { createLightPool } from '/js/lights.js';
 import { attachPerfGuard } from '/js/perfguard.js';
@@ -248,7 +248,13 @@ const spawnPlot = params.get('plot') || (location.pathname.startsWith('/s/') ? l
 // place you can be sent to.
 const spawnLot = params.get('lot') || (location.pathname.startsWith('/lot/') ? location.pathname.split('/')[2] : null);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: headless });
+// antialias: false, on purpose. The frame is composed in the composer's
+// targets, which were never multisampled; the canvas only receives the
+// finished quad, so multisampling it bought nothing and cost a resolve per
+// frame. It now matters: a match is drawn onto the canvas after the output
+// pass against a copy of the scene's depth, and that copy is only exact when
+// the canvas has one sample per pixel (js/after-tonemap.js).
+const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: headless });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));   // the graphics preset lowers this below
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -311,7 +317,12 @@ muteBtn.addEventListener('click', (e) => {
   applyMute();
 });
 
-const composer = new EffectComposer(renderer);
+// The composer is built by after-tonemap.js so that a match — whose shader
+// already writes a finished picture — can be drawn AFTER the output pass
+// instead of through it. Tone mapped a second time it comes out grey-green;
+// see that file for the measurement.
+const after = createAfterToneMap({ renderer, camera });
+const composer = after.composer;
 composer.addPass(new RenderPass(scene, camera));
 const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.12, 0.3, 1.0);
 composer.addPass(bloomPass);
@@ -660,7 +671,7 @@ window.__step = (frames = 60, dt = 1 / 60) => {
   presence.update(1 / 60, simTime);
   media.update(player.pos, frames * dt);
   renderer.info.reset();
-  composer.render();
+  after.render(venues.afterToneMap());
   return JSON.stringify({
     pos: player.pos.toArray().map((v) => +v.toFixed(2)),
     doors: doors.state().map((d) => d.open),
@@ -697,7 +708,7 @@ function frame() {
   player.updateCamera(dt);
   introApply(dt);
   renderer.info.reset();
-  composer.render();
+  after.render(venues.afterToneMap());
   perf.tick(performance.now());
   const i = renderer.info.render;
   const peers = presence.count ? ` · ${presence.count} nearby` : '';
@@ -759,6 +770,7 @@ window.__city = {
       size: [renderer.domElement.width, renderer.domElement.height],
       quality: perf.quality,
       bloom: bloomPass.enabled,
+      afterToneMap: after.state(),
       lights: { ...lights.stats(), point, spot },
       pos: player.pos.toArray().map((v) => +v.toFixed(2)),
       camera: {
