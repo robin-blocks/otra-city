@@ -105,15 +105,24 @@ export function createAfterToneMap({ renderer, camera }) {
   // because objects arrive late: the boards are attached when their atlas
   // finishes downloading, long after the first frame. The WeakSet makes it
   // once per material, not once per frame.
+
+  // Whether three would actually tone map this material. `toneMapped` is true
+  // by default on EVERY material, the publisher's 370-odd shaders included,
+  // but three only applies the curve where the shader includes the chunk: a
+  // stock material always does, a ShaderMaterial only if its author wrote it,
+  // and a RawShaderMaterial never. So the flag is live on a board and inert on
+  // theirs. Clearing it only where it bites keeps the count honest and avoids
+  // dirtying several hundred of their materials for no change in pixels.
+  const wouldToneMap = (m) => m.toneMapped === true
+    && (!m.isShaderMaterial || /tonemapping_fragment/.test(m.fragmentShader || ''));
+
   const prepared = new WeakSet();
   function prepare(root) {
     root.traverse((o) => {
       for (const m of [].concat(o.material || [])) {
         if (!m || prepared.has(m)) continue;
         prepared.add(m);
-        // `toneMapped` is undefined on a RawShaderMaterial and meaningless on
-        // a ShaderMaterial that includes no tone-mapping chunk — theirs.
-        if (m.toneMapped === true) {
+        if (wouldToneMap(m)) {
           m.toneMapped = false;
           m.needsUpdate = true;
           stat.displayReferred += 1;

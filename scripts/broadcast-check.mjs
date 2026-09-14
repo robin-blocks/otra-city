@@ -155,7 +155,13 @@ try {
         for (const m of [].concat(o.material || [])) {
           if (!m) continue;
           materials += 1;
-          if (m.toneMapped === true) still.push(o.name || m.type);
+          // The same rule after-tonemap.js applies: the flag is true by
+          // default everywhere and only bites where the shader carries the
+          // chunk — always on a stock material, never on a raw one, and on a
+          // ShaderMaterial only if its author asked for it.
+          const bites = m.toneMapped === true
+            && (!m.isShaderMaterial || /tonemapping_fragment/.test(m.fragmentShader || ''));
+          if (bites) still.push(o.name || m.type);
         }
       });
       return { materials, still: [...new Set(still)] };

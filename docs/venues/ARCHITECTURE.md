@@ -102,7 +102,7 @@ fixture renders straight to the canvas and needs neither.
 Anything a module parents INTO that stage renders as authored, and must say
 so: a stock three material is tone mapped per material when it is drawn to
 the canvas, so it would be ACES'd alone against a publisher's surface that
-is not. `after-tonemap.js` clears the flag on everything it draws, late
+is not. `after-tonemap.js` clears the flag on everything three would tone map, late
 arrivals included, and the arena boards set `toneMapped: false` where the
 material is made — which is also what the fixture needs, since it has no
 composer to enforce anything.
