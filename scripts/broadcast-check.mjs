@@ -292,11 +292,14 @@ try {
     sM = await lv.state();
   }
   if (sM.match?.phase === 'match') {
-    // The atlas loads once per module, asynchronously; give it a moment.
-    for (const until = Date.now() + 15000; Date.now() < until && sM.match?.boards?.atlas === 'loading';) { await sleep(500); sM = await lv.state(); }
+    // The atlas loads once per module, asynchronously, over the same connection
+    // pool as whatever else the page is fetching — measured at over 15 s on a
+    // run that was downloading a 320 MB bundle at the same time. Waiting is
+    // the whole of the fix: "loading" is not a verdict.
+    for (const until = Date.now() + 60000; Date.now() < until && sM.match?.boards?.atlas === 'loading';) { await sleep(500); sM = await lv.state(); }
     const bo = sM.match.boards;
     check('every arena board found is dressed', !!bo && bo.found === bo.textured && bo.atlas !== 'failed',
-      bo ? `${bo.found} boards, ${bo.textured} dressed (${JSON.stringify(bo.kinds || {})}), atlas ${bo.atlas}` : 'no boards field');
+      bo ? `${bo.found} boards, ${bo.textured} dressed (${JSON.stringify(bo.kinds || {})}), atlas ${bo.atlas}${bo.atlas === 'loading' ? ' — still fetching after 60 s, not a verdict on the boards' : ''}` : 'no boards field');
     // The bodies verify a second or two after the mount, once scene.json is read.
     for (const until = Date.now() + 15000; Date.now() < until && !sM.match?.bodies;) { await sleep(500); sM = await lv.state(); }
     const bd = sM.match?.bodies;
