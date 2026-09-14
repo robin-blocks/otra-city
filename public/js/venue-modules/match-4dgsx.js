@@ -73,6 +73,16 @@ const RAW_TEXTURES = true;
 const SDK_URL = 'https://4dgsx.com/sdk/v1/three.js';
 const FEED_ORIGIN = 'https://4dgsx.com';
 const BOARD_W = 1024;
+// The arena's advertising boards. RFL's bundle carries them as flat dark boxes
+// (their exporter keeps textured board faces behind a flag their SDK cannot
+// yet draw), so the artwork is put on here: one quad per board face, from one
+// atlas of their own LED-panel designs, one draw call for the whole ring.
+const BOARDS_URL = '/broadcast/boards.json';
+const BOARD_PROUD = 0.004;     // metres in front of the bundle's own face — five depth steps at city range
+// The head cam: the scorer's own anchor, looking at the ball.
+const HEADCAM_FOV = 68;
+const HEADCAM_FORWARD = 0.24;  // metres in front of the head centre, along the look
+const HEADCAM_UP = 0.03;
 const BOARD_H = 576;
 let sdkPromise = null;
 // A rejected import must not be cached: the module retries the SDK on the
@@ -232,6 +242,9 @@ export function create(ctx) {
     // where what is on the pitch came from: the channel's schedule, a bundle
     // named in the venue's own config, or the city's shared override
     source: null, now: null, loadingNow: null, layers: [], splats: useSplats, bug: null, loops: 0,
+    // the publisher's name plates and shouts: how many canvas sprites, and how
+    // many times one had to be re-allocated because its canvas changed size
+    labels: null,
     // the publisher's glass panels: how many the mounted bundle has, and how
     // many of those are not being drawn
     glass: { found: 0, hidden: 0, shown: showGlass },
@@ -240,6 +253,9 @@ export function create(ctx) {
     look: { textures: 0, sprites: 0 },
     // the programme, and what the big screen and side panels are showing
     upcoming: [], screens: {},
+    // the arena boards we dressed, whether the bundle's bodies are reachable,
+    // the goals in this match, and the replay + head cam when one is running
+    boards: null, bodies: null, goals: [], replay: null, headcam: null, replayCam: false,
   };
 
   // Screens get unlit materials that keep the authored plate as their map:
@@ -320,12 +336,13 @@ export function create(ctx) {
       g.fillText('GOAL', W / 2, 330);
       g.fillStyle = '#e9edf6';
       g.font = '700 44px Menlo, monospace';
-      const sc = st?.score;
+      const sc = heldScore(st);
       if (sc && st.hud?.teams) g.fillText(`${st.hud.teams[0].code}  ${sc.a} – ${sc.b}  ${st.hud.teams[1].code}`, W / 2, 440);
       text = 'GOAL';
     } else if (st && st.hud) {
       const [a, b] = st.hud.teams || [];
-      const sc = st.score || { a: 0, b: 0 };
+      const sc = heldScore(st) || { a: 0, b: 0 };
+      const clock = heldClockOf(st);
       const live = st.state === 'live';
       g.textAlign = 'center';
       g.fillStyle = live ? '#ff3b30' : '#ffd479';
@@ -346,10 +363,10 @@ export function create(ctx) {
       g.fillText(`${sc.a} – ${sc.b}`, W / 2, 316);
       g.fillStyle = '#47f2ff';
       g.font = '700 64px Menlo, monospace';
-      g.fillText(st.clock || '', W / 2, 460);
+      g.fillText(clock, W / 2, 460);
       g.fillStyle = '#8a86a0';
       fitText(state.match?.title || '', W / 2, 520, { size: 30, maxW: W - 88 });
-      text = `${a?.code || ''} ${sc.a}-${sc.b} ${b?.code || ''} ${st.clock || ''}`;
+      text = `${a?.code || ''} ${sc.a}-${sc.b} ${b?.code || ''} ${clock}`;
     } else if (state.sdk === 'failed') {
       g.textAlign = 'center';
       g.fillStyle = '#8a86a0';
@@ -544,6 +561,7 @@ export function create(ctx) {
   let gsx = null;
   let slot = null;
   let stage = null;
+  let labels = [];
   let disposed = false;
   let programmeTimer = 0;
   let nowTimer = 0;
@@ -563,6 +581,317 @@ export function create(ctx) {
   const mutedIds = new Set();
   const gestureFns = [];
   let unsubMute = null;
+  // The bundle's body names (from its scene.json), whether the stage's groups
+  // were verified to line up with them, and this match's goals.
+  let sceneBodies = null;
+  let bodyOk = false;
+  let goals = [];
+  // Whether goal holds are run again from the scorer's head (the broadcast
+  // page asks for it; a visitor's client keeps the publisher's dwell).
+  let replayCam = false;
+  let boardMesh = null;
+  let boardsLoad = null;
+  let boardsTex = null;
+  let lookSmooth = null;
+  const _hv = new THREE.Vector3(), _bv = new THREE.Vector3(), _fv = new THREE.Vector3();
+
+  /** The stage's match-space root: one group per body lives directly under it, the static world first. */
+  function matchRootOf(st) {
+    const g = st?.group;
+    return g?.getObjectByName?.('4dgsx-match-space') || g?.children?.[0] || null;
+  }
+
+  // ---------------------------------------------------------------- boards
+  /**
+   * Axis-aligned bounds of ONE mesh's own triangles, in match space.
+   *
+   * Not `computeBoundingBox`: every prim in the bundle shares one interleaved
+   * vertex buffer and differs only in its index range, so three's own bounds
+   * would be the whole arena for each of them.
+   */
+  function aabbOf(mesh) {
+    const geo = mesh?.geometry;
+    const idx = geo?.index?.array;
+    const pos = geo?.attributes?.position;
+    if (!idx || !pos) return null;
+    const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+    for (let k = 0; k < idx.length; k++) {
+      const i = idx[k];
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      if (x < min[0]) min[0] = x; if (x > max[0]) max[0] = x;
+      if (y < min[1]) min[1] = y; if (y > max[1]) max[1] = y;
+      if (z < min[2]) min[2] = z; if (z > max[2]) max[2] = z;
+    }
+    return { min, max };
+  }
+  /**
+   * The boards, found by shape rather than by name — the SDK's meshes are
+   * unnamed. A board is a thin upright panel: about a centimetre through, the
+   * height of a hoarding, and at least a stride long. RFL's are 0.78 m tall
+   * and 1.2 to 2.3 m wide; the walls behind them are 0.9 m tall and 0.2 m
+   * thick, so nothing else in the arena passes.
+   */
+  function detectBoards(statics) {
+    const out = [];
+    for (const m of statics.children) {
+      if (!m.isMesh) continue;
+      const bb = aabbOf(m);
+      if (!bb) continue;
+      const e = [bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2]];
+      if (e[2] < 0.6 || e[2] > 1.0) continue;
+      const thinX = e[0] <= 0.03, thinY = e[1] <= 0.03;
+      if (thinX === thinY) continue;             // both or neither: not a panel
+      const long = thinX ? e[1] : e[0];
+      if (long < 0.8) continue;
+      out.push({
+        c: [(bb.min[0] + bb.max[0]) / 2, (bb.min[1] + bb.max[1]) / 2, (bb.min[2] + bb.max[2]) / 2],
+        axis: thinX ? 0 : 1, thick: thinX ? e[0] : e[1], half: long / 2, hz: e[2] / 2,
+      });
+    }
+    return out;
+  }
+  /**
+   * Which artwork goes on which board: RFL's own ring, from their arena
+   * builder. Designs alternate along each touchline, the south run offset by
+   * one so no two panels meet corner to corner; the south wall's outer face
+   * (the band across the bottom of every wide shot) takes the wider panels;
+   * an end wall is the league mark above the goal line and the URL below it.
+   */
+  function assignArtwork(boards, doc) {
+    const rects = doc.rects || {};
+    const nearest = (design, wm) => {
+      let best = null;
+      for (const [k, r] of Object.entries(rects)) {
+        if (!k.startsWith(`${design}_`)) continue;
+        const d = Math.abs((r.w_m || 0) - wm);
+        if (!best || d < best.d) best = { r, d };
+      }
+      return best?.r || null;
+    };
+    const side = boards.filter((b) => b.axis === 1);
+    const innerY = side.length ? Math.min(...side.map((b) => Math.abs(b.c[1]))) : 0;
+    const groups = { n: [], s: [], o: [], e: [] };
+    for (const b of boards) {
+      if (b.axis === 0) groups.e.push(b);
+      else if (Math.abs(b.c[1]) > innerY + 0.1) groups.o.push(b);
+      else groups[b.c[1] > 0 ? 'n' : 's'].push(b);
+    }
+    const designs = ['url', 'league'];
+    for (const [key, list] of Object.entries(groups)) {
+      list.sort((a, b) => a.c[0] - b.c[0] || a.c[1] - b.c[1]);
+      list.forEach((b, i) => {
+        b.design = key === 'e' ? (b.c[1] > 0 ? 'league' : 'url') : designs[(key === 's' ? i + 1 : i) % 2];
+        b.kind = key === 'e' ? 'e' : key === 'o' ? 'o' : 'w';
+        b.rect = rects[`${b.design}_${b.kind}`] || nearest(b.design, b.half * 2);
+      });
+    }
+    return boards.filter((b) => b.rect);
+  }
+  /**
+   * One mesh for the whole ring. Both faces of every board are dressed: the
+   * one against the wall is inside it and never seen, and drawing both means
+   * no rule about which way a board faces has to be right.
+   */
+  function buildBoardMesh(boards, tex) {
+    const P = [], U = [], I = [];
+    const up = [0, 0, 1];
+    const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    let n = 0;
+    for (const b of boards) {
+      for (const sgn of [1, -1]) {
+        const nrm = b.axis === 0 ? [sgn, 0, 0] : [0, sgn, 0];
+        // The reading direction, seen from in front of this face: text runs to
+        // the viewer's right, which is up x normal in a right-handed world.
+        const u = cross(up, nrm);
+        const o = [b.c[0] + nrm[0] * (b.thick / 2 + BOARD_PROUD), b.c[1] + nrm[1] * (b.thick / 2 + BOARD_PROUD), b.c[2]];
+        const corner = (su, sz) => [o[0] + u[0] * su * b.half, o[1] + u[1] * su * b.half, o[2] + sz * b.hz];
+        const TL = corner(-1, 1), TR = corner(1, 1), BL = corner(-1, -1), BR = corner(1, -1);
+        P.push(...TL, ...BL, ...BR, ...TR);
+        const r = b.rect;
+        U.push(r.u0, r.v0, r.u0, r.v1, r.u1, r.v1, r.u1, r.v0);
+        I.push(n, n + 1, n + 2, n, n + 2, n + 3);
+        n += 4;
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+    geo.setIndex(I);
+    geo.computeVertexNormals();
+    // Unlit: an LED board is its own light. The offset keeps it in front of the
+    // bundle's face at any distance, on top of the 4 mm it already stands proud.
+    const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.FrontSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.name = 'otra-boards';
+    mesh.frustumCulled = false;
+    return mesh;
+  }
+  function loadBoards() {
+    if (boardsLoad) return boardsLoad;
+    boardsLoad = (async () => {
+      const url = new URL(cfg.boards_url || BOARDS_URL, location.href);
+      const r = await fetch(url, { credentials: 'omit' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const doc = await r.json();
+      const tex = await new Promise((res, rej) => new THREE.TextureLoader().load(new URL(doc.atlas, url).href, res, undefined, () => rej(new Error('atlas image failed'))));
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.flipY = false;                 // UV (0,0) is the top-left of the atlas, as the manifest reads
+      tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+      tex.anisotropy = 4;
+      boardsTex = tex;
+      return { doc, tex };
+    })();
+    boardsLoad.catch(() => { boardsLoad = null; });   // a failed fetch is retried on the next mount
+    return boardsLoad;
+  }
+  async function attachBoards(st) {
+    if (cfg.boards === false) { state.boards = { off: true }; return; }
+    const root = matchRootOf(st);
+    const statics = root?.children?.[0];
+    let found = [];
+    try { found = statics ? detectBoards(statics) : []; } catch (e) { state.errors.push(`boards: ${e.message || e}`); }
+    state.boards = { found: found.length, textured: 0, atlas: boardsTex ? 'ready' : 'loading' };
+    if (!found.length) { state.boards.atlas = 'unused'; return; }
+    let atlas;
+    try { atlas = await loadBoards(); } catch (e) { state.errors.push(`boards atlas: ${e.message || e}`); state.boards.atlas = 'failed'; return; }
+    if (disposed || stage !== st) return;      // the match came down while the atlas loaded
+    const dressed = assignArtwork(found, atlas.doc);
+    dropBoards();
+    boardMesh = buildBoardMesh(dressed, atlas.tex);
+    statics.add(boardMesh);
+    state.boards = {
+      found: found.length, textured: dressed.length, atlas: 'ready',
+      kinds: dressed.reduce((m, b) => { m[b.kind] = (m[b.kind] || 0) + 1; return m; }, {}),
+    };
+  }
+  function dropBoards() {
+    if (!boardMesh) return;
+    boardMesh.parent?.remove(boardMesh);
+    boardMesh.geometry.dispose();
+    boardMesh.material.dispose();
+    boardMesh = null;
+  }
+
+  // ---------------------------------------------------------------- bodies
+  /**
+   * Whether the stage's groups line up with the bundle's body list.
+   *
+   * The SDK builds one group per body, in body order, under its match root —
+   * the static world at index 0, body i at i + 1 — and hangs each player's
+   * nameplate sprite on that body at the player's own anchor offset. That is
+   * checkable from outside: every player's sprite must sit where their anchor
+   * says, on the group their body index names. If all of them do, the layout
+   * is the one we think it is, and any body — the ball included — is
+   * reachable by name. If any does not, nothing here is used: a head cam on a
+   * guess is worse than none.
+   */
+  function verifyBodies(st) {
+    bodyOk = false;
+    state.bodies = null;
+    const root = matchRootOf(st);
+    const players = st?.hud?.players || [];
+    if (!root || !sceneBodies || !players.length) return;
+    let checked = 0, agreed = 0;
+    for (const p of players) {
+      const name = p.anchor?.body;
+      if (!name) continue;
+      const idx = sceneBodies.indexOf(name);
+      if (idx < 0) continue;
+      const off = p.anchor.offset || [0, 0, 0];
+      const node = root.children[idx + 1];
+      checked += 1;
+      const near = (a, b) => Math.abs(a - b) < 1e-4;
+      if (node && node.children.some((c) => c.isSprite && near(c.position.x, off[0]) && near(c.position.y, off[1]) && near(c.position.z, off[2]))) agreed += 1;
+    }
+    bodyOk = checked > 0 && agreed === checked && root.children.length >= sceneBodies.length + 1;
+    state.bodies = { checked, agreed, ok: bodyOk, ball: sceneBodies.includes('ball') };
+  }
+  /** The group that carries a body's transform, by the bundle's own name for it. Null unless verified. */
+  function bodyNode(name) {
+    if (!bodyOk || !stage) return null;
+    const i = sceneBodies.indexOf(name);
+    return i < 0 ? null : (matchRootOf(stage)?.children[i + 1] || null);
+  }
+  /**
+   * Whether this module is driving the stage through the programme map.
+   *
+   * Only a replay the city put on. A scheduled fixture's clock is the
+   * publisher's wall clock; `programme` is still read from its scene.json
+   * (the map is useful for the offset) but `programmeT` never advances for
+   * it, so reading the match time through the map there says "pre-roll" for
+   * the whole match — which is what production did to m33 on 2026-09-14:
+   * the bug showed the countdown, the director stayed on the ambient list
+   * through the live match, and `audioOffset` read 0.
+   */
+  function driving() {
+    return state.source === 'now' && !!programme?.map;
+  }
+  /** Match time as the programme has it while we drive; the stage's own otherwise. */
+  function programmeMatchT() {
+    return driving() ? unmapTime(programme.map, programmeT) : (stage?.time ?? 0);
+  }
+  /** The stage's score, except during a replay, when it is the score at the held time — the stage is rewound. */
+  function heldScore(st) {
+    return (st?.hud && state.replay ? scoreAtT(st.hud, programmeMatchT()) : null) || st?.score || null;
+  }
+  let heldClock = '';
+  /** The stage's presentation clock, frozen while a replay runs. */
+  function heldClockOf(st) {
+    if (!state.replay) heldClock = st?.clock || '';
+    return heldClock;
+  }
+  /** The score at match time t from the publisher's own steps — right even while the stage is rewound for a replay. */
+  function scoreAtT(hud, t) {
+    const steps = hud?.score;
+    if (!Array.isArray(steps) || !steps.length) return null;
+    let cur = null;
+    for (const s of steps) { if (typeof s?.t === 'number' && s.t <= t + 1e-6) cur = s; else if (typeof s?.t === 'number') break; }
+    return cur ? { t: cur.t, a: cur.a ?? 0, b: cur.b ?? 0 } : { t, a: 0, b: 0 };
+  }
+  /** The programme-map hold that programme time pT is inside, or null: a span of programme time mapped to ONE match instant. */
+  function holdAt(map, pT) {
+    for (let i = 0; i < map.length - 1; i++) {
+      const [t0, p0] = map[i], [t1, p1] = map[i + 1];
+      if (pT >= p0 && pT < p1 && t0 === t1 && p1 > p0) return { t: t0, p0, p1 };
+    }
+    return null;
+  }
+  /**
+   * Where the head cam is this frame, in venue-local metres — the frame every
+   * camera on /broadcast speaks. The scorer's anchor is head height on their
+   * pelvis body (0.62 m up, RFL's own number); it looks at the ball, because
+   * the ball is the story and a pelvis has no agreed forward axis. The look
+   * target is smoothed a little so a bouncing ball does not shake the frame.
+   */
+  function poseHeadcam(dt) {
+    const r = state.replay;
+    if (!r || !bodyOk || !stage) { state.headcam = null; lookSmooth = null; return; }
+    const p = (stage.hud?.players || []).find((x) => x.id === r.player);
+    const node = p?.anchor?.body ? bodyNode(p.anchor.body) : null;
+    if (!node) { state.headcam = null; return; }
+    const off = p.anchor.offset || [0, 0, 0.6];
+    node.updateWorldMatrix(true, false);
+    _hv.set(off[0], off[1], off[2]).applyMatrix4(node.matrixWorld);
+    const ball = bodyNode('ball');
+    if (ball) { ball.updateWorldMatrix(true, false); _bv.setFromMatrixPosition(ball.matrixWorld); }
+    else { pitch.updateWorldMatrix(true, false); _bv.setFromMatrixPosition(pitch.matrixWorld); }
+    root.updateWorldMatrix(true, false);
+    root.worldToLocal(_hv);
+    root.worldToLocal(_bv);
+    if (!lookSmooth) lookSmooth = _bv.clone();
+    else lookSmooth.lerp(_bv, 1 - Math.exp(-Math.max(0, dt) / 0.12));
+    // In front of the face, not inside the head: the anchor is the centre of
+    // the head, and a camera there films the inside of it and the shoulders
+    // below. Step out along the horizontal look direction, a little above.
+    _fv.subVectors(lookSmooth, _hv); _fv.y = 0;
+    if (_fv.lengthSq() > 1e-6) { _fv.normalize(); _hv.addScaledVector(_fv, HEADCAM_FORWARD); }
+    _hv.y += HEADCAM_UP;
+    state.headcam = {
+      pos: [+_hv.x.toFixed(3), +_hv.y.toFixed(3), +_hv.z.toFixed(3)],
+      lookAt: [+lookSmooth.x.toFixed(3), +lookSmooth.y.toFixed(3), +lookSmooth.z.toFixed(3)],
+      fov: HEADCAM_FOV, player: r.player,
+    };
+  }
 
   function onProgramme(p) {
     if (!p?.items) return;
@@ -634,11 +963,19 @@ export function create(ctx) {
     // is never attached and that element may not exist. Rather than keep a
     // second video decoding to feed a string they need, the string is reported.
     const url = item?.bundleUrl || bundleUrl || cfg.bundle || null;
+    state.matchItem = item ? { home: item.home || null, away: item.away || null } : null;
     state.match = item
       ? { id: item.bundleId, title: item.title, state: item.state, bundleUrl: url }
       : { id: bundleName(url), title: overrideDoc?.title || bundleName(url), bundleUrl: url };
     st.group.position.set(0, 0, 0);
     pitch.add(st.group);
+    goals = (st.hud?.events || []).filter((e) => e?.type === 'goal');
+    state.goals = goals.map((g) => ({ t: g.t, player: g.player ?? null, team: g.team ?? null, replay_s: g.replay_s ?? null }));
+    state.replay = null;
+    state.headcam = null;
+    attachBoards(st);
+    labels = collectLabels(st.group);
+    state.labels = { sprites: labels.length, refits: 0 };
     // The glass, found now because the SDK has built every draw by the time
     // `mount()` resolves. `setSplats` above only ever touches dynamic bodies,
     // so nothing puts a panel back.
@@ -692,17 +1029,25 @@ export function create(ctx) {
     audioMap = null;
     programme = null;
     programmeT = 0;
+    sceneBodies = null;
+    bodyOk = false;
+    state.bodies = null;
     if (url) {
       fetch(`${String(url).replace(/\/+$/, '')}/scene.json`, { credentials: 'omit' })
         .then((r) => (r.ok ? r.json() : null))
         .then((scene) => {
-          if (disposed) return;
+          if (disposed || stage !== st) return;
           audioMap = scene?.audio?.map || null;
           programme = scene?.program || null;
+          // The body list is what makes a body reachable by name; checked
+          // against the stage before anything trusts it.
+          sceneBodies = Array.isArray(scene?.bodies) ? scene.bodies.slice() : null;
+          verifyBodies(st);
         })
         .catch(() => { /* no map, no offset, no harm */ });
     }
-    st.on('event', (e) => { if (e.type === 'goal') { goalUntil = simTime + 4; paintBoard(); } });
+    // A goal the replay runs across again is the same goal: no second flash.
+    st.on('event', (e) => { if (e.type === 'goal' && !state.replay) { goalUntil = simTime + 4; paintBoard(); } });
     st.on('statechange', (s) => { state.stage = s; paintBoard(); });
     state.stage = st.state;
     // What the publisher's own UI offers and whether it is on. Their layer
@@ -737,13 +1082,24 @@ export function create(ctx) {
     // match clock three minutes early, which is the bug we are here to fix.
     //
     // So when the programme is driving, the programme decides.
-    const t = programme?.map ? unmapTime(programme.map, programmeT) : stage.time;
+    const t = programmeMatchT();
     const period = matchPeriod(hud, t);
     if (!period) return null;
-    const sc = stage.score || { a: 0, b: 0 };
-    const team = (t) => ({ code: t.code || '', name: t.name || '', color: Array.isArray(t.color) ? t.color.slice(0, 3) : [0.5, 0.5, 0.5] });
+    // From the publisher's steps at the PROGRAMME's match time, not from the
+    // stage: during a replay the stage is rewound to before the goal, and the
+    // score must not go back with it.
+    const sc = scoreAtT(hud, t) || stage.score || { a: 0, b: 0 };
+    // A crest URL rides through from wherever RFL put one: `crest` (what we
+    // asked for) or `badge` (the field their feed's own type reserves), on the
+    // hud team or on the programme item. None today; the scorebug falls back.
+    const item = state.matchItem || {};
+    const team = (t, side) => ({
+      code: t.code || '', name: t.name || '',
+      color: Array.isArray(t.color) ? t.color.slice(0, 3) : [0.5, 0.5, 0.5],
+      crest: t.crest || t.badge || item[side]?.crest || item[side]?.badge || null,
+    });
     return {
-      home: team(teams[0]), away: team(teams[1]),
+      home: team(teams[0], 'home'), away: team(teams[1], 'away'),
       a: sc.a ?? 0, b: sc.b ?? 0,
       tag: period.tag, clock: mmss(period.remain),
       half: period.half, playing: period.playing, over: period.over,
@@ -751,6 +1107,8 @@ export function create(ctx) {
       // on must not, and the publisher's own state is what distinguishes them
       // — RFL asked us to use their truth rather than fake it.
       live: stage.state === 'live',
+      // a goal being run again from the scorer's head
+      replay: !!state.replay,
       // WHERE THE SOUND SHOULD BE, and why this is here rather than left to
       // whoever is playing it.
       //
@@ -769,10 +1127,11 @@ export function create(ctx) {
       // While the programme drives, the offset IS the programme clock: RFL's
       // `program.map` and `audio.map` are the same array, so mapping back and
       // forth would be arithmetic in a circle.
-      audioOffset: programme?.map ? +programmeT.toFixed(3)
+      audioOffset: driving() ? +programmeT.toFixed(3)
                  : audioMap ? +mapTime(audioMap, t).toFixed(3) : null,
-      // where in the whole programme, and which of its three parts
-      programmeT: programme ? +programmeT.toFixed(3) : null,
+      // where in the whole programme, and which of its three parts — only
+      // meaningful while we drive; a live fixture is wherever its clock is
+      programmeT: driving() ? +programmeT.toFixed(3) : null,
       segment: programme ? (programme.segments || []).find((g) => t >= g.t[0] && t <= g.t[1])?.id ?? null : null,
       preroll: period.preroll === true,
     };
@@ -815,7 +1174,28 @@ export function create(ctx) {
       if (!state.now?.loop) { programmeT = total; }
       else { programmeT = 0; state.loops += 1; goalUntil = -1; }
     }
-    const want = unmapTime(programme.map, programmeT);
+    let want = unmapTime(programme.map, programmeT);
+    // THE GOAL REPLAY. A hold in the map is broadcast time inserted with the
+    // match clock stopped, and RFL's holds sit exactly on their goals, each
+    // exactly `replay_s` long (measured on m32: sixteen holds, fifteen goals,
+    // every delta 0.0). Their own render showed the goal again in that span;
+    // the stadium dwelled. When the broadcast page asks, the span is used for
+    // what it was cut for: the stage runs the last `replay_s` seconds up to
+    // the goal once more, while the programme clock — and so the scorebug's
+    // clock and score — stays put. Only where this module drives time: a
+    // live fixture's clock is the publisher's wall clock and cannot rewind.
+    let replay = null;
+    if (replayCam) {
+      const hold = holdAt(programme.map, programmeT);
+      const goal = hold && goals.find((g) => Math.abs(g.t - hold.t) < 0.05);
+      if (goal) {
+        const len = goal.replay_s || (hold.p1 - hold.p0);
+        const frac = Math.min(1, Math.max(0, (programmeT - hold.p0) / (hold.p1 - hold.p0)));
+        want = Math.max(stage.t0 ?? 0, hold.t - len + frac * len);
+        replay = { player: goal.player ?? null, team: goal.team ?? null, goalT: hold.t, t: +want.toFixed(2), progress: +frac.toFixed(3) };
+      }
+    }
+    state.replay = replay;
     try {
       if (typeof stage.seek === 'function') stage.seek(want); else stage.time = want;
     } catch (e) { state.errors.push(`programme: ${e.message || e}`); }
@@ -845,11 +1225,67 @@ export function create(ctx) {
     } catch (e) { state.errors.push(`loop: ${e.message || e}`); }
   }
 
+  /**
+   * Every canvas sprite the SDK hung on the stage: the name plates, the shouts
+   * ("radio bubbles"), its attribution mark, its fixture board. Only the shouts
+   * ever change size, but the list is cheap and the rule below is a no-op for
+   * a canvas that stays put.
+   */
+  function collectLabels(group) {
+    const found = [];
+    group.traverse((o) => {
+      const map = o.isSprite ? o.material?.map : null;
+      if (map?.isCanvasTexture && map.image) found.push({ map, w: map.image.width, h: map.image.height });
+    });
+    return found;
+  }
+  /**
+   * The SDK draws each shout on a canvas it RESIZES for every line — a new
+   * width per message, a new height when one wraps — and hands three the same
+   * CanvasTexture with needsUpdate set. Since r137 three allocates a texture's
+   * storage ONCE, immutable, at the size of the first upload (texStorage2D);
+   * every later upload is a sub-image into that allocation. A canvas that grew
+   * is refused outright — INVALID_VALUE, nothing logged, the previous text now
+   * stretched over the bigger sprite — and one that shrank lands in a corner
+   * of the old pixels, so the last shout shows through beside the new one.
+   * That is "got it" in forty-point letters next to a two-line ghost, and
+   * it is what every bubble looked like from its second message on.
+   *
+   * Their API does not say when the text changed, but the canvas does. When a
+   * label's canvas is not the size it was, dispose the texture: that frees the
+   * GPU copy and nothing else, so the next render allocates it again, at the
+   * right size, from the object the SDK still holds. Runs after the SDK's
+   * update, which is the only place it sets text, and before the frame is
+   * drawn.
+   */
+  function refitLabels() {
+    for (const l of labels) {
+      const img = l.map.image;
+      if (img.width === l.w && img.height === l.h) continue;
+      l.w = img.width;
+      l.h = img.height;
+      l.map.dispose();
+      if (state.labels) state.labels.refits += 1;
+    }
+  }
+
   function onUnmount() {
     pa?.stop();
+    dropBoards();
     if (stage) pitch.remove(stage.group);
     stage = null;
+    goals = [];
+    state.goals = [];
+    state.replay = null;
+    state.headcam = null;
+    state.bodies = null;
+    state.boards = null;
+    bodyOk = false;
+    sceneBodies = null;
+    labels = [];
+    state.labels = null;
     state.match = null;
+    state.matchItem = null;
     state.docks = [];
     state.stage = null;
     state.source = null;
@@ -1024,11 +1460,16 @@ export function create(ctx) {
       state.updates += 1;
       if (stage) {
         stage.update(dt, camera, renderer.domElement.clientHeight || 720);
-        state.score = stage.score || null;
-        state.clock = stage.clock || null;
         driveProgramme(dt);
+        poseHeadcam(dt);
+        // Read AFTER the programme has placed the stage, and held through a
+        // replay: RFL's supervisor reads these, and a score that dips for five
+        // seconds every goal is a fault however good the picture.
+        state.score = heldScore(stage);
+        state.clock = heldClockOf(stage) || null;
         state.bug = buildBug();
         loopReplay();
+        refitLabels();
         // The SDK paints textures with three's default orientation; our screens
         // carry glTF UVs (v = 0 at the top), so its maps must not flip.
         for (const mesh of Object.values(dockMeshes)) {
@@ -1068,6 +1509,8 @@ export function create(ctx) {
       slot = null;
       if (stage) { pitch.remove(stage.group); stage = null; }
       pa?.dispose();
+      dropBoards();
+      boardsTex?.dispose();
       boardTex.dispose();
       for (const s of Object.values(idleScreens)) s.tex.dispose();
       // hand every screen back the material it had, then drop ours: the venue
@@ -1096,6 +1539,16 @@ export function create(ctx) {
      * happen there — the loop, Full Time on the board — were otherwise beyond
      * reach of any test that could run in CI.
      */
+    /**
+     * Run goal holds again from the scorer's head. Off by default: a visitor
+     * in the bowl sees the players wait, as the publisher's programme has it;
+     * the broadcast page turns this on, because on air the hold IS the replay.
+     */
+    replayCam(on) {
+      replayCam = on !== false;
+      state.replayCam = replayCam;
+      return replayCam;
+    },
     seek(t) {
       if (!stage) return null;
       try {

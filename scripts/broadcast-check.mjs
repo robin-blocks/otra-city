@@ -353,6 +353,66 @@ try {
     s0.updater ? 'ARMED UNDER CAPTURE' : 'absent, as it must be');
   const cutErrors = (sL.errors || []).filter((e) => String(e).includes('cutlist'));
   check('both cut-lists loaded', cutErrors.length === 0, cutErrors.join(' | ') || 'ambient and match');
+
+  // ---- the graphics and the arena, proven on the live page ---------------
+  // The live page is where the city's own replay is mounted (now.json), so it
+  // is the one place the boards, the bodies and the head-cam replay can be
+  // exercised against a real bundle without naming one.
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  check('the scorebug\'s crest manifest loaded', sL.crests?.manifest === 'ready',
+    sL.crests ? `manifest ${sL.crests.manifest}, ${sL.crests.loaded} loaded, ${sL.crests.failed} failed` : 'no crests field');
+  // Wait for whatever the city has put on to land: a 320 MB bundle takes a
+  // minute or two on a runner, and "not mounted yet" is not "broken".
+  let sM = sL;
+  for (const until = Date.now() + 150000; Date.now() < until && sM.match && sM.match.phase !== 'match' && sM.match.sdk !== 'failed' && !(sM.match.errors || []).length;) {
+    await sleep(2000);
+    sM = await lv.state();
+  }
+  if (sM.match?.phase === 'match') {
+    const bo = sM.match.boards;
+    check('every arena board found is dressed', !!bo && bo.found === bo.textured && bo.atlas !== 'failed',
+      bo ? `${bo.found} boards, ${bo.textured} dressed (${JSON.stringify(bo.kinds || {})}), atlas ${bo.atlas}` : 'no boards field');
+    // The bodies verify a second or two after the mount, once scene.json is read.
+    for (const until = Date.now() + 15000; Date.now() < until && !sM.match?.bodies;) { await sleep(500); sM = await lv.state(); }
+    const bd = sM.match?.bodies;
+    // The programme clock speaks only for a stage THIS page drives: a mounted
+    // match that is not the city's replay must report its own clock, not the
+    // map's pre-roll (the m33 regression of 2026-09-14).
+    if (sM.match.source !== 'now') {
+      check('a fixture the city did not put on keeps its own clock', sM.scorebug?.programmeT == null && sM.scorebug?.preroll !== true,
+        `source ${sM.match.source}, tag ${sM.scorebug?.tag}, programmeT ${sM.scorebug?.programmeT}`);
+    }
+    check('the bundle\'s bodies are reachable by name', bd?.ok === true,
+      bd ? `${bd.agreed}/${bd.checked} players\' anchors where their body says, ball ${bd.ball ? 'present' : 'absent'}` : 'not verified');
+    // The images start loading on the scorebug's first paint of this match,
+    // which is a frame or two after the mount on a software renderer.
+    for (const until = Date.now() + 20000; Date.now() < until && (sM.crests?.loaded ?? 0) < 2 && !(sM.crests?.failed);) { await sleep(500); sM = await lv.state(); }
+    check('the scorebug has a crest for both clubs',
+      (sM.crests?.loaded ?? 0) >= 2 || !(sM.scorebug?.home?.code && sM.scorebug?.away?.code),
+      `${sM.crests?.loaded ?? 0} crests loaded for ${sM.scorebug?.home?.code ?? '?'} v ${sM.scorebug?.away?.code ?? '?'}${sM.crests?.failed ? `, ${sM.crests.failed} FAILED` : ''}`);
+    // THE REPLAY, forced: put the programme exactly on the first goal's hold
+    // and the head cam must take the shot; put it past the hold and the
+    // director must hand back. Seeks rather than waits, so a slow renderer
+    // (CI's is software) changes nothing about the answer.
+    const g0 = (sM.match.goals || [])[0];
+    if (g0 && sM.match.source === 'now' && sM.match.replayCam && bd?.ok) {
+      await lv.evaluate(`window.rflBroadcast.seekMatch(${g0.t})`);
+      let seen = null;
+      for (let i = 0; i < 24 && !seen; i++) { await sleep(250); const x = await lv.state(); if (x.match?.replay) seen = x; }
+      check('a goal is run again from the scorer\'s head',
+        !!seen && seen.director?.shot === 'headcam' && !!seen.match?.headcam && seen.scorebug?.replay === true,
+        seen ? `goal at ${g0.t}s by ${g0.player}: replay t=${seen.match.replay.t} progress ${seen.match.replay.progress}, shot ${seen.director?.shot}, bug ${seen.scorebug?.replay ? 'REPLAY' : 'no tag'}, score ${seen.scorebug?.a}-${seen.scorebug?.b}`
+             : 'no replay state within 6 s of seeking onto the hold');
+      await lv.evaluate(`window.rflBroadcast.seekMatch(${g0.t + 2})`);
+      let back = null;
+      for (let i = 0; i < 24 && !back; i++) { await sleep(250); const x = await lv.state(); if (!x.match?.replay && x.director?.shot !== 'headcam') back = x; }
+      check('and the picture is handed back after it', !!back, back ? `shot ${back.director?.shot}, bug ${back.scorebug?.replay ? 'still REPLAY' : 'clear'}` : 'still on the head cam 6 s after the hold');
+    } else {
+      console.log(`  note  replay not exercised: ${!g0 ? 'no goals in this bundle' : sM.match.source !== 'now' ? `source ${sM.match.source}` : !sM.match.replayCam ? 'replay cam not armed' : 'bodies unverified'}`);
+    }
+  } else {
+    console.log(`  note  nothing mounted on the live page (phase "${sM.match?.phase ?? 'none'}"); boards, bodies and the replay were not exercised`);
+  }
   // 4dgsx being down is their outage, not our failure — but it must be said
   // out loud rather than passed over in silence.
   if (sL.match?.sdk === 'failed') console.log('  note  the 4DGSX SDK did not load from this runner; the module is present and would mount');

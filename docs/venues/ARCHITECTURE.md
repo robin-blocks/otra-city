@@ -234,6 +234,16 @@ Learned while building the stadium (2026-09-03), true for every venue:
 - The SDK paints host screens by swapping `material.map` and never sets
   `flipY`; our screens carry glTF UVs, so the module forces `flipY=false`
   and gives screens unlit materials that keep the authored plate as map.
+- The SDK draws each shout ("radio bubble") on a canvas it resizes per
+  message and re-uses the same `CanvasTexture`; three (r137+) allocates a
+  texture's storage once, immutable, at the size of the first upload, so a
+  grown canvas is refused (INVALID_VALUE, silent — the old text stretches
+  over the new sprite) and a shrunk one lands in a corner of the old pixels
+  (the previous shout shows beside the new). The module disposes a label's
+  texture whenever its canvas changes size (`refitLabels`, after the SDK's
+  update and before the draw) and three allocates it again at the right size.
+  `state.labels.refits` counts these; `venue-check --match` asserts it moves
+  and that the GL context reports no error over 40 s of play.
 - three.js allocates one shared Sprite geometry on first use, so GPU
   memory assertions compare two cycles, not the pre-first-use baseline.
 
