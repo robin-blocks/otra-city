@@ -63,7 +63,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
@@ -73,6 +72,7 @@ import { loadStreet } from '/js/street.js';
 import { loadWorld } from '/js/world.js';
 import { buildRoads } from '/js/roads.js';
 import { createVenues } from '/js/venues.js';
+import { createAfterToneMap } from '/js/after-tonemap.js';
 import { createDoorSystem } from '/js/doors.js';
 import { createCrowd } from '/js/crowd.js';
 import { CAMERAS, createTrack } from '/js/broadcast-cameras.js';
@@ -84,7 +84,7 @@ const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
 // page's behaviour changes. It is reported in `state().build` and on the note
 // line, so "the deployed page still says X" is settled by reading the page,
 // not by comparing memories of deploys.
-const BUILD = '2026-09-14';
+const BUILD = '2026-09-14b';
 
 // Errors are evidence: a silent failure films a black hour, so every one is
 // kept for `state()`, echoed to the console the harness reads, and shown.
@@ -160,7 +160,13 @@ const MATCH_CUTLIST = '/broadcast/match-cutlist.json';
 const unimplemented = [];
 
 // ---- renderer: the client's pipeline, with the capture's constraints -------
-const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+// antialias: false, and not by accident. The frame is composed in the
+// composer's targets, which were never multisampled, and the canvas only
+// receives the finished quad — so multisampling it bought nothing and cost a
+// resolve. It now costs the match: the stage is drawn onto the canvas after
+// the output pass against a copy of the scene's depth, and that copy is only
+// exact when the canvas has one sample per pixel (js/after-tonemap.js).
+const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
 renderer.setPixelRatio(1);      // never devicePixelRatio: the buffer must be 1280 x 720 on every machine
 renderer.setSize(W, H);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -180,7 +186,14 @@ ground.position.y = -0.01;
 scene.add(ground);
 const hemi = new THREE.HemisphereLight(0x8899ff, 0x080610, 0.25);
 scene.add(hemi);
-const composer = new EffectComposer(renderer);
+// The composer is built by after-tonemap.js so that the match can be drawn
+// AFTER the output pass rather than through it. The 4DGSX shader writes a
+// finished picture; ACES on top of it made the pitch grey-green and lifted,
+// which is the broadcast RFL and Robin both saw as washed out. Measured on
+// s3-m28 from the gantry, the pitch's light stripe: their own player
+// [94,166,96], through the composer [122,182,119].
+const after = createAfterToneMap({ renderer, camera });
+const composer = after.composer;
 composer.addPass(new RenderPass(scene, camera));
 composer.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.12, 0.3, 1.0));
 composer.addPass(new OutputPass());
@@ -778,7 +791,9 @@ function draw() {
   if (c) aim(c);
   if (crowd) crowd.update(frame / FPS);
   renderer.info.reset();
-  composer.render();
+  // The city through the composer, then the match on top of it, with the
+  // scene's depth — a player behind the near stand stays behind it.
+  after.render(venues?.afterToneMap() ?? []);
   // The graphics go on before the screen takes its copy, so the big screen
   // carries the broadcast as broadcast — scorebug and all — which is what a
   // ground's screen actually shows. It nests, because the feed camera can see
@@ -912,6 +927,12 @@ window.rflBroadcast = {
           // the module counted, the page never said.
           loops: m.loops ?? 0,
           layers: m.layers ?? [],
+          // the publisher's glass panels: how many the bundle has, how many
+          // are not drawn (all of them, unless the venue asks for them)
+          glass: m.glass ?? null,
+          // what the module changed on the stage so it renders as 4DGSX's own
+          // player does (textures sampled as stored, sprites not tone mapped)
+          look: m.look ?? null,
           // what the big screen and the side panels are carrying — between
           // matches that is the programme, not the plates they were painted with
           screens: m.screens ?? null,
@@ -920,6 +941,9 @@ window.rflBroadcast = {
       })(),
       // the big screen: is it carrying the broadcast, and is the copy running
       feed: live ? { ...feedStat } : null,
+      // whether the match was drawn after the tone mapping (roots: 1 with a
+      // match mounted) — the difference between their look and a washed one
+      afterToneMap: after.state(),
       // whether this page will pick up a new build by itself, and whether it
       // has seen one it is waiting for an empty pitch to take
       updater: live ? { ...updater } : null,

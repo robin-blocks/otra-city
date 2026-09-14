@@ -35,6 +35,41 @@ import { createPA, mapTime, unmapTime } from '/js/pa-system.js';
 // afford it can set `"splats": true` in its module config and have the clouds
 // back without a code change.
 const SPLATS_DEFAULT = false;
+// s3-m28 arrived with twelve translucent panels standing on the arena wall:
+// 1.6 m of glass above the hoardings, rgba (0.85, 0.9, 1.0, 0.08), put there
+// so a lofted ball stays in play. Their physics has already happened — a
+// bundle is a recording — so in the stadium the panels do one thing, which is
+// render: from the gantry the near one lies across the whole lower half of the
+// frame and lifts the dark stripe of the pitch from 68 to 119 red. So they are
+// not drawn. `"glass": true` in the module config draws them as the
+// publisher's player does, for the day they are wanted back.
+//
+// What counts as glass is measured, not named — their draws carry no names.
+// A translucent draw (alpha under 0.99) whose vertices stand up (more than
+// 0.3 m of match-space height) is a panel; the pitch markings are translucent
+// too (0.9, 0.95, 0.9, 0.8) but flat, and stay, as do the team benches.
+const GLASS_DEFAULT = false;
+const GLASS_MIN_HEIGHT = 0.3;
+// THE PITCH IS DRAWN AT THE PUBLISHER'S OWN COLOUR, AND THIS IS WHAT IT TOOK.
+//
+// 4DGSX's own player (4dgsx.com/watch, a hand-written WebGL2 renderer — read
+// from their served chunks, 2026-09-14) runs the identical fragment shader
+// their three.js SDK carries, and uploads the pitch texture as plain RGBA:
+// the shader gets the texels as stored, lights them and writes the result
+// straight to the canvas. Their SDK for three tags that same texture
+// `SRGBColorSpace`, which three honours by decoding it to linear on the GPU,
+// and nothing in their shader encodes it back. So in every three host the
+// pitch is a gamma darker than in their player — measured from the gantry,
+// light stripe [30,88,31] against their player's [94,166,96] — and before
+// 2026-09-14 the city's ACES pass then lifted and greyed it into something
+// that matched neither. The texture is retagged here so the sampler hands
+// the shader what their player's does; with the stage drawn after the city's
+// tone mapping (js/after-tonemap.js) the stripe reads [95,167,97].
+//
+// Their sprites — name plates, radio bubbles, the attribution mark — are
+// built-in SpriteMaterials, which three tone maps on the way to the canvas;
+// their player does not, so those are told not to be.
+const RAW_TEXTURES = true;
 const SDK_URL = 'https://4dgsx.com/sdk/v1/three.js';
 const FEED_ORIGIN = 'https://4dgsx.com';
 const BOARD_W = 1024;
@@ -49,6 +84,55 @@ function findMesh(node) {
   let m = null;
   node.traverse((o) => { if (!m && o.isMesh) m = o; });
   return m;
+}
+/**
+ * The publisher's glass panels under `group`, by the rule above. Each SDK
+ * draw is a Mesh whose ShaderMaterial carries its colour as `uColor`; its
+ * geometry indexes a buffer shared by every draw, so the extent has to be
+ * taken over the indexed vertices, not the attribute. Match space is Z-up.
+ */
+function findGlass(group) {
+  const panels = [];
+  group.traverse((o) => {
+    const rgba = o.isMesh ? o.material?.uniforms?.uColor?.value : null;
+    if (!rgba || rgba.w >= 0.99) return;
+    const pos = o.geometry?.getAttribute('position');
+    const idx = o.geometry?.getIndex();
+    if (!pos || !idx) return;
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < idx.count; i++) {
+      const z = pos.getZ(idx.getX(i));
+      if (z < lo) lo = z;
+      if (z > hi) hi = z;
+    }
+    if (hi - lo >= GLASS_MIN_HEIGHT) panels.push(o);
+  });
+  return panels;
+}
+/**
+ * Make the stage under `group` sample and write colour the way the publisher's
+ * own player does (see RAW_TEXTURES). Returns what it touched.
+ */
+function matchPublisherLook(group) {
+  const look = { textures: 0, sprites: 0 };
+  const seen = new Set();
+  group.traverse((o) => {
+    const tex = o.isMesh ? o.material?.uniforms?.uTex?.value : null;
+    if (tex && tex.colorSpace === THREE.SRGBColorSpace && !seen.has(tex)) {
+      seen.add(tex);
+      tex.colorSpace = THREE.NoColorSpace;
+      // An image still on its way is uploaded by the loader when it lands,
+      // with the colour space read then; one already here is re-uploaded.
+      if (tex.image) tex.needsUpdate = true;
+      look.textures += 1;
+    }
+    if (o.isSprite && o.material && o.material.toneMapped !== false) {
+      o.material.toneMapped = false;
+      o.material.needsUpdate = true;
+      look.sprites += 1;
+    }
+  });
+  return look;
 }
 const rgb = (c) => (Array.isArray(c) ? `rgb(${c.slice(0, 3).map((v) => Math.round(v * 255)).join(',')})` : '#8a86a0');
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -133,6 +217,7 @@ export function create(ctx) {
   const { venue, cfg, root, nodes, camera, renderer, media, log = console } = ctx;
   const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
   const useSplats = cfg.splats === true ? true : SPLATS_DEFAULT;
+  const showGlass = cfg.glass === true ? true : GLASS_DEFAULT;
   const pitch = nodes[cfg.pitch] || root;
   const scoreMesh = findMesh(nodes[cfg.scoreboard]);
   const dockMeshes = {};
@@ -147,6 +232,12 @@ export function create(ctx) {
     // where what is on the pitch came from: the channel's schedule, a bundle
     // named in the venue's own config, or the city's shared override
     source: null, now: null, loadingNow: null, layers: [], splats: useSplats, bug: null, loops: 0,
+    // the publisher's glass panels: how many the mounted bundle has, and how
+    // many of those are not being drawn
+    glass: { found: 0, hidden: 0, shown: showGlass },
+    // what was changed on the stage so it renders as the publisher's player
+    // does: textures sampled as stored, sprites left un-tone-mapped
+    look: { textures: 0, sprites: 0 },
     // the programme, and what the big screen and side panels are showing
     upcoming: [], screens: {},
   };
@@ -548,6 +639,20 @@ export function create(ctx) {
       : { id: bundleName(url), title: overrideDoc?.title || bundleName(url), bundleUrl: url };
     st.group.position.set(0, 0, 0);
     pitch.add(st.group);
+    // The glass, found now because the SDK has built every draw by the time
+    // `mount()` resolves. `setSplats` above only ever touches dynamic bodies,
+    // so nothing puts a panel back.
+    try {
+      const panels = findGlass(st.group);
+      if (!showGlass) for (const p of panels) p.visible = false;
+      state.glass = { found: panels.length, hidden: showGlass ? 0 : panels.length, shown: showGlass };
+    } catch (e) { state.errors.push(`glass: ${e.message}`); }
+    // The pitch texture is created by the SDK at mount and filled when its
+    // image lands; retagging it now is in time, because three reads the
+    // colour space when it uploads.
+    if (RAW_TEXTURES) {
+      try { state.look = matchPublisherLook(st.group); } catch (e) { state.errors.push(`look: ${e.message}`); }
+    }
     state.docks = [];
     for (const [slotName, mesh] of Object.entries(dockMeshes)) {
       // One slot can be reserved for the venue's own live feed — the big
@@ -976,6 +1081,12 @@ export function create(ctx) {
       state.phase = 'disposed';
       state.active = false;
     },
+    /**
+     * The stage, for a page that tone maps: their shader writes display-ready
+     * colour, so a composer must draw it AFTER its output pass, not through
+     * it (js/after-tonemap.js). Null while nothing is mounted.
+     */
+    afterToneMap() { return stage?.group ?? null; },
     /**
      * Put the mounted match at `t`, in match seconds. Returns where it landed.
      *

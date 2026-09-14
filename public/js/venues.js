@@ -331,6 +331,24 @@ export function createVenues(scene, world, deps) {
       const V = byId.get(id);
       return V?.modules?.find((m) => m.cfg?.type === type)?.inst ?? null;
     },
+    /**
+     * What the modules want drawn AFTER the page's tone mapping: objects that
+     * are already a picture rather than lit geometry. The 4DGSX stage is one —
+     * its shader writes display-ready colour, and a composer that tone maps it
+     * again makes a grey-green match. A page with a composer hands this list
+     * to `after-tonemap.js`; the fixture, which renders straight to the canvas,
+     * never needs it. Cheap to call every frame: a handful of modules.
+     */
+    afterToneMap() {
+      const out = [];
+      for (const V of list) {
+        for (const m of V.modules) {
+          const o = m.inst?.afterToneMap?.();
+          if (o) out.push(o);
+        }
+      }
+      return out;
+    },
     async whenLoaded(id) { const V = byId.get(id); if (!V) return false; if (V.near) return true; if (V.loading) return V.loading; return false; },
     hudText() {
       let best = null;
