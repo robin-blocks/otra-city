@@ -520,9 +520,18 @@ export function create(ctx) {
     if (source === 'schedule' && override) dropOverride();
     stage = st;
     state.source = source;
+    // The bundle's own URL, said plainly.
+    //
+    // RFL's audio supervisor takes the bundle base off a media element's
+    // `currentSrc` — "the path the page actually fetched" — which was sound
+    // reasoning about a page that attached their video dock. This one does not
+    // any more: the big screen carries our live feed, so their `panels.video`
+    // is never attached and that element may not exist. Rather than keep a
+    // second video decoding to feed a string they need, the string is reported.
+    const url = item?.bundleUrl || bundleUrl || cfg.bundle || null;
     state.match = item
-      ? { id: item.bundleId, title: item.title, state: item.state }
-      : { id: bundleName(bundleUrl || cfg.bundle), title: overrideDoc?.title || bundleName(bundleUrl || cfg.bundle) };
+      ? { id: item.bundleId, title: item.title, state: item.state, bundleUrl: url }
+      : { id: bundleName(url), title: overrideDoc?.title || bundleName(url), bundleUrl: url };
     st.group.position.set(0, 0, 0);
     pitch.add(st.group);
     state.docks = [];

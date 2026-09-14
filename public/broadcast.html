@@ -226,6 +226,9 @@ let ambientCut = null, matchCut = null, cutNow = null, cutFrom = 0;
 // Where the live feed started counting, so `state().pace` can say whether
 // simulated time is keeping up with the wall. See the comment on the loop.
 let livePaceFrom = null;
+// A capture that has been up for days is running the page it loaded on the day
+// it started. See `watchForNewBuild()`.
+const updater = { armed: false, etag: null, changed: false, checks: 0, reloading: false };
 // The big screen's texture: a copy of the frame this page just drew.
 let feedTex = null, feedMesh = null;
 // The broadcast graphics. Live only: a deterministic capture would have to
@@ -338,7 +341,7 @@ async function boot() {
   // `t0` is a warm-up, not a seek — the scene is stepped to it.
   const start = Math.round(t0 * FPS);
   while (frame < start) { advance(1 / FPS); frame += 1; }
-  if (live) await startLive();
+  if (live) { await startLive(); watchForNewBuild(); }
   draw();
 }
 
@@ -535,6 +538,56 @@ function updateFeedScreen() {
   // Between matches the module paints its own card here; leave it alone.
   if (want && feedMesh.material.map !== feedTex) { feedMesh.material.map = feedTex; feedMesh.material.needsUpdate = true; }
   feedStat.attached = feedMesh.material.map === feedTex;
+}
+
+/**
+ * Reload when the page itself changes — but never while a match is on.
+ *
+ * THIS IS THE ONE THING ABOUT A 24/7 CAPTURE THAT IS NOT OBVIOUS. `now.json`
+ * reaches every client within a minute because the module polls it, so what is
+ * ON changes without anyone touching the encoder. Page CODE does not. RFL's
+ * capture is a headless Chrome that loaded this file once and has been
+ * streaming it ever since, which means a deploy reaches the website and not
+ * the broadcast — twice now we have shipped something, verified it on
+ * production, and watched Twitch carry the old build for hours because nobody
+ * thought to restart a process that was working fine.
+ *
+ * The signal is the document's own ETag: no new file to keep in step with the
+ * `BUILD` constant, and nothing to drift. A HEAD costs a few hundred bytes.
+ *
+ * The rule that makes it safe is that it only fires on an EMPTY PITCH. A
+ * stream that blacks out for four seconds between matches is a non-event; one
+ * that does it at 2-1 in the second half is a fault, and no deploy is worth
+ * that. Capture mode never arms it at all — a harness reloading itself
+ * mid-capture would be a determinism bug of the worst kind.
+ */
+function watchForNewBuild({ everyMs = 5 * 60 * 1000 } = {}) {
+  if (!live) return;
+  const url = location.pathname;
+  const etagOf = async () => {
+    try {
+      const r = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+      return r.headers.get('etag');
+    } catch { return null; }
+  };
+  etagOf().then((tag) => {
+    if (!tag) return;                 // no etag, no signal, no harm
+    updater.etag = tag;
+    updater.armed = true;
+    setInterval(async () => {
+      if (updater.reloading) return;
+      const now = await etagOf();
+      updater.checks += 1;
+      if (!now || now === updater.etag) return;
+      updater.changed = true;
+      // Hold until the pitch is empty. The check runs again in `everyMs`, so a
+      // match simply delays the reload rather than cancelling it.
+      if (matchState()?.phase === 'match') return;
+      updater.reloading = true;
+      console.log('/broadcast: the page changed and the pitch is empty — reloading');
+      location.reload();
+    }, everyMs);
+  });
 }
 
 /** A camera authored in venue.json, by either spelling. Null if there is none. */
@@ -824,6 +877,9 @@ window.rflBroadcast = {
         return {
           phase: m.phase, sdk: m.sdk, source: m.source ?? null,
           id: m.match?.id ?? null, title: m.match?.title ?? null,
+          // the resolved bundle base, so nobody has to scrape it off a media
+          // element that this page may not have created
+          bundleUrl: m.match?.bundleUrl ?? null,
           state: m.stage ?? null, clock: m.clock ?? null, score: m.score ?? null,
           next: m.next ? { id: m.next.bundleId, startsAt: m.next.startsAt } : null,
           // what the city says is on, the sound switch included
@@ -837,6 +893,9 @@ window.rflBroadcast = {
       })(),
       // the big screen: is it carrying the broadcast, and is the copy running
       feed: live ? { ...feedStat } : null,
+      // whether this page will pick up a new build by itself, and whether it
+      // has seen one it is waiting for an empty pitch to take
+      updater: live ? { ...updater } : null,
       director: autoDirect
         ? { list: cutNow === matchCut ? 'match' : 'ambient', goal: goalCut,
             shot: lastTrackCam ? lastTrackCam.camera : null }
