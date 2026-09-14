@@ -576,7 +576,9 @@ export function create(ctx) {
     if (disposed) return;
     const url = typeof doc?.bundle === 'string' ? httpsOnly(doc.bundle) : null;
     if (doc?.bundle && !url) state.errors.push('now: bundle must be an https URL');
-    state.now = url ? { bundle: url, title: doc.title || null } : null;
+    // `audio` is carried through because /broadcast reads it: the page is
+    // silent by contract with RFL, and this is the one thing that lifts it.
+    state.now = url ? { bundle: url, title: doc.title || null, audio: doc.audio === true } : null;
     // A mount is a ~320 MB download that outlives several polls. Without this
     // the next tick would find no `override` yet, conclude nothing was on, and
     // start the download again — and again every sixty seconds until the first

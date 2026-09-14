@@ -24,8 +24,11 @@ reproducible and does not pretend to be.
 read from the same programme feed, that a visitor standing in the bowl is
 watching — so whatever is in the stadium is in the broadcast, without anyone
 naming a bundle in a URL. `?bundle=` still works and still wins, but it is no
-longer how a scheduled match gets on the air. The live feed is also **silent**:
-the audio listener is muted outright and `state().silent` says so.
+longer how a scheduled match gets on the air.
+
+**The live feed is silent by default, and the city decides otherwise — never
+the URL.** See "Whether the broadcast makes a sound" below. `state().silent`
+always says which it is.
 
 **Deterministic capture must be asked for: `?capture=1`.** That is the mode
 this document's guarantees apply to — fixed timestep, no wall clock, no live
@@ -99,6 +102,43 @@ answer to capitals too. `window.rflBroadcast.cameras()` lists every name
 `camera=` accepts. `camera=TRACK` on its own is refused with a message
 saying it needs `camtrack=`, since the track file is what supplies it.
 
+## Whether the broadcast makes a sound
+
+**Default: silent.** RFL play the match premix into the audio bus their encoder
+records, and that bus also carries this browser — so a page that emits during a
+live fixture puts two commentary tracks on air at once. They asked for silence
+in writing and asked to be told before it changed.
+
+A **replay the city puts on** is the one exception, because they cannot premix
+something they did not schedule and do not know about. `now.json` carries the
+switch:
+
+```json
+{ "bundle": "https://cdn.4dgsx.com/...", "title": "...", "audio": true }
+```
+
+The rule, in full:
+
+| what is on | `source` | sound |
+|---|---|---|
+| a scheduled fixture | `schedule` | **never** — RFL premix it |
+| a bundle named in a URL | `bundle` | never |
+| a replay the city put on, `audio` unset or false | `now` | no |
+| a replay the city put on, `"audio": true` | `now` | **yes** |
+| anything, in `?capture=1` | — | never; an `<audio>` element on the wall clock is a determinism bug |
+
+Both halves are gated in CI: the page is silent unless the city asked, and a
+scheduled fixture is never made audible whatever the flag says.
+
+The sound is the publisher's own placed sources — crowd, pitch and commentary
+from the bundle. The venue's PA is **not** used on the broadcast: it is a
+distributed four-speaker simulation with 180–320 ms arrival delays, which is
+right for somebody walking around the bowl and wrong for a television mix.
+
+**A capture browser needs to allow autoplay**, or the audio context never
+starts and the page stays silent however the flag is set. Headless Chrome wants
+`--autoplay-policy=no-user-gesture-required`.
+
 ## Which build you are talking to
 
 `state().build` (also `window.rflBroadcast.build`, and `build …` on the note
@@ -106,9 +146,9 @@ line at the bottom of the page) is the date the page's behaviour last
 changed. A harness that pins a copy of the page, or a proxy that holds one,
 will report an older date than `https://otra.city/broadcast` does — so a
 "the deployed page still says X" conversation is settled by reading it. The
-current build is **2026-09-11** (the live feed runs the stadium's match module,
-the director cuts during play, and the page is explicitly silent — before that,
-2026-09-08). Bump the constant at the top of
+current build is **2026-09-14** (the live feed runs the stadium's match module,
+the director cuts during play, and the city can switch the sound on for a
+replay it put on — before that, 2026-09-11). Bump the constant at the top of
 `public/broadcast.html` whenever the page's behaviour changes.
 
 The gate asserts the field exists, and it can be pointed at the deployed

@@ -251,8 +251,21 @@ try {
   // standing in the same bowl could.
   check('the live feed keeps the stadium\'s match module',
     sL.match !== null, sL.match ? `phase "${sL.match.phase}", sdk "${sL.match.sdk}"` : 'no match module — the pitch can never fill');
-  // RFL play the premix into the bus that also captures this browser.
-  check('the live feed is silent', sL.silent === true, sL.silent ? 'listener muted' : 'THE PAGE CAN MAKE SOUND');
+  // RFL play the premix into the bus that also captures this browser, so the
+  // page is silent unless the CITY has asked for sound on a replay it put on
+  // itself. Asserting the rule rather than the constant: a fixed `silent ===
+  // true` would fail the moment somebody legitimately switches it on, and
+  // would then be switched off again to make CI green, which is how a
+  // safeguard becomes a nuisance and then a casualty.
+  const soundAllowed = sL.match?.source === 'now' && sL.match?.now?.audio === true;
+  check('the live feed is silent unless the city asked for sound',
+    sL.silent === !soundAllowed,
+    soundAllowed ? `sound ON for the replay the city put on (${sL.match?.now?.title || sL.match?.id})`
+                 : (sL.silent ? 'listener muted' : 'THE PAGE CAN MAKE SOUND AND NOBODY ASKED IT TO'));
+  // A scheduled fixture is RFL's to premix and must never be doubled.
+  check('a scheduled fixture is never made audible here',
+    !(sL.match?.source === 'schedule' && sL.silent === false),
+    sL.match?.source === 'schedule' ? (sL.silent ? 'silent, as contracted' : 'DOUBLE AUDIO RISK') : 'no scheduled fixture on');
   check('the director is running', !!sL.director, sL.director ? `${sL.director.list} list, shot ${sL.director.shot}` : 'no director — a locked-off frame');
   const cutErrors = (sL.errors || []).filter((e) => String(e).includes('cutlist'));
   check('both cut-lists loaded', cutErrors.length === 0, cutErrors.join(' | ') || 'ambient and match');

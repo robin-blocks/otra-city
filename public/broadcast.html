@@ -83,7 +83,7 @@ const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
 // page's behaviour changes. It is reported in `state().build` and on the note
 // line, so "the deployed page still says X" is settled by reading the page,
 // not by comparing memories of deploys.
-const BUILD = '2026-09-11';
+const BUILD = '2026-09-14';
 
 // Errors are evidence: a silent failure films a black hour, so every one is
 // kept for `state()`, echoed to the console the harness reads, and shown.
@@ -200,6 +200,8 @@ const media = createMediaSystem(camera);
 // covers whatever the venue grows next, and `state().silent` lets RFL assert
 // it from outside rather than measure it off the bus.
 media.setMuted(true);
+// ...and stays that way unless the CITY says otherwise. See `wantSound()`.
+
 const anims = createAnimSystem();
 const doors = createDoorSystem();
 
@@ -261,11 +263,13 @@ async function boot() {
     // without the mount awaiting it. That is a fetch during capture and an
     // <audio> element running off the wall clock — both for a soundtrack
     // nobody records. Dropped rather than muted.
+    // The venue's PA goes in every mode. It is a distributed speaker
+    // simulation for somebody walking around the bowl — four sources with
+    // arrival delays of 180-320 ms — which is exactly wrong for a television
+    // mix, and it is a fetch plus an <audio> element on the wall clock.
+    // The publisher's own sources stay: placed, and silent until asked for.
     delete m.pa;
-    delete m.audio;
-    // The shared override is another wall-clock poll; capture answers to the
-    // harness alone.
-    if (capture) delete m.now;
+    if (capture) { delete m.audio; delete m.now; }
     return true;
   });
 
@@ -375,6 +379,7 @@ async function startLive() {
     // number would run 20% fast on a 60 Hz screen and stall in a background tab.
     frame = Math.round(simT * FPS);
     direct();
+    applySound();
     draw();
   });
 }
@@ -482,6 +487,31 @@ async function loadTrack(url) {
  * a gallery would, then cuts back.
  */
 let goalCut = false;
+
+/**
+ * Whether this page should make a sound — decided by the city, not the URL.
+ *
+ * RFL's §3 asked for silence and asked to be told before it changed, because
+ * their capture browser's audio feeds the same bus as their own premix: a page
+ * that emits during a live fixture puts two commentary tracks on air. That is
+ * still the default and still what a scheduled fixture gets.
+ *
+ * A replay the city puts on is the other case. RFL cannot premix something
+ * they did not schedule and do not know about — they demonstrably do not, the
+ * stream was silent through m27 — so for those the sound has to come from
+ * here or from nowhere. `now.json` carries the switch, so it is shared state
+ * like everything else about what the stadium is showing, and RFL can read it
+ * in `state()` rather than discover it.
+ *
+ * Capture mode is never audible: an <audio> element on the wall clock is a
+ * determinism bug whatever it is playing.
+ */
+function wantSound() {
+  if (!live) return false;
+  const m = matchState();
+  return m?.source === 'now' && m?.now?.audio === true;
+}
+
 function direct() {
   if (!autoDirect) return;
   const m = matchState();
@@ -489,6 +519,12 @@ function direct() {
   const want = (onAir ? matchCut : ambientCut) || ambientCut || matchCut;
   if (want && want !== cutNow) { cutNow = want; cutFrom = frame; }
   goalCut = onAir && m?.board === 'GOAL' && !!namedCamera('scoreboard');
+}
+
+/** Follow the city's decision about sound. Called on the same tick as the director. */
+function applySound() {
+  const want = wantSound();
+  if (want === media.muted) media.setMuted(!want);
 }
 
 function cameraAt(name, frameNo) {
@@ -675,6 +711,8 @@ window.rflBroadcast = {
           id: m.match?.id ?? null, title: m.match?.title ?? null,
           state: m.stage ?? null, clock: m.clock ?? null, score: m.score ?? null,
           next: m.next ? { id: m.next.bundleId, startsAt: m.next.startsAt } : null,
+          // what the city says is on, the sound switch included
+          now: m.now ?? null,
           // what the big screen and the side panels are carrying — between
           // matches that is the programme, not the plates they were painted with
           screens: m.screens ?? null,
