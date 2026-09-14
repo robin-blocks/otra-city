@@ -1,8 +1,8 @@
 {
   "_": "WHAT THE STADIUM IS SHOWING, for everyone at once. The match module polls this from every client — the visitor in the bowl, the phone on the map, and RFL's capture browser on /broadcast — so changing this one file changes what the city shows, and no query string can. Live fixtures from the RFL channel outrank it: this is for the twenty-two hours a day that are not a match.",
   "_how": "Set `bundle` to a completed fixture's bundleUrl from https://4dgsx.com/api/v1/programme/rfl (the `replay` items carry one; `upcoming` items do not), give it a `title` for the scoreboard, and deploy. Set `bundle` back to null to take it down. It is a ~320 MB download per client, so it is not something to leave on by accident.",
-  "bundle": "https://cdn.4dgsx.com/channels/rfl/bundles/s3-m30_frontier_deepseek_singularity_united-c253d77a8365d6e2f60074b8",
-  "title": "RFL S3 M30 — DeepSeek Rovers vs Singularity United (replay)",
+  "bundle": "https://cdn.4dgsx.com/channels/rfl/bundles/s3-m28_frontier_muse_synthetic_athletic-98a0b0249e628924f963446a",
+  "title": "RFL S3 M28 — Muse Spark FC vs Synthetic Athletic (replay)",
   "_put_on": "2026-09-14 — put on with scripts/stadium-now.mjs. Take it down with: off",
   "audio": false,
   "_audio": "Whether /broadcast itself makes a sound. FALSE, and it should normally stay false. RFL premix the match audio into the same bus their encoder records; a page emitting at the same time puts two commentary tracks on air. Since 2026-09-14 they handle REPLAYS too (they key off state().match.id by prefix and take the bundle base from the media element's currentSrc), so there is no case left where the sound has to come from here. The switch stays because their supervisor was dead for three days without either side noticing. Tell them before using it.",
