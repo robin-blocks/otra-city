@@ -16,7 +16,7 @@
 // "no replays on the live site"; what stands now is that nobody downloads a
 // bundle unless the city as a whole is showing it.
 import * as THREE from 'three';
-import { createPA, mapTime } from '/js/pa-system.js';
+import { createPA, mapTime, unmapTime } from '/js/pa-system.js';
 
 // The publisher ships every dynamic body twice: as indexed mesh geometry in
 // `prims`/`draws`, and as a surface-sampled gaussian cloud in `points.bin`.
@@ -91,6 +91,10 @@ export function matchPeriod(hud, t) {
   if (!c || !Number.isFinite(t)) return null;
   const halves = Math.max(1, c.halves || 1);
   const halfLen = (c.duration_s || 0) / halves;
+  // Before kick-off the clock has not started. Without this the first half
+  // reads 8:00 at t = -180, because the arithmetic is happy to count a half
+  // that has not begun.
+  if (t < 0) return { tag: HALF_NAMES[0], remain: halfLen, half: 1, over: false, playing: false, preroll: true };
   const buzzers = Array.isArray(c.buzzers) ? c.buzzers : [];
   const breaks = buzzers.filter((b) => b.kind === 'half').sort((a, b) => a.t - b.t);
   const full = buzzers.find((b) => b.kind === 'full');
@@ -461,6 +465,10 @@ export function create(ctx) {
   // The publisher's match-time -> premix-time map, read from the bundle once
   // per mount. See `buildBug`.
   let audioMap = null;
+  // The bundle's `program` block, and where we are in it. A replay is driven
+  // through this rather than played straight: see `driveProgramme`.
+  let programme = null;
+  let programmeT = 0;
   const mutedIds = new Set();
   const gestureFns = [];
   let unsubMute = null;
@@ -577,10 +585,16 @@ export function create(ctx) {
     // fetched, so this is a cache hit rather than a download. Failure is not
     // worth an error: it costs `audioOffset` and nothing else.
     audioMap = null;
+    programme = null;
+    programmeT = 0;
     if (url) {
       fetch(`${String(url).replace(/\/+$/, '')}/scene.json`, { credentials: 'omit' })
         .then((r) => (r.ok ? r.json() : null))
-        .then((scene) => { if (!disposed) audioMap = scene?.audio?.map || null; })
+        .then((scene) => {
+          if (disposed) return;
+          audioMap = scene?.audio?.map || null;
+          programme = scene?.program || null;
+        })
         .catch(() => { /* no map, no offset, no harm */ });
     }
     st.on('event', (e) => { if (e.type === 'goal') { goalUntil = simTime + 4; paintBoard(); } });
@@ -608,9 +622,19 @@ export function create(ctx) {
     const hud = stage.hud;
     const teams = hud?.teams;
     if (!teams || teams.length < 2) return null;
-    const period = matchPeriod(hud, stage.time);
+    // WHERE THE MATCH ACTUALLY IS, which is not always where the stage is.
+    //
+    // The stage's clock is bounded by its dynamic track — `scene.times`, the
+    // match only — so a seek into the pre-roll clamps to the first frame and
+    // the bodies hold the kick-off pose. That is exactly the picture the
+    // pre-roll wants, and RFL say so ("bodies: hold"), but it means
+    // `stage.time` reads 0 for the whole build-up. Believing it would start the
+    // match clock three minutes early, which is the bug we are here to fix.
+    //
+    // So when the programme is driving, the programme decides.
+    const t = programme?.map ? unmapTime(programme.map, programmeT) : stage.time;
+    const period = matchPeriod(hud, t);
     if (!period) return null;
-    const t = stage.time;
     const sc = stage.score || { a: 0, b: 0 };
     const team = (t) => ({ code: t.code || '', name: t.name || '', color: Array.isArray(t.color) ? t.color.slice(0, 3) : [0.5, 0.5, 0.5] });
     return {
@@ -637,7 +661,15 @@ export function create(ctx) {
       // through the publisher's own map, replay holds and all. Neither needs
       // a surface we happen to be drawing.
       t: +t.toFixed(3),
-      audioOffset: audioMap ? +mapTime(audioMap, t).toFixed(3) : null,
+      // While the programme drives, the offset IS the programme clock: RFL's
+      // `program.map` and `audio.map` are the same array, so mapping back and
+      // forth would be arithmetic in a circle.
+      audioOffset: programme?.map ? +programmeT.toFixed(3)
+                 : audioMap ? +mapTime(audioMap, t).toFixed(3) : null,
+      // where in the whole programme, and which of its three parts
+      programmeT: programme ? +programmeT.toFixed(3) : null,
+      segment: programme ? (programme.segments || []).find((g) => t >= g.t[0] && t <= g.t[1])?.id ?? null : null,
+      preroll: period.preroll === true,
     };
   }
 
@@ -655,12 +687,45 @@ export function create(ctx) {
    * whole match. Looping is opt-in per replay, because a fixture that is meant
    * to end should end.
    */
+  /**
+   * Put a replay where the PROGRAMME says, not where playing straight would.
+   *
+   * RFL pin a premiere to the stream start, so programme t = 0 is the first
+   * frame to Twitch and the match kicks off 180 s later. The bundle has carried
+   * the mapping all along in `program.map` — the same array as `audio.map`,
+   * which we were already using for the premix — and it is the picture's copy
+   * of it.
+   *
+   * Driving through it rather than advancing the match clock is what buys the
+   * build-up and the outro, and it is also the only way the goal replays come
+   * out right: a duplicated match time in the map is broadcast time inserted
+   * with the match clock stopped, so the picture must DWELL there while the
+   * programme runs on. Playing the match straight skips every one of them.
+   */
+  function driveProgramme(dt) {
+    if (state.source !== 'now' || !stage || !programme?.map) return;
+    const total = programme.duration_s || 0;
+    programmeT += dt;
+    if (total > 0 && programmeT >= total) {
+      if (!state.now?.loop) { programmeT = total; }
+      else { programmeT = 0; state.loops += 1; goalUntil = -1; }
+    }
+    const want = unmapTime(programme.map, programmeT);
+    try {
+      if (typeof stage.seek === 'function') stage.seek(want); else stage.time = want;
+    } catch (e) { state.errors.push(`programme: ${e.message || e}`); }
+  }
+
   function loopReplay() {
     // `state.now` and not `overrideDoc`: the latter is captured at mount and
     // would be a stale copy of the document for as long as the replay runs,
     // so turning looping on for something already playing would do nothing.
     // The poll refreshes `state.now` every minute whether the bundle changed
     // or not, which is exactly the freshness this needs.
+    // Once the programme is driving, IT owns the wrap — at the end of the
+    // post-roll, not at the full-time whistle, which is 180 s earlier and
+    // would cut the outro off.
+    if (programme?.map) { loopArmed = false; return; }
     if (state.source !== 'now' || !state.now?.loop || !stage) { loopArmed = false; return; }
     if (!state.bug?.over) { loopArmed = false; return; }
     if (loopArmed) return;
@@ -856,6 +921,7 @@ export function create(ctx) {
         stage.update(dt, camera, renderer.domElement.clientHeight || 720);
         state.score = stage.score || null;
         state.clock = stage.clock || null;
+        driveProgramme(dt);
         state.bug = buildBug();
         loopReplay();
         // The SDK paints textures with three's default orientation; our screens
@@ -922,6 +988,10 @@ export function create(ctx) {
     seek(t) {
       if (!stage) return null;
       try {
+        // While the programme drives, moving the stage is pointless — the next
+        // tick puts it back. Move the programme clock instead, and let it
+        // place the stage as it does every frame.
+        if (programme?.map) { programmeT = mapTime(programme.map, t); return t; }
         if (typeof stage.seek === 'function') stage.seek(t); else stage.time = t;
         state.bug = buildBug();
         paintBoard();

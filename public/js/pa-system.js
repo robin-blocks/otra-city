@@ -49,6 +49,31 @@ export function mapTime(map, t) {
 }
 
 /**
+ * The other direction: programme time -> match time.
+ *
+ * The same piecewise-linear map read backwards, and the interesting case is the
+ * one that makes it not a function in the naive sense. A duplicated match time
+ * is broadcast time inserted with the match clock STOPPED — a goal replay, or
+ * the dwell at full time — so a whole span of programme time maps to a single
+ * instant of the match. Read forwards that is a jump; read backwards it is a
+ * hold, and returning the constant is exactly right: the picture should sit on
+ * that moment while the programme runs on.
+ */
+export function unmapTime(map, p) {
+  if (!map || !map.length) return p;
+  if (p <= map[0][1]) return map[0][0];
+  for (let i = 1; i < map.length; i++) {
+    const [m0, a0] = map[i - 1];
+    const [m1, a1] = map[i];
+    if (p <= a1) {
+      if (a1 === a0) return m1;
+      return m0 + ((p - a0) * (m1 - m0)) / (a1 - a0);
+    }
+  }
+  return map[map.length - 1][0];
+}
+
+/**
  * @param {object}  o
  * @param {THREE.AudioListener} o.listener  the city's listener — we hang off its
  *   input so the one mute button silences the PA too
