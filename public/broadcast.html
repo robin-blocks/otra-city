@@ -228,7 +228,7 @@ let ambientCut = null, matchCut = null, cutNow = null, cutFrom = 0;
 let livePaceFrom = null;
 // A capture that has been up for days is running the page it loaded on the day
 // it started. See `watchForNewBuild()`.
-const updater = { armed: false, etag: null, changed: false, checks: 0, reloading: false };
+const updater = { armed: false, etag: null, changed: false, checks: 0, reloading: false, heldSince: null };
 // The big screen's texture: a copy of the frame this page just drew.
 let feedTex = null, feedMesh = null;
 // The broadcast graphics. Live only: a deterministic capture would have to
@@ -579,10 +579,27 @@ function watchForNewBuild({ everyMs = 5 * 60 * 1000 } = {}) {
       const now = await etagOf();
       updater.checks += 1;
       if (!now || now === updater.etag) return;
+      // How long a change has been waiting. A number nobody reads is how the
+      // last one stayed quiet for an hour.
+      updater.heldSince ??= Date.now();
+      updater.heldS = Math.round((Date.now() - updater.heldSince) / 1000);
       updater.changed = true;
-      // Hold until the pitch is empty. The check runs again in `everyMs`, so a
-      // match simply delays the reload rather than cancelling it.
-      if (matchState()?.phase === 'match') return;
+      // WAIT FOR A SEAM, NOT FOR AN EMPTY PITCH.
+      //
+      // This used to hold until nothing was mounted, which sounded careful and
+      // was in fact a condition that can never come true: the stadium runs a
+      // looping replay for the twenty-two hours a day that are not a fixture,
+      // so a match is ALWAYS mounted and the reload waited for ever. RFL
+      // measured ours holding a change across 25 consecutive checks without
+      // once acting on it, and had written the identical bug on their side.
+      //
+      // What actually matters is not interrupting PLAY. Every programme has
+      // seams that are not play — the build-up, half time, the outro — and a
+      // looping replay passes through them once a cycle, so the reload lands
+      // within a loop instead of never. `bug.playing` is the publisher's own
+      // clock truth, and it is false in all of them.
+      const m = matchState();
+      if (m?.phase === 'match' && m?.bug?.playing !== false) return;
       updater.reloading = true;
       console.log('/broadcast: the page changed and the pitch is empty — reloading');
       location.reload();
