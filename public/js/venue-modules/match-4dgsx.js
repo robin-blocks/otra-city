@@ -472,6 +472,11 @@ export function create(ctx) {
     pitch.add(st.group);
     state.docks = [];
     for (const [slotName, mesh] of Object.entries(dockMeshes)) {
+      // One slot can be reserved for the venue's own live feed — the big
+      // screen showing the broadcast rather than a recording of it. The
+      // publisher's dock is not attached there, so nothing decodes a video
+      // into a texture that would immediately be painted over.
+      if (slotName === cfg.live_screen) { state.docks.push({ slot: slotName, attached: false, reason: 'live screen' }); continue; }
       let ok = false;
       try { ok = st.docks.attach(slotName, mesh); } catch (e) { state.errors.push(`dock ${slotName}: ${e.message}`); }
       state.docks.push({ slot: slotName, attached: ok });
