@@ -3,5 +3,7 @@
   "_how": "Set `bundle` to a completed fixture's bundleUrl from https://4dgsx.com/api/v1/programme/rfl (the `replay` items carry one; `upcoming` items do not), give it a `title` for the scoreboard, and deploy. Set `bundle` back to null to take it down. It is a ~320 MB download per client, so it is not something to leave on by accident.",
   "bundle": "https://cdn.4dgsx.com/channels/rfl/bundles/s3-m31_real_machina_frontier_fable-1f32c76a582ffe511306331b",
   "title": "RFL S3 M31 \u2014 Real Machina vs AFC Fable (replay)",
-  "_put_on": "2026-09-14, second pass for Robin's stream test. m27 played through and a replay does not loop, so this points at a different bundle \u2014 the module will not re-mount a URL it is already showing. TAKE IT DOWN AFTERWARDS: bundle and title back to null."
+  "_put_on": "2026-09-14, second pass with sound on, for Robin's stream test. TAKE IT DOWN AFTERWARDS: bundle/title to null.",
+  "audio": true,
+  "_audio": "Whether /broadcast itself makes a sound. FALSE BY DEFAULT and false for scheduled fixtures: RFL premix those and play them into the same bus their capture records, so a page that emits during a live match puts two commentary tracks on air. True only for a replay the city put on, which they cannot have premixed. Tell RFL before changing it \u2014 they asked."
 }
