@@ -267,6 +267,13 @@ try {
     !(sL.match?.source === 'schedule' && sL.silent === false),
     sL.match?.source === 'schedule' ? (sL.silent ? 'silent, as contracted' : 'DOUBLE AUDIO RISK') : 'no scheduled fixture on');
   check('the director is running', !!sL.director, sL.director ? `${sL.director.list} list, shot ${sL.director.shot}` : 'no director — a locked-off frame');
+  // A capture that reloads itself mid-run is a determinism bug; a live feed
+  // that never reloads is a broadcast permanently one deploy behind. Both
+  // halves asserted, because the wrong one is silent in each direction.
+  check('the live feed picks up a new build by itself', sL.updater?.armed === true,
+    sL.updater ? `etag ${String(sL.updater.etag).slice(0, 10)}…, ${sL.updater.checks} checks` : 'no updater — deploys will not reach the stream');
+  check('deterministic capture never reloads itself', s0.updater == null,
+    s0.updater ? 'ARMED UNDER CAPTURE' : 'absent, as it must be');
   const cutErrors = (sL.errors || []).filter((e) => String(e).includes('cutlist'));
   check('both cut-lists loaded', cutErrors.length === 0, cutErrors.join(' | ') || 'ambient and match');
   // 4dgsx being down is their outage, not our failure — but it must be said
