@@ -47,11 +47,30 @@ index names before anything is trusted. If that ever stops lining up the
 head cam simply does not fire. A `stage.body(name)` would still be welcome
 and would let us drop the check.
 
-**Live fixtures do not replay yet.** Under the schedule the stage's clock is
-your wall clock and it refuses a seek — the same reason the stadium runs 180 s
-ahead of your programme. Both are fixed by the same change, driving a live
-fixture through `program.map` from `startsAt` on our side, which we will do
-once m33 has shown the scheduled mount working.
+**Live fixtures replay too**, because of §4 below.
+
+## 4. A live fixture now follows your programme
+
+Your `startsAt` is the stream start — programme time 0 — and the SDK's
+schedule puts match t = 0 there, so the stadium has run 180 s ahead of your
+broadcast since its first fixture, with no build-up and no holds. From this
+build the stadium adopts a live fixture and drives it through the bundle's own
+`program.map` from `startsAt` on the wall clock (the SDK's stage is kept
+untouched and comes down when your schedule says; ours is mounted from the
+same, cached, URL). What the stadium shows is now your programme: the pre-roll
+with the players held and the ground's own screens counting down to kick-off,
+kick-off at `startsAt` + 180 s, your holds as our replays, the post-roll to the
+end. `state().match.drive` reads `wall` while it is on.
+
+**For your supervisor, one thing.** `state().match.audioOffset` is where the
+premix should be, on every route, and it is right from the first frame after
+the mount. The `<video>` you were reading is the SDK's own dock media: its
+clock is set on the stage's first sync, and you sampled it before that — which
+is the `offset 0.00s via page media element` in your log tonight, and why the
+commentary was three minutes late even though the element read 180.0 a few
+seconds later. Take `audioOffset` first; the element only when it is
+non-zero. And your fallback through `match.score.t` is the time of the last
+goal, not the match clock — `match.t` is the clock.
 
 ## What m33 showed, and a fault of ours it exposed
 
