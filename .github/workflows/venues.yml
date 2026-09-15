@@ -53,7 +53,13 @@ jobs:
         with: { node-version: 22 }
       - run: npm ci
       - run: node scripts/build-venues.mjs --check --strict
-      - run: node scripts/venue-check.mjs --all --out poc/out/venue-check.json
+      # --match mounts a real bundle through the publisher's SDK and asserts the
+      # contract we cannot see any other way: docks attached, the scoreboard
+      # painting hud truth, the PA's arrival delay, GPU memory steady over two
+      # match cycles, and that the publisher still re-allocates a shout whose
+      # canvas changed size. It was a manual flag until 2026-09-15, so the gate
+      # we cite in letters had never actually run here; it costs ~90 s.
+      - run: node scripts/venue-check.mjs --all --match --out poc/out/venue-check.json
       - run: node scripts/venue-shot.mjs --all --out poc/out/shots
       - run: node scripts/broadcast-check.mjs --out poc/out/broadcast-check.json --shots poc/out/shots
       # the crowd and the cut-list have their own determinism to lose

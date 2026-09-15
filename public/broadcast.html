@@ -1147,8 +1147,8 @@ window.rflBroadcast = {
           // halves and buzzers, `play_end_t` included — the publisher's own
           // "ball at rest" after each whistle
           clockPlan: m.clockPlan ?? null,
-          // the publisher's canvas sprites, and how many times one was
-          // re-allocated because its canvas changed size (see the module)
+          // the publisher's canvas sprites, and how many times one's canvas
+          // changed size — they re-allocate it themselves (see the module)
           labels: m.labels ?? null,
           // the publisher's glass panels: how many the bundle has, how many
           // are not drawn (all of them, unless the venue asks for them)

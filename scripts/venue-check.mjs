@@ -204,12 +204,19 @@ for (const id of ids) {
           const ms2 = (await mx.state()).venues.find((x) => x.id === id).modules[0]?.state;
           check('match: scoreboard paints hud truth', /[A-Z]{2,4} \d+-\d+ [A-Z]{2,4} \d+:\d\d/.test(ms2?.board || ''), `board "${ms2?.board}", clock ${ms2?.clock}, stage ${ms2?.stage}`);
           // The publisher's shouts are canvas sprites whose canvas is resized for
-          // every message, and three allocates a texture's storage once — so the
-          // module re-allocates a label whenever its canvas changes size
-          // (refitLabels). The evidence from outside is the GL context: a grown
-          // canvas that was NOT re-allocated is an INVALID_VALUE nobody logs, and
-          // the old text stretched over the new sprite. Forty seconds from
-          // kick-off is enough for several shouts to change size.
+          // every message, and three allocates a texture's storage once — so a
+          // label whose canvas grew and was NOT re-allocated is an INVALID_VALUE
+          // nobody logs, with the old text stretched over the new sprite. We
+          // carried a workaround for this until 4DGSX shipped the fix on
+          // 2026-09-15; THIS NOW TESTS THEIR CODE, NOT OURS, which is the reason
+          // to keep it: `/sdk/v1/` is unpinned, so their regressions arrive as
+          // readily as their fixes did.
+          //
+          // Both halves are load-bearing. GL error 0 on its own is what a match
+          // with no shouts in it also looks like, so it is asserted together
+          // with the module's count of canvases that actually changed size —
+          // which is the evidence the code path was exercised at all. Forty
+          // seconds from kick-off is enough for several shouts to change size.
           await mx.evaluate(`window.__venue.venues.module(${JSON.stringify(id)}, 'match-4dgsx')?.seek(0)`);
           await mx.evaluate('window.__venue.renderer.getContext().getError()');   // clear whatever came before
           let glErr = 0;
@@ -218,8 +225,8 @@ for (const id of ids) {
             glErr = Number(await mx.evaluate('window.__venue.renderer.getContext().getError()')) || 0;
           }
           const msL = (await mx.state()).venues.find((x) => x.id === id).modules[0]?.state;
-          check('match: shouts re-fit their textures when the canvas changes size', glErr === 0 && (msL?.labels?.refits ?? 0) > 0,
-            `${msL?.labels?.sprites ?? 0} label sprites, ${msL?.labels?.refits ?? 0} re-fits in 40 s from kick-off, GL error ${glErr}`);
+          check('match: the publisher re-allocates a shout whose canvas changed size', glErr === 0 && (msL?.labels?.resizes ?? 0) > 0,
+            `${msL?.labels?.sprites ?? 0} label sprites, ${msL?.labels?.resizes ?? 0} canvas resizes in 40 s from kick-off, GL error ${glErr}`);
           const sm = await mx.stats();
           check('match: draw calls with a match on', sm.calls <= MATCH_CALLS, `${sm.calls} (max ${MATCH_CALLS}), ${sm.tris} tris`);
           // A distributed PA is only a PA if the arrival delay follows the

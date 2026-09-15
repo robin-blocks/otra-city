@@ -265,7 +265,8 @@ export function create(ctx) {
     // named in the venue's own config, or the city's shared override
     source: null, now: null, loadingNow: null, layers: [], splats: useSplats, bug: null, loops: 0,
     // the publisher's name plates and shouts: how many canvas sprites, and how
-    // many times one had to be re-allocated because its canvas changed size
+    // many times one's canvas changed size — the publisher re-allocates these
+    // itself since their 2026-09-15 build; we only watch that it still happens
     labels: null,
     // the publisher's glass panels: how many the mounted bundle has, and how
     // many of those are not being drawn
@@ -1345,7 +1346,7 @@ export function create(ctx) {
     ballSpeed = 0;
     attachBoards(st);
     labels = collectLabels(st.group);
-    state.labels = { sprites: labels.length, refits: 0 };
+    state.labels = { sprites: labels.length, resizes: 0 };
     // The glass, found now because the SDK has built every draw by the time
     // `mount()` resolves. `setSplats` above only ever touches dynamic bodies,
     // so nothing puts a panel back.
@@ -1603,8 +1604,8 @@ export function create(ctx) {
   /**
    * Every canvas sprite the SDK hung on the stage: the name plates, the shouts
    * ("radio bubbles"), its attribution mark, its fixture board. Only the shouts
-   * ever change size, but the list is cheap and the rule below is a no-op for
-   * a canvas that stays put.
+   * ever change size; the other three draw at constant sizes and never move
+   * the counter below.
    */
   function collectLabels(group) {
     const found = [];
@@ -1615,32 +1616,29 @@ export function create(ctx) {
     return found;
   }
   /**
-   * The SDK draws each shout on a canvas it RESIZES for every line — a new
-   * width per message, a new height when one wraps — and hands three the same
-   * CanvasTexture with needsUpdate set. Since r137 three allocates a texture's
-   * storage ONCE, immutable, at the size of the first upload (texStorage2D);
-   * every later upload is a sub-image into that allocation. A canvas that grew
-   * is refused outright — INVALID_VALUE, nothing logged, the previous text now
-   * stretched over the bigger sprite — and one that shrank lands in a corner
-   * of the old pixels, so the last shout shows through beside the new one.
-   * That is "got it" in forty-point letters next to a two-line ghost, and
-   * it is what every bubble looked like from its second message on.
+   * WE NO LONGER FIX THIS; WE WATCH IT. The SDK draws each shout on a canvas it
+   * RESIZES for every line, and three allocates a texture's storage once, at
+   * the size of the first upload — so a grown canvas used to be refused whole
+   * (INVALID_VALUE, nothing logged, the old text stretched over the bigger
+   * sprite) and a shrunk one landed in a corner of the old pixels. We reported
+   * it with a patch; 4DGSX shipped the patch on 2026-09-15 and their setter now
+   * disposes the texture itself when the canvas changes size. So the walk that
+   * used to dispose here has gone.
    *
-   * Their API does not say when the text changed, but the canvas does. When a
-   * label's canvas is not the size it was, dispose the texture: that frees the
-   * GPU copy and nothing else, so the next render allocates it again, at the
-   * right size, from the object the SDK still holds. Runs after the SDK's
-   * update, which is the only place it sets text, and before the frame is
-   * drawn.
+   * What is left is the witness, and it is worth its nine iterations a frame:
+   * `/sdk/v1/` is unpinned, so we take their regressions as readily as their
+   * fixes, and `resizes` is the only evidence from inside that shouts are still
+   * changing size at all. Paired with a GL error count of zero in the check, it
+   * says their fix is present and working; on its own it says nothing, which is
+   * why the gate asserts both.
    */
-  function refitLabels() {
+  function watchLabels() {
     for (const l of labels) {
       const img = l.map.image;
       if (img.width === l.w && img.height === l.h) continue;
       l.w = img.width;
       l.h = img.height;
-      l.map.dispose();
-      if (state.labels) state.labels.refits += 1;
+      if (state.labels) state.labels.resizes += 1;
     }
   }
 
@@ -1892,7 +1890,7 @@ export function create(ctx) {
         state.drive = wallDrive ? 'wall' : (driving() ? 'dt' : null);
         state.programmeT = driving() ? +programmeT.toFixed(2) : null;
         loopReplay();
-        refitLabels();
+        watchLabels();
         // The SDK paints textures with three's default orientation; our screens
         // carry glTF UVs (v = 0 at the top), so its maps must not flip.
         for (const mesh of Object.values(dockMeshes)) {
