@@ -247,21 +247,23 @@ Learned while building the stadium (2026-09-03), true for every venue:
   texture's storage once, immutable, at the size of the first upload, so a
   grown canvas is refused (INVALID_VALUE, silent — the old text stretches
   over the new sprite) and a shrunk one lands in a corner of the old pixels
-  (the previous shout shows beside the new). The module disposes a label's
-  texture whenever its canvas changes size (`refitLabels`, after the SDK's
-  update and before the draw) and three allocates it again at the right size.
-  `state.labels.refits` counts these; `venue-check --match` asserts it moves
-  and that the GL context reports no error over 40 s of play.
-  Verified against the SDK source 2026-09-15, which is why the walk is safe:
-  it collects SPRITES only, and the SDK's panels are meshes with their own
-  compare-and-dispose in `PanelLayer.rasterize`, so the two can never fight
-  over a texture. The three sprite kinds it does collect are the label pair,
-  the attribution mark and the fixture board; the last two draw at constant
-  sizes, so they are permanent no-ops. Collection at mount is COMPLETE — every
-  label sprite is built in one pass over the bundle's components at stage
-  construction, with no lazy or mid-match creation — and the workaround
-  depends on that staying true. Reported to 4DGSX with a patch:
-  `docs/4dgsx/SDK-LABELS.md`.
+  (the previous shout shows beside the new). **4DGSX fixed this in their own
+  setter on 2026-09-15** after we reported it with a patch
+  (`docs/4dgsx/SDK-LABELS.md`), so the module no longer disposes anything:
+  `watchLabels` only COUNTS canvases that changed size, into
+  `state.labels.resizes`.
+  The count is kept because `/sdk/v1/` is unpinned — their regressions reach
+  us as readily as their fixes did — and `venue-check --match` asserts it
+  moves AND that the GL context reports no error over 40 s of play. Both
+  halves are needed: a match with no shouts in it also has no GL errors, so
+  the count is what proves the path was exercised.
+  The sprite list is complete at mount and cannot go stale: every label
+  sprite is built in one pass over the bundle's components at stage
+  construction, with no lazy or mid-match creation. It collects SPRITES only,
+  so it never sees the SDK's panels, which are meshes with their own
+  compare-and-dispose in `PanelLayer.rasterize`. The other two sprite kinds
+  it collects — the attribution mark and the fixture board — draw at constant
+  sizes and never move the count.
 - three.js allocates one shared Sprite geometry on first use, so GPU
   memory assertions compare two cycles, not the pre-first-use baseline.
 
