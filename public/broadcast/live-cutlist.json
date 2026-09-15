@@ -1,5 +1,6 @@
 {
-  "_": "The stadium's direction BETWEEN matches. Allowed to move \u2014 there is no match to spend bitrate on, and an empty bowl that never moves reads as a broken stream. Two things are not scenery: SCREEN_MAIN frames the big screen and both side panels, which carry the coming-up card, the fixtures and the results while the pitch is empty, and SCOREBOARD frames the countdown. Both are held long enough to read. During a match /broadcast runs match-cutlist.json instead, which only cuts.",
+  "_": "The stadium's direction BETWEEN matches. Allowed to move — there is no match to spend bitrate on, and an empty bowl that never moves reads as a broken stream. Two things are not scenery: SCREEN_MAIN frames the big screen and both side panels, which carry the coming-up card, the fixtures and the results while the pitch is empty, and SCOREBOARD frames the countdown. Both are held long enough to read. During a match /broadcast runs match-cutlist.json instead, which only cuts.",
+  "_stands": "A STAND SHOT IS A GLANCE, NOT A DWELL — six seconds, and it used to be twenty-five. The stream shows the stadium exactly as it is and nothing is added to it, so between matches those terraces hold whoever actually walked in, which is usually nobody. That is the stream being honest, and the answer is to look briefly rather than to fill the seats with figures no viewer could tell from a person. When visitors ARE in the bowl they are the shot, and six seconds is long enough to see them.",
   "fps": 50,
   "loop": true,
   "segments": [
@@ -28,7 +29,7 @@
     {
       "frames": [
         2850,
-        4100
+        3150
       ],
       "camera": "STANDS",
       "seed": 4,
@@ -41,15 +42,15 @@
     },
     {
       "frames": [
-        4100,
-        4600
+        3150,
+        3650
       ],
       "camera": "SCOREBOARD"
     },
     {
       "frames": [
-        4600,
-        5850
+        3650,
+        3950
       ],
       "camera": "STANDS",
       "seed": 19,
@@ -62,15 +63,15 @@
     },
     {
       "frames": [
-        5850,
-        6450
+        3950,
+        4550
       ],
       "camera": "SCREEN_MAIN"
     },
     {
       "frames": [
-        6450,
-        7450
+        4550,
+        5550
       ],
       "camera": "PITCHSIDE",
       "seed": 6,
@@ -78,8 +79,8 @@
     },
     {
       "frames": [
-        7450,
-        8700
+        5550,
+        6800
       ],
       "camera": "GANTRY",
       "seed": 1,
