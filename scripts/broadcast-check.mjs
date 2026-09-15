@@ -37,6 +37,30 @@ const SHOTS = arg('shots');
 const out = arg('out');
 const ORIGIN = (arg('origin') || '').replace(/\/+$/, '') || null;
 
+/**
+ * How far off frame centre a point lands, as a fraction of the half-frame:
+ * 1 is exactly on the edge. The page's own framing — 16:9, `lookAt` levelling
+ * the horizon against world up — done in arithmetic so a claim about what the
+ * gantry can see does not need a browser.
+ */
+function ndcRadius(cam, pt) {
+  const f = [cam.lookAt[0] - cam.pos[0], cam.lookAt[1] - cam.pos[1], cam.lookAt[2] - cam.pos[2]];
+  const n = Math.hypot(...f);
+  for (let i = 0; i < 3; i++) f[i] /= n;
+  const r = [-f[2], 0, f[0]];                      // f x up, with up = (0,1,0)
+  const rn = Math.hypot(...r) || 1;
+  for (let i = 0; i < 3; i++) r[i] /= rn;
+  const u = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
+  const d = [pt[0] - cam.pos[0], pt[1] - cam.pos[1], pt[2] - cam.pos[2]];
+  const z = d[0] * f[0] + d[1] * f[1] + d[2] * f[2];
+  if (z <= 0) return Infinity;                      // behind the camera
+  const x = d[0] * r[0] + d[1] * r[1] + d[2] * r[2];
+  const y = d[0] * u[0] + d[1] * u[1] + d[2] * u[2];
+  const th = Math.tan((cam.fov * Math.PI) / 360);
+  return Math.max(Math.abs(x / (z * th * (16 / 9))), Math.abs(y / (z * th)));
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [];
 const check = (name, ok, detail = '') => {
   checks.push({ name, ok, detail });
@@ -314,10 +338,103 @@ try {
   const moving = matchList.segments
     .map((seg) => String(seg.camera).toLowerCase())
     .filter((name) => !venue.cameras?.[name] || ['heli', 'stands', 'pitchside'].includes(name));
+  // "Static" here is a property of the LIST — no orbit, no push, no handheld.
+  // The live director tightens and pans the gantry on top of it while play is
+  // on (see `followGantry`, and the bounds checked below); what this defends
+  // is that the list itself never asks for a moving shot during a match.
   check('every shot in the match cut-list is a static, authored camera',
     moving.length === 0,
     moving.length ? `these move or are not authored: ${[...new Set(moving)].join(', ')}`
                   : `${matchList.segments.length} shots, all from venue.json`);
+
+  // The build-up is the one time the screens ARE the picture, and the reason
+  // the pre-roll has a list of its own. Four fifths of it, or it is not one.
+  const preList = JSON.parse(readFileSync(join(PUBLIC_DIR, 'broadcast/preroll-cutlist.json'), 'utf8'));
+  const span = (seg) => seg.frames[1] - seg.frames[0];
+  const total = preList.segments.reduce((n, seg) => n + span(seg), 0);
+  const onScreens = preList.segments
+    .filter((seg) => ['screen_main', 'scoreboard'].includes(String(seg.camera).toLowerCase()))
+    .reduce((n, seg) => n + span(seg), 0);
+  check('the pre-roll list spends four fifths of itself on the screens',
+    total > 0 && onScreens / total >= 0.75,
+    `${onScreens} of ${total} frames = ${Math.round((onScreens / total) * 100)}% (${Math.round(total / (preList.fps || 50))}s round the loop)`);
+  const unknown = [...matchList.segments, ...preList.segments]
+    .map((seg) => String(seg.camera).toLowerCase())
+    .filter((name) => !venue.cameras?.[name] && !['heli', 'stands', 'pitchside', 'gantry', 'track'].includes(name));
+  check('every shot in both cut-lists names a camera that exists',
+    unknown.length === 0, unknown.length ? [...new Set(unknown)].join(', ') : 'all resolve');
+  check('the pre-roll list loops', preList.loop === true,
+    preList.loop === true ? 'a pre-roll it outlives holds no last framing' : 'NOT LOOPING — a long build-up would freeze on the last shot');
+
+  // ---- the tracking gantry, as arithmetic ---------------------------------
+  //
+  // Checked here rather than in the page because it IS arithmetic: a pure
+  // function of the base framing and where everybody is standing. This is
+  // RFL's own broadcast camera (`gauntlet/football.py`), so what is asserted
+  // is the shape of THEIR shot — the bias, the border, the clamp — not a
+  // framing we happen to like today.
+  const camSrc = readFileSync(join(PUBLIC_DIR, 'js/broadcast-cameras.js'), 'utf8');
+  const cams = await import(`data:text/javascript;base64,${Buffer.from(camSrc).toString('base64')}`);
+  {
+    const gBase = cams.CAMERAS.gantry(0, 0, {});
+    // A whole match's worth of arrangements: four robots and a ball anywhere
+    // on the 14 x 9 pitch, from a scrum on the centre spot to both ends at once.
+    const onPitch = (x, z) => [Math.max(-7, Math.min(7, x)), 0.7, Math.max(-4.5, Math.min(4.5, z))];
+    const arrangements = [];
+    for (let bx = -7; bx <= 7; bx += 1) for (let bz = -4.5; bz <= 4.5; bz += 1.5) {
+      arrangements.push({ ball: [bx, 0.12, bz], players: [onPitch(bx - 1, bz), onPitch(bx + 1, bz), onPitch(-bx, -bz), onPitch(0, 0)] });
+      arrangements.push({ ball: [bx, 0.12, bz], players: [onPitch(bx, bz), onPitch(bx - 0.5, bz + 0.5)] });
+    }
+    const shots = arrangements.map((a) => cams.framePlay(gBase, a));
+    const fovs = shots.map((c) => c.fov);
+    // The bias is checked against the mean the function was given rather than
+    // against a number: "0.45 of the play's own centre" is the property, and a
+    // magic 3.15 would only be right for as long as the pitch is 14 m long.
+    const biased = arrangements.map((a, i) => {
+      const w = [...a.players, a.ball, a.ball];
+      const mean = w.reduce((n, q) => n + q[0], 0) / w.length;
+      return { got: shots[i].aim[0], want: mean * 0.45, z: shots[i].aim[2],
+               wantZ: w.reduce((n, q) => n + q[2], 0) / w.length };
+    });
+    check('the tracking gantry aims where RFL\'s camera aims',
+      biased.every((b) => Math.abs(b.got - b.want) < 1e-6 && Math.abs(b.z - b.wantZ) < 1e-6)
+        && shots.every((c) => c.aim[1] === 0.45),
+      `${arrangements.length} arrangements: along the pitch, 0.45 of the mean of the players and the ball counted twice; across it, that mean unbiased; always 0.45 m above the turf`);
+    check('the tracking gantry stays inside RFL\'s lens range',
+      Math.min(...fovs) >= 38 - 1e-6 && Math.max(...fovs) <= 52 + 1e-6,
+      `${Math.min(...fovs).toFixed(1)}°–${Math.max(...fovs).toFixed(1)}° against their 38–52`);
+    // A wide that creeps spends bitrate on every pixel of every frame (RFL
+    // §2). The same arrangement twice must give the same frame, exactly.
+    const one = { ball: [2.1, 0.12, -1.3], players: [[1, 0.7, -1], [3, 0.7, -2]] };
+    const a1 = JSON.stringify(cams.framePlay(gBase, one));
+    const a2 = JSON.stringify(cams.framePlay(gBase, one));
+    check('play that has not moved gives a frame that has not moved', a1 === a2, a1 === a2 ? 'identical' : `${a1} vs ${a2}`);
+    // The border is the promise: "all players in shot" means nobody clipped to
+    // the edge of frame, which is what the 1.45 buys. It is a promise only
+    // while the lens is free — at RFL's 52° ceiling the clamp wins and play
+    // spread corner to corner does lose somebody, which is their choice and
+    // not a fault. So the check is made where the promise applies, and the
+    // ceiling cases are counted out loud rather than passed over.
+    const judged = arrangements.map((a, i) => ({
+      free: shots[i].fov < 52 - 1e-6,
+      worst: Math.max(...[...a.players, a.ball].map((q) => ndcRadius({ pos: gBase.pos, lookAt: shots[i].aim, fov: shots[i].fov }, q))),
+    }));
+    const clipped = judged.filter((j) => j.free && j.worst > 1);
+    const atCeiling = judged.filter((j) => !j.free);
+    check('every robot and the ball are inside the frame the lens chose',
+      clipped.length === 0,
+      clipped.length ? `${clipped.length} of ${judged.length} arrangements clip somebody with the lens still free`
+                     : `${judged.length - atCeiling.length} arrangements with the lens free, worst body at `
+                       + `${Math.round(Math.max(...judged.filter((j) => j.free).map((j) => j.worst)) * 100)}% of the half-frame`
+                       + `; ${atCeiling.length} at the 52° ceiling, where their clamp wins`);
+    // And the neutral framing still holds the whole marked area, which is the
+    // shot the §3 sightline is about.
+    const mid = cams.framePlay(gBase, { ball: [0, 0.12, 0], players: [[-1, 0.7, 0], [1, 0.7, 0]] });
+    const midCam = { pos: gBase.pos, lookAt: mid.aim, fov: mid.fov };
+    const worst = Math.max(...[[-7, 4.5], [7, 4.5], [-7, -4.5], [7, -4.5]].map(([cx, cz]) => ndcRadius(midCam, [cx, 0, cz])));
+    check('with play on the centre spot the shot is tighter than the locked wide',
+      mid.fov < gBase.fov, `${mid.fov.toFixed(1)}° against the locked ${gBase.fov}°, worst corner at ${(worst * 100).toFixed(0)}% of the half-frame`);
+  }
 
   lv = await openBroadcast({ liveMode: true });
   const sL = await lv.state();
@@ -344,6 +461,45 @@ try {
     !(sL.match?.source === 'schedule' && sL.silent === false),
     sL.match?.source === 'schedule' ? (sL.silent ? 'silent, as contracted' : 'DOUBLE AUDIO RISK') : 'no scheduled fixture on');
   check('the director is running', !!sL.director, sL.director ? `${sL.director.list} list, shot ${sL.director.shot}` : 'no director — a locked-off frame');
+  // THE STANDS HAD NOBODY IN THEM. `crowd` defaulted to 0 and RFL capture a
+  // bare /broadcast, so from the day the stream started every STANDS shot in
+  // the ambient list was a slow push across six hundred empty seats. Both
+  // halves are asserted, because either one alone is still a bad shot: there
+  // has to be a crowd, and the terraces the lists actually film have to be
+  // the ones it is sitting in.
+  check('the live feed has a crowd in it', (sL.crowd?.fans ?? 0) > 0,
+    sL.crowd ? `${sL.crowd.fans} fans of ${sL.crowd.seatsOffered} seats at density ${sL.crowd.density}` : 'NO CROWD — every stand shot is a shot of empty seats');
+  {
+    const occ = sL.director?.stands || [];
+    const NAMES = ['-x', '+x', '+z', '-z'];
+    const asked = [...JSON.parse(readFileSync(join(PUBLIC_DIR, 'broadcast/live-cutlist.json'), 'utf8')).segments, ...preList.segments]
+      .filter((seg) => String(seg.camera).toLowerCase() === 'stands')
+      .map((seg) => (seg.params?.side ?? 0) % 4);
+    const empty = [...new Set(asked)].filter((side) => (occ[side] ?? 0) < 12);
+    check('every terrace the cut-lists film has a crowd in it',
+      occ.length === 4 && empty.length === 0,
+      occ.length === 4
+        ? `${asked.length} stand shot(s) across ${[...new Set(asked)].length} terrace(s); fans per terrace ${NAMES.map((n, i) => `${n}:${occ[i]}`).join(' ')}`
+          + (empty.length ? ` — EMPTY: ${empty.map((i) => NAMES[i]).join(', ')} (the director will substitute, but the list should not ask)` : '')
+        : 'the director did not report stand occupancy');
+  }
+  // "NO MATCH SCHEDULED" is a true sentence and a dead screen, and for most of
+  // any day it was the only thing the big screen had to say: RFL publish a
+  // fixture close to its kick-off, so the feed spends hours carrying sixty
+  // replays and nothing upcoming. The channel does declare when it plays, and
+  // that is a real answer to the question the card exists to answer.
+  {
+    let sP = sL;
+    for (const until = Date.now() + 60000; Date.now() < until && !sP.match?.channel;) { await sleep(1000); sP = await lv.state(); }
+    const ch = sP.match?.channel;
+    const main = sP.match?.screens?.main || '';
+    const canSay = !!(ch?.slots || []).length || !!sP.match?.next;
+    check('the big screen says when the next match is, not that there is not one',
+      !canSay || /coming up|next slot/i.test(main),
+      ch ? `screen reads "${main}" — ${sP.match?.next ? `fixture ${sP.match.next.id}` : `no fixture listed, channel plays at ${(ch.slots || []).join(', ') || '(no slots declared)'}`}`
+         : 'the programme did not arrive within 60 s, so the card could not be judged');
+  }
+
   // A capture that reloads itself mid-run is a determinism bug; a live feed
   // that never reloads is a broadcast permanently one deploy behind. Both
   // halves asserted, because the wrong one is silent in each direction.
@@ -358,7 +514,6 @@ try {
   // The live page is where the city's own replay is mounted (now.json), so it
   // is the one place the boards, the bodies and the head-cam replay can be
   // exercised against a real bundle without naming one.
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check('the scorebug\'s crest manifest loaded', sL.crests?.manifest === 'ready',
     sL.crests ? `manifest ${sL.crests.manifest}, ${sL.crests.loaded} loaded, ${sL.crests.failed} failed` : 'no crests field');
   // Wait for whatever the city has put on to land: a 320 MB bundle takes a
@@ -367,6 +522,17 @@ try {
   for (const until = Date.now() + 150000; Date.now() < until && sM.match && sM.match.phase !== 'match' && sM.match.sdk !== 'failed' && !(sM.match.errors || []).length;) {
     await sleep(2000);
     sM = await lv.state();
+  }
+  {
+    // What the city is showing, and how it decided. `now.json` can name one
+    // bundle or carry the standing instruction `"latest"`, which every client
+    // resolves against the same feed — the difference between a stadium that
+    // moves on when a new match is published and one that loops whatever was
+    // pinned last, which is what m28 did for a day with m32 and m33 behind it.
+    const now = sM.match?.now;
+    console.log(`  note  the stadium is showing: ${now?.follow === 'latest'
+      ? `the latest published fixture — ${now.id || sM.match?.latest?.bundleId || '(not resolved yet)'}`
+      : now?.bundle ? `a pinned bundle, ${now.title || now.bundle}` : 'nothing'}`);
   }
   if (sM.match?.phase === 'match') {
     // The atlas loads once per module, asynchronously, over the same connection
@@ -442,19 +608,66 @@ try {
     // (CI's is software) changes nothing about the answer.
     const g0 = (sM.match.goals || [])[0];
     if (g0 && sM.match.source === 'now' && sM.match.replayCam && bd?.ok) {
+      // The seek lands the programme on the hold; the replay appears on the
+      // page's NEXT rendered frame, and how long that takes is not a property
+      // of anything being tested. This runner has been measured at
+      // `state().pace` 0.017 under load — one frame every few seconds — so the
+      // patience is 30 s rather than 6. A shorter one failed here, on working
+      // code, because Spotlight was indexing.
+      const settle = async (want) => {
+        for (let i = 0; i < 120; i++) { const x = await lv.state(); if (want(x)) return x; await sleep(250); }
+        return null;
+      };
       await lv.evaluate(`window.rflBroadcast.seekMatch(${g0.t})`);
-      let seen = null;
-      for (let i = 0; i < 24 && !seen; i++) { await sleep(250); const x = await lv.state(); if (x.match?.replay) seen = x; }
+      const seen = await settle((x) => x.match?.replay);
       check('a goal is run again from the scorer\'s head',
         !!seen && seen.director?.shot === 'headcam' && !!seen.match?.headcam && seen.scorebug?.replay === true,
         seen ? `goal at ${g0.t}s by ${g0.player}: replay t=${seen.match.replay.t} progress ${seen.match.replay.progress}, shot ${seen.director?.shot}, bug ${seen.scorebug?.replay ? 'REPLAY' : 'no tag'}, score ${seen.scorebug?.a}-${seen.scorebug?.b}`
-             : 'no replay state within 6 s of seeking onto the hold');
+             : 'no replay state within 30 s of seeking onto the hold');
       await lv.evaluate(`window.rflBroadcast.seekMatch(${g0.t + 2})`);
-      let back = null;
-      for (let i = 0; i < 24 && !back; i++) { await sleep(250); const x = await lv.state(); if (!x.match?.replay && x.director?.shot !== 'headcam') back = x; }
-      check('and the picture is handed back after it', !!back, back ? `shot ${back.director?.shot}, bug ${back.scorebug?.replay ? 'still REPLAY' : 'clear'}` : 'still on the head cam 6 s after the hold');
+      const back = await settle((x) => !x.match?.replay && x.director?.shot !== 'headcam');
+      check('and the picture is handed back after it', !!back, back ? `shot ${back.director?.shot}, bug ${back.scorebug?.replay ? 'still REPLAY' : 'clear'}` : 'still on the head cam 30 s after the hold');
     } else {
       console.log(`  note  replay not exercised: ${!g0 ? 'no goals in this bundle' : sM.match.source !== 'now' ? `source ${sM.match.source}` : !sM.match.replayCam ? 'replay cam not armed' : 'bodies unverified'}`);
+    }
+    // ---- the buzzer is not the end of the play --------------------------
+    //
+    // The half-time whistle arrives with the ball still travelling — a shot,
+    // a clearance, a save — and the director used to cut to the helicopter on
+    // it. RFL already measure the difference: every buzzer carries
+    // `play_end_t` beside `"ended": "ball at rest"`, five seconds later on
+    // m28. Seek onto the whistle and watch which list is in force across that
+    // span. A seek, not a wait, so a software renderer changes nothing about
+    // the answer.
+    const bz = (sM.match.clockPlan?.buzzers || []).find((b) => Number.isFinite(b?.t) && b.play_end_t > b.t);
+    if (bz && sM.match.source === 'now') {
+      // SEEKS, NOT WAITS, either side of the dead ball. Waiting through it
+      // needs the programme to advance five seconds, and CI renders in
+      // software: `state().pace` on this runner has been measured at 0.017,
+      // where five seconds of match is five minutes of wall clock. A check
+      // whose answer depends on how fast the runner paints is a check that
+      // will one day be green for the wrong reason, or red for one.
+      const at = async (t, want) => {
+        await lv.evaluate(`window.rflBroadcast.seekMatch(${t})`);
+        for (let i = 0; i < 40; i++) {
+          const x = await lv.state();
+          if (x.scorebug && Math.abs(x.scorebug.t - t) < 3 && x.scorebug.inPlay === want) return x;
+          await sleep(250);
+        }
+        return await lv.state();
+      };
+      const dead = await at(bz.t + 0.3, true);
+      check('the wide is held past the buzzer until the ball is at rest',
+        dead.scorebug?.playing === false && dead.scorebug?.inPlay === true && dead.director?.list === 'match',
+        `${bz.kind} buzzer at ${bz.t}s, ball at rest ${bz.play_end_t}s: at t=${dead.scorebug?.t} the clock reads ${dead.scorebug?.tag} `
+        + `(playing ${dead.scorebug?.playing}, ball still live ${dead.scorebug?.inPlay}) and the director is on the ${dead.director?.list} list`);
+      const rest = await at(bz.play_end_t + 2, false);
+      check('and handed to the ambient list once it is',
+        rest.scorebug?.inPlay === false && rest.director?.list === 'ambient',
+        `at t=${rest.scorebug?.t}, two seconds past the ball at rest: ball live ${rest.scorebug?.inPlay}, list ${rest.director?.list}`
+        + (rest.director?.settling ? ' — still holding on our own ball measurement' : ''));
+    } else {
+      console.log(`  note  the buzzer hold was not exercised: ${bz ? `source ${sM.match.source}` : 'this bundle\'s clock carries no play_end_t'}`);
     }
     // ---- a live fixture, rehearsed --------------------------------------
     // The scheduled path airs three times a day and CI is not there for any
@@ -478,7 +691,7 @@ try {
       const pre = await rehearse(60);
       check('a live fixture 60 s into its programme is in the pre-roll, on the venue\'s own screens',
         pre.ok === true && pre.x.match?.drive === 'wall' && pre.x.scorebug?.tag === 'Kick-off' && pre.x.scorebug?.live === true
-          && pre.x.director?.list === 'ambient' && !(pre.x.match?.docks || []).some((d) => d.attached) && /coming up/i.test(pre.x.match?.screens?.main || ''),
+          && pre.x.director?.list === 'preroll' && !(pre.x.match?.docks || []).some((d) => d.attached) && /coming up/i.test(pre.x.match?.screens?.main || ''),
         `drive ${pre.x?.match?.drive}, tag ${pre.x?.scorebug?.tag} ${pre.x?.scorebug?.clock}, live ${pre.x?.scorebug?.live}, list ${pre.x?.director?.list}, docks ${JSON.stringify((pre.x?.match?.docks || []).map((d) => d.attached))}, screen "${pre.x?.match?.screens?.main}"`);
       const play = await rehearse(200);
       check('at 200 s it has kicked off: the publisher\'s panels, the gantry, the premix 200 s in',
