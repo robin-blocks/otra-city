@@ -555,7 +555,22 @@ try {
     // the instance CI runs: neither CI invocation names a bundle, so a check
     // in the capture block would never guard anything. It walks the real scene
     // graph, so it fails if something reaches the stage later and is missed.
-    const tm = await lv.evaluate(`(() => {
+    //
+    // READ IT TWICE, because a single read has a one-frame false positive.
+    // after-tonemap.js clears the flag at the TOP of each pass render, before
+    // it draws anything — so a material can never actually be drawn tone
+    // mapped. But the SDK parents meshes into the stage asynchronously as their
+    // content loads (its html/media components are stock MeshBasicMaterials),
+    // and a read that lands between "mesh added" and "next pass render" sees a
+    // flag that is about to be cleared. That is what turned main red on
+    // 2026-09-15 with one unnamed MeshBasicMaterial out of 436, twice, on a
+    // commit whose own PR run had passed: the runner is slow enough to widen
+    // the window, and it reproduces on neither this Mac nor the PR.
+    //
+    // This cannot hide a real miss. A material the pass never prepares — one
+    // parented somewhere no root covers — stays flagged for every frame after,
+    // so it survives the step; only the one-frame window clears.
+    const readToneMapped = () => lv.evaluate(`(() => {
       const { scene } = window.rflBroadcast.three;
       const stage = scene.getObjectByName('4dgsx-stage');
       if (!stage) return { error: 'no 4dgsx-stage in the scene' };
@@ -576,8 +591,14 @@ try {
       });
       return { materials, still: [...new Set(still)] };
     })()`);
+    let tm = await readToneMapped();
+    let settled = false;
+    // NOT step(): this is the live feed, and step() throws on it by design —
+    // it paces itself from the wall clock, so a sleep is what advances a
+    // frame here. 250 ms is a dozen of them at the pass's rate.
+    if (!tm.error && tm.still.length) { await sleep(250); tm = await readToneMapped(); settled = true; }
     check('nothing drawn after the tone mapping is tone mapped again', !tm.error && tm.still.length === 0,
-      tm.error || `${tm.materials} materials in the stage, ${tm.still.length ? `still tone mapped: ${tm.still.join(', ')}` : 'none tone mapped'}`);
+      tm.error || `${tm.materials} materials in the stage, ${tm.still.length ? `still tone mapped after a frame: ${tm.still.join(', ')}` : `none tone mapped${settled ? ' (one arrived mid-frame and was cleared by the next pass)' : ''}`}`);
     // The bodies verify a second or two after the mount, once scene.json is read.
     for (const until = Date.now() + 15000; Date.now() < until && !sM.match?.bodies;) { await sleep(500); sM = await lv.state(); }
     const bd = sM.match?.bodies;
