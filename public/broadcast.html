@@ -1100,6 +1100,12 @@ window.rflBroadcast = {
           // how the clock is driven: 'wall' (a live fixture through its
           // programme), 'dt' (a replay), null (the publisher's own)
           drive: m.drive ?? null,
+          // where the time between `startsAt` and this picture went, in ms:
+          // `seen` (their cache + the core fetch + the SDK's parse), `adopt`
+          // (our own unlocked copy of the same bundle), `up` (the total, which
+          // is what a stopwatch outside sees) and `docAge` (how stale the
+          // programme was when the fixture was first seen live in it)
+          mount: m.mount ?? null,
           // the publisher's panels on the venue's screens: which slots, and whether attached
           docks: m.docks ?? [],
           replay: m.replay ?? null,

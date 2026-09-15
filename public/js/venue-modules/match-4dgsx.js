@@ -293,6 +293,28 @@ export function create(ctx) {
     // its programme on the wall clock), 'dt' (a replay, on our frame time),
     // or null (the publisher's own clock)
     drive: null, programmeT: null,
+    // HOW A SCHEDULED FIXTURE GOT ON THE PITCH, in milliseconds.
+    //
+    // RFL timed the m35 mount from outside on 2026-09-15 — 100 s between
+    // `startsAt` and the picture changing — and read it as the bundle
+    // download. It is not: 38 MB of a 290 MB bundle blocks a mount and the
+    // rest streams in behind it. Neither of us could say where the 100 s
+    // went, because nothing counted it. This counts it.
+    //
+    // `seen` is `startsAt` to the SDK handing over a mounted stage — their
+    // edge-cached programme, then the core fetch, then a parse. `adopt` is
+    // our own unlocked copy of the same bundle: immutable URLs, so a cache
+    // hit, but a second parse and upload. `up` is `startsAt` to the stage
+    // going up, which is what can be timed from outside. `docAge` is how old
+    // the programme document was when the live fixture was first seen in it,
+    // by our clock — the feed's edge serves a cached copy, measured at 60.0 s
+    // and 93.0 s old on two cold loads, and for that long a poll at kick-off
+    // is answered with a fixture that has not kicked off.
+    // `ours` says which stage ended up on the pitch: our copy, or theirs
+    // because our mount failed. Under `rehearseLive` only `adopt` is a
+    // measurement — the harness chooses `startsAt`, so `seen` and `up` carry
+    // whatever offset the test asked for.
+    mount: null,
   };
 
   // Screens get unlit materials that keep the authored plate as their map:
@@ -322,8 +344,17 @@ export function create(ctx) {
   let goalUntil = -1;
   let boardTimer = 0;
   let simTime = 0;
-  let skewMs = 0;
-  const now = () => Date.now() - skewMs;
+  // How old the last programme document was when it arrived, in ms. NOT a
+  // clock correction, which is what it used to be: the feed's `now` is the
+  // moment a cached response was generated, and that cache serves stale —
+  // measured on 2026-09-15 at 60.0 s and 93.0 s on two cold page loads, our
+  // clock agreeing with their `date` header to 0.1 s. Correcting countdowns by
+  // it put the big screen up to a minute and a half behind the kick-off it was
+  // counting down to. The wall clock was already the right answer for driving
+  // the programme (see `wallProgrammeT`); it is the right answer here too, and
+  // the number is kept because `state.mount` reports it.
+  let docAgeMs = 0;
+  const now = () => Date.now();
 
   // One line of text no wider than `maxW`: the font shrinks until the line
   // fits, and past `minSize` the text is cut with an ellipsis instead. The
@@ -983,16 +1014,26 @@ export function create(ctx) {
     sdkStage = st;
     state.phase = 'loading';
     paintBoard();
+    // The stage is already here, so everything before this line — their
+    // cache, the fetch, the SDK's parse — is spent. See `state.mount`.
+    const seen = Date.now() - startsAtMs;
+    const docAge = Math.round(docAgeMs);
+    const t0 = performance.now();
+    const landed = (ours) => {
+      state.mount = { seen, adopt: Math.round(performance.now() - t0), up: Date.now() - startsAtMs, docAge, ours };
+    };
     try {
       const own = await gsx.mount({ bundleUrl: url, autoplay: false, splats: useSplats });
       if (disposed || sdkStage !== st) { own.dispose(); return; }   // the fixture ended while we mounted
       ownStage = own;
       wallDrive = { startsAtMs, preS: PRE_ROLL_S };
       programmeT = wallProgrammeT();
+      landed(true);
       onMount(own, item, 'schedule', url);
     } catch (e) {
       state.errors.push(`live mount: ${e.message || e}`);
       sdkStage = null;
+      landed(false);
       onMount(st, item, 'schedule');          // the publisher's clock beats an empty pitch
     }
   }
@@ -1239,7 +1280,7 @@ export function create(ctx) {
 
   function onProgramme(p) {
     if (!p?.items) return;
-    skewMs = Date.now() - Date.parse(p.now || new Date().toISOString());
+    docAgeMs = Date.now() - Date.parse(p.now || new Date().toISOString());
     state.channelTitle = p.channel?.title || null;
     // The whole channel block, not just its name. `slots` and `timezone` are
     // what the screens fall back to when the feed lists no fixture at all —
@@ -1263,10 +1304,24 @@ export function create(ctx) {
     // RFL made the bundle available rather than when the match was played.
     const newest = p.items.filter((i) => i.state === 'replay' && i.bundleUrl)
       .sort((a, b) => String(b.publishedAt || b.startsAt || '').localeCompare(String(a.publishedAt || a.startsAt || '')))[0] || null;
+    const hadLatest = !!state.latestReplay;
     state.latestReplay = newest
       ? { bundleId: newest.bundleId, bundleUrl: newest.bundleUrl, title: newest.title || null,
           publishedAt: newest.publishedAt || null, startsAt: newest.startsAt || null }
       : null;
+    // THE FIRST PROGRAMME IS THE THING `"latest"` WAS WAITING FOR.
+    //
+    // `activate()` reads `now.json` immediately and then every 60 s. The first
+    // read happens before the SDK has loaded, let alone polled, so a document
+    // that says `"bundle": "latest"` resolves to nothing and the stadium waits
+    // a full minute for a tick to tell it what it could have known three
+    // seconds in. Measured on a cold page: the programme landed at 3.3 s and
+    // the match mounted at 63.3 s, with an empty pitch in between — for a
+    // visitor walking into the bowl, and for /broadcast every time it reloads
+    // itself onto a new build. Once, when `latest` first resolves.
+    // `!coarse` is load-bearing: a phone is here through `pollProgrammeOnly`,
+    // and it gets the board rather than a 38 MB match on purpose.
+    if (!hadLatest && state.latestReplay && cfg.now && !cfg.bundle && !coarse && !stage && !mountingNow) pollNow();
     paintBoard();
     paintIdleScreens();
   }
