@@ -75,7 +75,7 @@ import { createVenues } from '/js/venues.js';
 import { createAfterToneMap } from '/js/after-tonemap.js';
 import { createDoorSystem } from '/js/doors.js';
 import { createCrowd } from '/js/crowd.js';
-import { CAMERAS, createTrack } from '/js/broadcast-cameras.js';
+import { CAMERAS, createTrack, framePlay, GANTRY_AIM_LAG_S, GANTRY_FOV_LAG_S } from '/js/broadcast-cameras.js';
 import { createScorebug } from '/js/scorebug.js';
 
 const FPS = 50;                 // the brief's timebase; one step is 20 ms
@@ -84,7 +84,7 @@ const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
 // page's behaviour changes. It is reported in `state().build` and on the note
 // line, so "the deployed page still says X" is settled by reading the page,
 // not by comparing memories of deploys.
-const BUILD = '2026-09-14c';
+const BUILD = '2026-09-15a';
 
 // Errors are evidence: a silent failure films a black hour, so every one is
 // kept for `state()`, echoed to the console the harness reads, and shown.
@@ -139,7 +139,17 @@ const capture = params.get('capture') === '1' || liveParam === '0';
 const live = !capture;
 const liveCap = Math.max(1, Math.min(256, Number(liveParam) > 1 ? Number(liveParam) : 32));
 
-const crowdDensity = params.has('crowd') ? Math.max(0, Math.min(1, num('crowd', 0))) : 0;
+// THE LIVE FEED HAS A CROWD, AND USED NOT TO.
+//
+// `crowd` defaulted to 0 and the URL RFL capture is a bare
+// https://otra.city/broadcast — so every stand shot in the ambient list was a
+// slow push across six hundred empty seats, for as long as the stream has
+// existed. A deterministic capture still gets nothing unless it asks: a
+// harness comparing runs against footage filmed before today should not have
+// the frame change under it because a default moved. `?crowd=0` still means
+// an empty bowl in either mode.
+const LIVE_CROWD = 0.5;
+const crowdDensity = params.has('crowd') ? Math.max(0, Math.min(1, num('crowd', 0))) : (live ? LIVE_CROWD : 0);
 const timeofday = params.has('timeofday') ? Math.max(0, Math.min(24, num('timeofday', 0))) : null;
 let camtrackUrl = params.get('camtrack') ? httpsOnly(params.get('camtrack')) : null;
 if (params.get('camtrack') && !camtrackUrl) fail('camtrack', 'must be an https URL; ignored');
@@ -152,6 +162,7 @@ if (params.get('camtrack') && !camtrackUrl) fail('camtrack', 'must be an https U
 const autoDirect = live && !camtrackUrl && !params.get('camera');
 const AMBIENT_CUTLIST = '/broadcast/live-cutlist.json';
 const MATCH_CUTLIST = '/broadcast/match-cutlist.json';
+const PREROLL_CUTLIST = '/broadcast/preroll-cutlist.json';
 
 // Anything the brief names that this build still does not honour is reported
 // rather than ignored — a capture that silently got an empty crowd would be
@@ -235,7 +246,7 @@ let crowd = null, track = null, lastTrackCam = null;
 // list was cut to, so each one restarts at its own first shot instead of
 // joining wherever its loop happened to be — the change of programme reads as
 // a cut, which is what it is.
-let ambientCut = null, matchCut = null, cutNow = null, cutFrom = 0;
+let ambientCut = null, matchCut = null, prerollCut = null, cutNow = null, cutFrom = 0;
 // Where the live feed started counting, so `state().pace` can say whether
 // simulated time is keeping up with the wall. See the comment on the loop.
 let livePaceFrom = null;
@@ -247,7 +258,7 @@ let feedTex = null, feedMesh = null;
 // The broadcast graphics. Live only: a deterministic capture would have to
 // reproduce the clock exactly, and the clock comes off the publisher's stage.
 const scorebug = live ? createScorebug({ width: W, height: H }) : null;
-const feedStat = { wanted: false, mesh: null, slot: null, attached: false, copies: 0, error: null };
+const feedStat = { wanted: false, mesh: null, slot: null, attached: false, yielded: false, copies: 0, error: null };
 
 async function boot() {
   const street = withStreet ? await loadStreet(scene) : null;
@@ -321,6 +332,7 @@ async function boot() {
     // goal of a live match.
     try { ambientCut = await loadTrack(AMBIENT_CUTLIST); } catch (e) { fail('cutlist', e); }
     try { matchCut = await loadTrack(MATCH_CUTLIST); } catch (e) { fail('cutlist', e); }
+    try { prerollCut = await loadTrack(PREROLL_CUTLIST); } catch (e) { fail('cutlist', e); }
     cutNow = ambientCut;
   }
 
@@ -404,7 +416,7 @@ async function startLive() {
     // one rAF is not one frame at 50 fps, and a cut-list keyed to the frame
     // number would run 20% fast on a 60 Hz screen and stall in a background tab.
     frame = Math.round(simT * FPS);
-    direct();
+    direct(dt);
     applySound();
     updateFeedScreen();
     draw();
@@ -546,11 +558,20 @@ function updateFeedScreen() {
   if (!live) return;
   ensureFeed();
   if (!feedMesh || !feedTex) return;
-  const onAir = matchState()?.phase === 'match';
-  const want = onAir ? feedTex : null;
+  const m = matchState();
+  const onAir = m?.phase === 'match';
+  // THE BUILD-UP AND THE OUTRO BELONG TO THE MODULE, not to the feed. Through
+  // those the module has the venue's own card on this screen — who is playing
+  // and how long until the whistle — and the director spends four fifths of
+  // the pre-roll framing it. Painting the broadcast over it would put a
+  // picture of the stadium where the countdown should be, and the two would
+  // fight for the material four times a second.
+  const own = m?.bug?.preroll === true || (m?.bug?.over === true && m?.bug?.inPlay === false);
+  const want = onAir && !own ? feedTex : null;
   // Between matches the module paints its own card here; leave it alone.
   if (want && feedMesh.material.map !== feedTex) { feedMesh.material.map = feedTex; feedMesh.material.needsUpdate = true; }
   feedStat.attached = feedMesh.material.map === feedTex;
+  feedStat.yielded = !!own;
 }
 
 /**
@@ -609,15 +630,61 @@ function watchForNewBuild({ everyMs = 5 * 60 * 1000 } = {}) {
       // What actually matters is not interrupting PLAY. Every programme has
       // seams that are not play — the build-up, half time, the outro — and a
       // looping replay passes through them once a cycle, so the reload lands
-      // within a loop instead of never. `bug.playing` is the publisher's own
-      // clock truth, and it is false in all of them.
+      // within a loop instead of never. `bug.inPlay` is the publisher's own
+      // truth about it — their clock, extended across the seconds between a
+      // buzzer and their own "ball at rest" — and it is false in all of them.
       const m = matchState();
-      if (m?.phase === 'match' && m?.bug?.playing !== false) return;
+      if (m?.phase === 'match' && m?.bug?.inPlay !== false) return;
       updater.reloading = true;
       console.log('/broadcast: the page changed and the pitch is empty — reloading');
       location.reload();
     }, everyMs);
   });
+}
+
+/**
+ * What the LIVE DIRECTOR does to a shot the cut-list resolved.
+ *
+ * Only here. A harness that asks for a camera or hands us a track file gets
+ * exactly what it asked for — that is what `--camera gantry` and RFL's own
+ * `camtrack` mean, and the §3 sightline is proved against the authored
+ * gantry, unmoved. Two substitutions, both of them things a gallery does:
+ *
+ *   GANTRY  pans and zooms to hold the play, from a position that never
+ *           moves. A locked wide of two robots in a fourteen-metre frame is
+ *           not a broadcast, and this is RFL's own camera rather than our
+ *           impression of it — see `framePlay`; the easing is `easeGantry`.
+ *
+ *   STANDS  is pointed at a terrace with people in it, or dropped. The shot
+ *           is a slow push in to about nine metres: with nobody there it is
+ *           twenty-five seconds of empty seats, which is what the stream has
+ *           been carrying. If no terrace has a crowd worth filming, the
+ *           segment falls back to the pitchside handheld, which is a shot
+ *           about the ground rather than about the people in it.
+ */
+function directed(c) {
+  if (!c || !autoDirect) return c;
+  if (c.camera === 'gantry' && gantryAim && gantryFov !== null) {
+    // The position never moves — a real gantry pans and zooms from one place,
+    // which is the whole point of RFL's camera. Only the aim and the lens,
+    // both eased in `easeGantry`, which is the one place that knows how long
+    // the frame took; this only spends them.
+    return { ...c, lookAt: gantryAim.map((v) => +v.toFixed(3)), fov: +gantryFov.toFixed(3) };
+  }
+  if (c.camera === 'stands') {
+    const occ = standOccupancy();
+    const asked = (c.params?.side ?? 0) % 4;
+    if (occ[asked] >= STAND_MIN_FANS) return c;
+    let best = 0;
+    for (let i = 1; i < 4; i++) if (occ[i] > occ[best]) best = i;
+    if (occ[best] >= STAND_MIN_FANS) {
+      return { ...CAMERAS.stands(c.t, c.seed, { ...c.params, side: best }),
+               segment: c.segment, camera: 'stands', standSide: best };
+    }
+    return { ...CAMERAS.pitchside(c.t, c.seed, {}),
+             segment: c.segment, camera: 'pitchside', insteadOf: 'stands' };
+  }
+  return c;
 }
 
 /** A camera authored in venue.json, by either spelling. Null if there is none. */
@@ -659,6 +726,62 @@ let goalCut = false;
 // scorer's head. Once, on the live feed only: a capture must not rewind.
 let replayArmed = false;
 
+// ---- the director's own memory --------------------------------------------
+//
+// Every camera in broadcast-cameras.js is a pure function of (frame, seed,
+// params), which is what makes a capture repeat. What follows is not: a hold
+// that outlasts a whistle and an aim that eases toward the ball both carry
+// state from one frame to the next. They are only ever read on the LIVE feed,
+// which is not reproducible by construction — a deterministic capture takes
+// none of this path — so the state lives here rather than in that module.
+
+// THE BUZZER IS NOT THE END OF THE PLAY. The half-time and full-time whistles
+// arrive with the ball still travelling — a shot, a clearance, a save — and
+// cutting to the helicopter on the buzzer takes the picture off the one thing
+// the viewer is watching.
+//
+// RFL's own clock answers this (`play_end_t`, "ball at rest") and the module
+// reads it, so this is only the FALLBACK, for a bundle that carries no such
+// field: hold the wide while the ball is still moving, and give up after
+// BALL_SETTLE_S so a bad measurement cannot hold it for ever.
+const BALL_STILL_MS = 0.6;      // metres a second; below this the ball has stopped
+const BALL_SETTLE_S = 6;        // and this is the longest the wide is held for it
+let settleUntil = 0;            // simulated time the hold expires, or 0 for not holding
+let wasLive = false;
+
+// The tracking gantry's aim and lens, easing toward what `framePlay` says the
+// operator is reaching for. Two first-order lags at RFL's own constants: "a
+// camera that snaps looks like a bug, and one that lags looks like a camera
+// operator."
+let gantryAim = null;
+let gantryFov = null;
+
+/**
+ * How many fans are sitting in each of the four terraces a STANDS shot frames,
+ * in the order `CAMERAS.stands` numbers them: -x, +x, +z, -z.
+ *
+ * Computed from the venue's own seat list and the seats the crowd actually
+ * took, so it stays right when the density changes, when the cap bites, or
+ * when the bowl is re-seated. Each seat belongs to whichever axis it is
+ * further out along, which is the same rule that puts the four anchors where
+ * they are.
+ */
+let standFans = null;
+function standOccupancy() {
+  if (standFans) return standFans;
+  standFans = [0, 0, 0, 0];
+  const seats = def?.seats || [];
+  for (const i of crowd?.seatsTaken || []) {
+    const st = seats[i];
+    if (!st) continue;
+    standFans[Math.abs(st[0]) > Math.abs(st[2]) ? (st[0] < 0 ? 0 : 1) : (st[2] > 0 ? 2 : 3)] += 1;
+  }
+  return standFans;
+}
+// Below this a slow push across a terrace is a shot of furniture. Twelve is
+// about what fills the frame of a 30° lens pushed in to 9 m.
+const STAND_MIN_FANS = 12;
+
 /**
  * Whether this page should make a sound — decided by the city, not the URL.
  *
@@ -683,7 +806,7 @@ function wantSound() {
   return m?.source === 'now' && m?.now?.audio === true;
 }
 
-function direct() {
+function direct(dt = 0) {
   if (!autoDirect) return;
   if (live && !replayArmed) {
     const mod = venues?.module?.(wantVenue, 'match-4dgsx');
@@ -694,12 +817,59 @@ function direct() {
   // RFL's §4: during play, the gantry essentially throughout — two-a-side robot
   // football is small in frame and every cut away costs the viewer the thread.
   // Half time and full time are the natural place for the stands and the
-  // aerial, so the intervals get the ambient list back. `bug.playing` is the
-  // publisher's own clock truth, derived from their buzzers.
-  const inPlay = onAir && matchState()?.bug?.playing !== false;
-  const want = (inPlay ? matchCut : ambientCut) || ambientCut || matchCut;
+  // aerial, so the intervals get the ambient list back.
+  //
+  // `inPlay`, not `playing`: the clock stops at the buzzer and the ball does
+  // not. Their buzzers carry their own "ball at rest" and the module reads it,
+  // so the wide is held across the dead ball by the publisher's measurement.
+  const ballLive = onAir && m?.bug?.inPlay !== false;
+  // And a hold of our own after that, for a bundle whose clock block carries
+  // no `play_end_t` — nothing then distinguishes the buzzer from the end of
+  // the play except watching the ball. A ball we cannot measure reads as
+  // stopped, so the director behaves exactly as it did before this existed
+  // rather than holding the wide on a guess.
+  if (ballLive) settleUntil = 0;
+  else if (onAir && wasLive) settleUntil = simT + BALL_SETTLE_S;
+  wasLive = ballLive;
+  const rolling = (m?.ball?.speed ?? 0) > BALL_STILL_MS;
+  if (settleUntil && (!rolling || simT >= settleUntil)) settleUntil = 0;
+  const inPlay = ballLive || settleUntil > 0;
+  // The build-up is neither play nor between matches: the venue's own screens
+  // are on the docks, they are carrying the countdown, and that is what the
+  // picture should mostly be. See preroll-cutlist.json.
+  const preroll = onAir && m?.bug?.preroll === true && !inPlay;
+  const want = (inPlay ? matchCut : preroll ? (prerollCut || ambientCut) : ambientCut)
+    || ambientCut || matchCut;
   if (want && want !== cutNow) { cutNow = want; cutFrom = frame; }
   goalCut = onAir && m?.board === 'GOAL' && !!namedCamera('scoreboard');
+  easeGantry(dt, m);
+}
+
+/**
+ * Where the gantry is looking and how tight it is, eased toward what
+ * `framePlay` says the operator is reaching for.
+ *
+ * This is the half of RFL's camera that cannot live in broadcast-cameras.js:
+ * a lag carries state from one frame to the next, and nothing in that module
+ * ever does. The lens is eased more slowly than the aim, which is their
+ * choice and a good one — a zoom that answers every clearance pumps, and a
+ * pumping wide is worse than a locked one.
+ *
+ * With no match on the pitch, or a bundle whose bodies did not verify, there
+ * is nothing to frame and the shot falls back to the locked gantry.
+ */
+function easeGantry(dt, m) {
+  const want = m?.phase === 'match' ? framePlay(CAMERAS.gantry(0, 0, {}), m?.play || {}) : null;
+  if (!want) { gantryAim = null; gantryFov = null; return; }
+  if (!gantryAim) { gantryAim = want.aim.slice(); gantryFov = want.fov; return; }
+  // Lags in SECONDS, not per frame. RFL's are per frame at a guaranteed 50,
+  // which this page is not: it paces itself from the wall clock, and their own
+  // capture machine has been measured painting at a sixth of real time. A
+  // per-frame constant there would make a third-of-a-second swing take two.
+  const ka = 1 - Math.exp(-Math.max(0, dt) / GANTRY_AIM_LAG_S);
+  const kf = 1 - Math.exp(-Math.max(0, dt) / GANTRY_FOV_LAG_S);
+  for (let i = 0; i < 3; i++) gantryAim[i] += (want.aim[i] - gantryAim[i]) * ka;
+  gantryFov += (want.fov - gantryFov) * kf;
 }
 
 /** Follow the city's decision about sound. Called on the same tick as the director. */
@@ -741,7 +911,7 @@ function cameraAt(name, frameNo) {
     const c = cut.at(track ? frameNo : frameNo - cutFrom);
     // Past the end of the track the last segment's final framing is held,
     // rather than snapping somewhere arbitrary mid-capture.
-    if (c) { lastTrackCam = c; return c; }
+    if (c) { const d = track ? c : directed(c); lastTrackCam = d; return d; }
     if (lastTrackCam) return lastTrackCam;
   }
   if (ANIMATED.has(key)) return CAMERAS[key](t, seed, {});
@@ -944,6 +1114,12 @@ window.rflBroadcast = {
           next: m.next ? { id: m.next.bundleId, startsAt: m.next.startsAt } : null,
           // what the city says is on, the sound switch included
           now: m.now ?? null,
+          // the channel block behind the screens: its title, its timezone and
+          // the slots it plays in, which is what the big screen falls back to
+          // when the feed lists no fixture at all
+          channel: m.channel ?? null,
+          // what `now.json`'s "latest" resolves to today
+          latest: m.latestReplay ?? null,
           // how many times a looping replay has been round. Reported because
           // it was not, which made the loop look broken when it was working:
           // the module counted, the page never said.
@@ -962,7 +1138,15 @@ window.rflBroadcast = {
           replayCam: m.replayCam === true,
           boards: m.boards ?? null,
           bodies: m.bodies ?? null,
+          // where the ball is and how fast, in venue-local metres: what the
+          // gantry follows and what the buzzer hold waits on
+          ball: m.ball ?? null,
+          // every robot and the ball, which is what the gantry frames
+          play: m.play ?? null,
           goals: m.goals ?? [],
+          // halves and buzzers, `play_end_t` included — the publisher's own
+          // "ball at rest" after each whistle
+          clockPlan: m.clockPlan ?? null,
           // the publisher's canvas sprites, and how many times one was
           // re-allocated because its canvas changed size (see the module)
           labels: m.labels ?? null,
@@ -987,8 +1171,19 @@ window.rflBroadcast = {
       // has seen one it is waiting for an empty pitch to take
       updater: live ? { ...updater } : null,
       director: autoDirect
-        ? { list: cutNow === matchCut ? 'match' : 'ambient', goal: goalCut,
-            shot: lastTrackCam ? lastTrackCam.camera : null }
+        ? { list: cutNow === matchCut ? 'match' : cutNow === prerollCut ? 'preroll' : 'ambient',
+            goal: goalCut,
+            shot: lastTrackCam ? lastTrackCam.camera : null,
+            // the wide being held past the buzzer while the ball is still going
+            settling: settleUntil > 0,
+            // where the gantry is looking and how tight it is, so a viewer of
+            // the state can tell a tracking wide from a locked one
+            gantry: gantryAim ? { aim: gantryAim.map((v) => +v.toFixed(2)), fov: gantryFov === null ? null : +gantryFov.toFixed(2) } : null,
+            // fans per terrace in the order STANDS numbers them (-x, +x, +z, -z),
+            // and what the shot on air was asked for versus what it got
+            stands: crowd ? standOccupancy().slice() : null,
+            instead: lastTrackCam?.insteadOf ?? null,
+            standSide: lastTrackCam?.standSide ?? null }
         : null,
       // the broadcast graphics: what they are showing, or null when there is
       // nothing to show

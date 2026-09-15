@@ -223,6 +223,16 @@ export function createCrowd(parent, { seats = [], density = 0.6, seed = 1, facin
     update,
     state,
     get count() { return n; },
+    /**
+     * Which of the offered seats are actually taken, by index into `seats`.
+     *
+     * The director needs it: a slow push across a terrace that nobody is
+     * sitting in is a shot of furniture, and whether a given stand has anyone
+     * in it is not something the caller can work out from `density` — the
+     * seeded shuffle spreads fans over every stand at once, and `cap` can cut
+     * the total well below what density asked for.
+     */
+    get seatsTaken() { return chosen; },
     dispose() {
       for (const m of meshes.values()) {
         parent.remove(m);

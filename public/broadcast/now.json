@@ -1,9 +1,9 @@
 {
   "_": "WHAT THE STADIUM IS SHOWING, for everyone at once. The match module polls this from every client — the visitor in the bowl, the phone on the map, and RFL's capture browser on /broadcast — so changing this one file changes what the city shows, and no query string can. Live fixtures from the RFL channel outrank it: this is for the twenty-two hours a day that are not a match.",
-  "_how": "Set `bundle` to a completed fixture's bundleUrl from https://4dgsx.com/api/v1/programme/rfl (the `replay` items carry one; `upcoming` items do not), give it a `title` for the scoreboard, and deploy. Set `bundle` back to null to take it down. It is a ~320 MB download per client, so it is not something to leave on by accident.",
-  "bundle": "https://cdn.4dgsx.com/channels/rfl/bundles/s3-m28_frontier_muse_synthetic_athletic-98a0b0249e628924f963446a",
-  "title": "RFL S3 M28 — Muse Spark FC vs Synthetic Athletic (replay)",
-  "_put_on": "2026-09-14 — put on with scripts/stadium-now.mjs. Take it down with: off",
+  "_how": "`bundle` is either the literal string \"latest\" — follow the programme, showing whatever https://4dgsx.com/api/v1/programme/rfl says is the newest published `replay` — or one fixture's `bundleUrl` pinned by hand. Prefer \"latest\": a pinned URL never moves, and m28 sat on air for a day with m32 and m33 published behind it because nothing in the city advances a constant. Every client resolves \"latest\" from the same feed, so the city still agrees with itself. A swap waits for a seam in the programme (build-up, half time, outro) so a new bundle never lands mid-half. Set `bundle` to null to take it down. It is a ~320 MB download per client, so it is not something to leave on by accident.",
+  "bundle": "latest",
+  "title": "RFL — the latest match",
+  "_put_on": "2026-09-15 — following the programme. Pin one fixture instead with: node scripts/stadium-now.mjs <bundle-id>",
   "audio": false,
   "_audio": "Whether /broadcast itself makes a sound. FALSE, and it should normally stay false. RFL premix the match audio into the same bus their encoder records; a page emitting at the same time puts two commentary tracks on air. Since 2026-09-14 they handle REPLAYS too (they key off state().match.id by prefix and take the bundle base from the media element's currentSrc), so there is no case left where the sound has to come from here. The switch stays because their supervisor was dead for three days without either side noticing. Tell them before using it.",
   "loop": true

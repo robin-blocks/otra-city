@@ -138,6 +138,92 @@ export const CAMERAS = {
 };
 
 /**
+ * THE GANTRY, FOLLOWING THE FLOW OF PLAY — RFL's own camera, not an
+ * approximation of it.
+ *
+ * `CAMERAS.gantry` is a fixed framing and stays one: it is the contracted
+ * position, the shot every capture and every cut-list resolves, and the one
+ * the §3 sightline check proves can see all four corners of the marked area.
+ * This is what the LIVE director does on top of it.
+ *
+ * RFL asked for it (their §4 of 2026-09-14, our REPLY-9 §3) and answered every
+ * question in that letter by pointing at `gauntlet/football.py`, which is what
+ * renders their own broadcast. This is that block, transposed from their
+ * Z-up match space into venue-local metres. Their numbers, not ours:
+ *
+ *   The target    the mean of the players and the ball COUNTED TWICE — "the
+ *                 ball is the story: weight it like two outfield players".
+ *                 Not the ball alone: a wide that tracks only the ball swings
+ *                 past the play every time it is cleared. Theirs drops FALLEN
+ *                 robots first, from a fall tracker their simulation keeps
+ *                 and a recording does not carry; every player is passed here,
+ *                 which is their own fallback for all of them being down.
+ *   The bias      the along-pitch component of that mean is multiplied by
+ *                 0.45, "so the camera never swings to an extreme angle for
+ *                 one stray robot". The aim height is pinned at 0.45 m.
+ *   The lens      sized to hold EVERY player and the ball, with a 1.45 border
+ *                 so nobody is clipped to the edge of frame, clamped to
+ *                 38°–52°. Vertical fov, with the horizontal spread divided
+ *                 by the aspect — the frame is far wider than it is tall, and
+ *                 sizing vertically off horizontal spread zooms way out.
+ *   The smoothing a first-order lag, 0.06 per frame on the aim and 0.05 on
+ *                 the lens at their 50 fps — 0.32 s and 0.39 s. "A camera
+ *                 that snaps looks like a bug, and one that lags looks like a
+ *                 camera operator."
+ *
+ * This function is the pure half: the target and the lens the operator is
+ * easing TOWARDS. The easing itself carries state from frame to frame and so
+ * belongs to the caller, which is also the only place that knows how long a
+ * frame actually took.
+ *
+ * Their §2 asked for cuts rather than drift, because their encoder is CBR and
+ * a continuous move costs bitrate on every pixel of every frame. We put the
+ * trade to them in REPLY-9 §3 and they said yes. That is the only reason the
+ * one shot in the match cut-list is allowed to move at all.
+ */
+export const GANTRY_AIM_LAG_S = 0.32;    // football.py: 0.06 per frame at 50 fps
+export const GANTRY_FOV_LAG_S = 0.39;    // football.py: 0.05 per frame at 50 fps
+
+export function framePlay(base, { players = [], ball = null } = {}, p = {}) {
+  const pos = base?.pos || [0, 8.7, -10.6];
+  const lo = p.vfov_min_deg ?? 38, hi = p.vfov_max_deg ?? 52;
+  const aspect = p.aspect ?? (16 / 9);
+  const border = p.border ?? 1.45;
+  const bias = p.bias ?? 0.45;
+  const aimY = p.aim_height_m ?? 0.45;
+  const pts = players.length ? players : (ball ? [ball] : []);
+  if (!pts.length) return null;
+
+  // The target: every standing player plus the ball twice, averaged.
+  const weighted = ball ? [...pts, ball, ball] : pts;
+  let ax = 0, az = 0;
+  for (const q of weighted) { ax += q[0]; az += q[2]; }
+  const aim = [(ax / weighted.length) * bias, aimY, az / weighted.length];
+
+  // The camera basis at that aim, from a position that never moves.
+  const v = [aim[0] - pos[0], aim[1] - pos[1], aim[2] - pos[2]];
+  const dist = Math.hypot(v[0], v[1], v[2]) || 1e-9;
+  const fwd = [v[0] / dist, v[1] / dist, v[2] / dist];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const right = cross(fwd, [0, 1, 0]);
+  const rn = Math.hypot(...right) || 1e-9;
+  for (let i = 0; i < 3; i++) right[i] /= rn;
+  const up = cross(right, fwd);
+
+  // The lens: the widest angle any player or the ball subtends, plus a border.
+  let need = 0;
+  for (const q of (ball ? [...pts, ball] : pts)) {
+    const off = [q[0] - pos[0], q[1] - pos[1], q[2] - pos[2]];
+    const fz = off[0] * fwd[0] + off[1] * fwd[1] + off[2] * fwd[2] || 1e-9;
+    const av = Math.abs(off[0] * up[0] + off[1] * up[1] + off[2] * up[2]) / fz;
+    const ah = Math.abs(off[0] * right[0] + off[1] * right[1] + off[2] * right[2]) / fz / aspect;
+    need = Math.max(need, av, ah);
+  }
+  const want = Math.min(hi, Math.max(lo, (Math.atan(need) * 360) / Math.PI * border));
+  return { aim, fov: +want.toFixed(3) };
+}
+
+/**
  * A camera track file (RFL's §4 schema) turned into a per-frame camera.
  *
  * ```
@@ -215,7 +301,13 @@ export function createTrack(doc, { fetchJson, named = null } = {}) {
     // fifty times a second on a live feed, and a throw here would take the
     // picture down rather than lose a shot.
     if (!c) return null;
-    return { ...c, fov: c.fov ?? 50, segment: s.index, camera: s.camera };
+    // `seed`, `t` and `params` ride along so a caller can ask the same shot a
+    // second question — the live director re-specs a STANDS segment onto a
+    // terrace that has somebody sitting in it, which it cannot do from a
+    // position and a lookAt. They change nothing for a caller that ignores
+    // them: `aim()` reads pos, lookAt, fov and roll.
+    return { ...c, fov: c.fov ?? 50, segment: s.index, camera: s.camera,
+             seed: s.seed, t: (frame - s.from) / fps, params: s.params };
   }
 
   const api = { at, resolve, fps, loop, get segments() { return segments; },

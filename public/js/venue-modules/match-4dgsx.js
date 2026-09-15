@@ -83,6 +83,9 @@ const BOARD_PROUD = 0.004;     // metres in front of the bundle's own face — f
 const HEADCAM_FOV = 68;
 const HEADCAM_FORWARD = 0.24;  // metres in front of the head centre, along the look
 const HEADCAM_UP = 0.03;
+// Faster than any ball in robot football, so anything above it is the stage
+// being moved rather than the ball being kicked. See `trackPlay`.
+const BALL_MAX_MS = 25;
 // RFL's pre-roll, in seconds of programme before kick-off (PRE_S in their
 // broadcast.py). The bundle's own `program.segments` says so too, and is
 // preferred once it has been read; this is for the second before it has.
@@ -185,6 +188,21 @@ const HALF_NAMES = ['First Half', 'Second Half', 'Third Period', 'Fourth Period'
  * `buzzers[i].t` to `restart_t`, during which the clock reads nothing left.
  */
 export function matchPeriod(hud, t) {
+  const p = periodOf(hud, t);
+  if (!p) return null;
+  // THE WHISTLE IS NOT THE END OF THE PLAY, and the publisher has already
+  // measured the difference. Each buzzer carries `play_end_t` with
+  // `"ended": "ball at rest"` beside it — on m28, five seconds after both the
+  // half-time and the full-time buzzer. The clock stops at the buzzer, which
+  // is what a clock does; the ball is still travelling, which is what the
+  // director needs to know before it cuts away from the wide.
+  const dead = (Array.isArray(hud?.clock?.buzzers) ? hud.clock.buzzers : [])
+    .some((b) => Number.isFinite(b?.t) && Number.isFinite(b?.play_end_t) && t >= b.t && t < b.play_end_t);
+  return { ...p, dead, inPlay: p.playing || dead };
+}
+
+/** Which period the clock is in, ignoring the dead ball after a buzzer. */
+function periodOf(hud, t) {
   const c = hud?.clock;
   if (!c || !Number.isFinite(t)) return null;
   const halves = Math.max(1, c.halves || 1);
@@ -256,10 +274,20 @@ export function create(ctx) {
     // does: textures sampled as stored, sprites left un-tone-mapped
     look: { textures: 0, sprites: 0 },
     // the programme, and what the big screen and side panels are showing
-    upcoming: [], screens: {},
+    upcoming: [], screens: {}, channel: null,
+    // the newest finished fixture the feed offers a bundle for — what
+    // `now.json`'s `"bundle": "latest"` follows
+    latestReplay: null,
+    // where the play is, in venue-local metres: every robot and the ball, and
+    // how fast the ball is going. Null unless the bundle's bodies verified —
+    // see `trackPlay`.
+    play: null, ball: null,
     // the arena boards we dressed, whether the bundle's bodies are reachable,
     // the goals in this match, and the replay + head cam when one is running
     boards: null, bodies: null, goals: [], replay: null, headcam: null, replayCam: false,
+    // the publisher's clock plan for the mounted match: halves, and every
+    // buzzer with its "ball at rest"
+    clockPlan: null,
     // how the mounted match's clock is driven: 'wall' (a live fixture, through
     // its programme on the wall clock), 'dt' (a replay, on our frame time),
     // or null (the publisher's own clock)
@@ -385,13 +413,16 @@ export function create(ctx) {
       text = 'NO SIGNAL';
     } else {
       const nx = state.next;
+      // The channel's timetable when its feed lists no fixture — the same
+      // fallback the big screen uses, for the same reason. See `nextSlot`.
+      const nextUp = (nx || state.live) ? null : nextSlot();
       g.textAlign = 'center';
       g.fillStyle = '#ffd479';
       g.font = '700 34px Menlo, monospace';
       // Not "NEXT KICK-OFF": the feed's startsAt is when the programme
       // reaches the pitch, and the build-up runs before the whistle. The
       // board counts down to the thing it can actually see arrive.
-      g.fillText(nx ? 'NEXT MATCH' : state.live ? 'MATCH LOADING' : 'NO MATCH SCHEDULED', W / 2, 140);
+      g.fillText(nx ? 'NEXT MATCH' : state.live ? 'MATCH LOADING' : nextUp ? 'NEXT SLOT' : 'NO MATCH SCHEDULED', W / 2, 140);
       if (nx) {
         const ms = Date.parse(nx.startsAt) - now();
         g.fillStyle = '#e9edf6';
@@ -403,6 +434,16 @@ export function create(ctx) {
         g.fillStyle = '#b9bcd6';
         fitText(`${nx.home?.name || ''} v ${nx.away?.name || ''} · on at ${londonTime(nx.startsAt)} London`, W / 2, 416, { size: 32, maxW: W - 88 });
         text = `next ${nx.home?.code}-${nx.away?.code} in ${countdown(ms)}`;
+      } else if (nextUp) {
+        g.fillStyle = '#e9edf6';
+        g.font = '900 150px Menlo, monospace';
+        g.fillText(countdown(Date.parse(nextUp.startsAt) - now()), W / 2, 300);
+        g.fillStyle = '#47f2ff';
+        g.font = '700 40px Menlo, monospace';
+        g.fillText(londonTime(nextUp.startsAt), W / 2, 372);
+        g.fillStyle = '#b9bcd6';
+        fitText('the fixture is announced nearer the time', W / 2, 416, { size: 30, maxW: W - 88 });
+        text = `next slot in ${countdown(Date.parse(nextUp.startsAt) - now())}`;
       } else {
         g.fillStyle = '#8a86a0';
         g.font = '500 34px Menlo, monospace';
@@ -509,6 +550,11 @@ export function create(ctx) {
     const H = s.canvas.height;
     cardFrame(ctx, W, H, (state.channelTitle || 'RFL').toUpperCase());
     const nx = comingUp();
+    // `nextUp`, not `slot`: `slot` is the SDK's schedule handle everywhere
+    // else in this module and a shadow of it here would read as that.
+    const nextUp = nx ? null : nextSlot();
+    // What the stadium is showing while it waits, if it is showing anything.
+    const showing = !nx && state.now?.title ? `showing: ${state.now.title}` : null;
     ctx.textAlign = 'center';
     if (nx) {
       ctx.fillStyle = '#47f2ff';
@@ -525,14 +571,38 @@ export function create(ctx) {
       ctx.fillText(countdown(Date.parse(nx.startsAt) - now()), W / 2, 448);
       ctx.fillStyle = '#8a86a0';
       fitTextOn(ctx, `on at ${londonTime(nx.startsAt)} London`, W / 2, 508, { size: 30, maxW: W - 120 });
-    } else {
+    } else if (state.sdk === 'loading') {
       ctx.fillStyle = '#8a86a0';
       ctx.font = '500 40px Menlo, monospace';
-      ctx.fillText(state.sdk === 'loading' ? 'reading the programme…' : 'no match scheduled', W / 2, 300);
+      ctx.fillText('reading the programme…', W / 2, 300);
+    } else if (nextUp) {
+      // No fixture is listed, but the channel says when it plays. Count down
+      // to the slot and call it a slot, so nobody reads a kick-off into a
+      // timetable. The panel to the left is already carrying the results, so
+      // this card does not repeat them.
+      ctx.fillStyle = '#47f2ff';
+      ctx.font = '700 32px Menlo, monospace';
+      ctx.fillText('NEXT SLOT', W / 2, 190);
+      ctx.fillStyle = '#e9edf6';
+      ctx.font = '900 104px Menlo, monospace';
+      ctx.fillText(countdown(Date.parse(nextUp.startsAt) - now()), W / 2, 308);
+      ctx.fillStyle = '#ffd479';
+      ctx.font = '700 40px Menlo, monospace';
+      ctx.fillText(londonTime(nextUp.startsAt), W / 2, 376);
+      ctx.fillStyle = '#8a86a0';
+      fitTextOn(ctx, 'the fixture is announced nearer the time', W / 2, 442, { size: 28, maxW: W - 120 });
+      if (showing) fitTextOn(ctx, showing, W / 2, 500, { size: 28, maxW: W - 120 });
+    } else {
+      // Neither a fixture nor a timetable. Say what IS on rather than what is
+      // not: a bare negative is the one thing the screen must never be.
+      ctx.fillStyle = '#8a86a0';
+      ctx.font = '500 36px Menlo, monospace';
+      ctx.fillText(showing || 'between matches', W / 2, 300);
     }
     ctx.textAlign = 'left';
     s.tex.needsUpdate = true;
-    return nx ? `coming up ${nx.home?.code}-${nx.away?.code}` : 'idle';
+    return nx ? `coming up ${nx.home?.code}-${nx.away?.code}`
+      : nextUp ? `next slot ${londonTime(nextUp.startsAt)}` : 'idle';
   }
 
   /**
@@ -549,10 +619,18 @@ export function create(ctx) {
     // `screen_main` shot — the camera looks up the +z axis, which puts +x to
     // port. Checked against a render, not reasoned about: fixtures come before
     // results left to right, which is the way round a viewer reads them.
-    screens.right = paintList('right', 'FIXTURES', (state.upcoming || []).slice(0, 4).map((i) => ({
+    // With no fixture in the feed the panel used to read "nothing listed",
+    // which is a panel nobody reads next to a screen that now says when the
+    // next slot is. It carries the channel's timetable instead.
+    const fixtures = (state.upcoming || []).slice(0, 4).map((i) => ({
       a: `${i.home?.code || '?'}  v  ${i.away?.code || '?'}`,
       b: londonTime(i.startsAt),
-    })));
+    }));
+    screens.right = fixtures.length
+      ? paintList('right', 'FIXTURES', fixtures)
+      : paintList('right', 'MATCH DAYS', (state.channel?.slots || []).slice(0, 4).map((x) => ({
+        a: String(x), b: `every day · ${state.channel?.timezone || 'Europe/London'}`,
+      })));
     screens.left = paintList('left', 'RESULTS', (state.recent || []).slice(0, 4).map((i) => ({
       a: `${i.home?.code || '?'} ${i.score?.[0] ?? '–'} – ${i.score?.[1] ?? '–'} ${i.away?.code || '?'}`,
       b: londonTime(i.startsAt),
@@ -932,20 +1010,84 @@ export function create(ctx) {
     docksOn = false;
     paintIdleScreens(true);
   }
-  /** Screens follow the programme: the publisher's panels only while the match is on. */
+  /**
+   * Screens follow the programme: the publisher's panels only while the match
+   * is actually on, and the venue's own — the coming-up card, the fixtures,
+   * the results — through the build-up and the outro.
+   *
+   * The rule used to ask whether this was a SCHEDULED fixture, which meant a
+   * replay's three-minute build-up carried a team-sheet panel and no
+   * countdown at all. A replay has a programme with the same three segments
+   * in it, and a build-up is a build-up: the thing about to kick off is about
+   * to kick off whether it is happening now or happened yesterday.
+   */
   function dockPolicy() {
     if (!stage) return;
-    const want = !wallDrive || (programmeT >= wallDrive.preS && !state.bug?.over);
+    const inProgramme = !!wallDrive || driving();
+    // `over && !inPlay`, not `over`: full time is called at the buzzer and the
+    // ball is still travelling for five seconds after it. Taking the panels
+    // down on the whistle would put a fixtures list up over a live ball.
+    const want = !inProgramme || !(state.bug?.preroll || (state.bug?.over && !state.bug?.inPlay));
     if (want && !docksOn) attachDocks(stage);
     else if (!want && docksOn) detachDocks(stage);
   }
-  /** What the big screen counts down to: this fixture's kick-off during its pre-roll, the next fixture otherwise. */
+  /**
+   * The channel's next regular slot, when the feed lists no fixture at all.
+   *
+   * "NO MATCH SCHEDULED" is a true sentence and a dead screen, and for most of
+   * any given day it is the only thing the big screen has to say: RFL publish
+   * a fixture into `items` close to its kick-off, so the feed spends hours
+   * carrying sixty replays and nothing upcoming. But the channel does declare
+   * when it plays — `slots: ["12:00","16:00","20:00"]` in `Europe/London` —
+   * and that is a real answer to the one question a visitor arriving between
+   * matches is asking.
+   *
+   * The arithmetic is done on the CHANNEL's wall clock, not the visitor's:
+   * Intl gives the time of day there, the difference to the next slot is a
+   * number of seconds, and adding it to our own clock lands on the same
+   * instant wherever the visitor is standing.
+   */
+  function nextSlot() {
+    const slots = (state.channel?.slots || [])
+      .map((x) => String(x).split(':').map(Number))
+      .filter(([h, m]) => Number.isFinite(h) && h >= 0 && h < 24)
+      .map(([h, m]) => h * 3600 + (Number.isFinite(m) ? m : 0) * 60)
+      .sort((a, b) => a - b);
+    if (!slots.length) return null;
+    const tz = state.channel?.timezone || 'Europe/London';
+    let sod = null;
+    try {
+      const parts = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        .formatToParts(new Date(now()));
+      const get = (t) => Number(parts.find((x) => x.type === t)?.value);
+      sod = (get('hour') % 24) * 3600 + get('minute') * 60 + get('second');
+    } catch { return null; }
+    if (!Number.isFinite(sod)) return null;
+    const ahead = slots.find((x) => x > sod);
+    // Past the last slot of the day, the next one is tomorrow's first. The
+    // day is taken as 86400 s long, which is wrong twice a year by an hour
+    // and right about which fixture is next on both of those days too.
+    const delta = ahead !== undefined ? ahead - sod : 86400 - sod + slots[0];
+    return { startsAt: new Date(now() + delta * 1000).toISOString(), slots: slots.length };
+  }
+
+  /**
+   * What the big screen counts down to: the match on the pitch while its own
+   * build-up runs, the next fixture in the programme otherwise.
+   *
+   * The countdown is the match clock read backwards — it is negative through
+   * the whole pre-roll and reaches zero at the whistle — rather than the
+   * feed's `startsAt` plus a constant. That is the same number the scorebug
+   * shows, and it is right for a replay we drive as well as for a fixture on
+   * the wall clock, which the `startsAt` arithmetic was not.
+   */
   function comingUp() {
-    if (wallDrive && stage && programmeT < wallDrive.preS) {
+    const t = stage ? programmeMatchT() : null;
+    if (Number.isFinite(t) && t < 0) {
       const teams = stage.hud?.teams || [];
       return {
         home: state.matchItem?.home || teams[0] || null, away: state.matchItem?.away || teams[1] || null,
-        startsAt: new Date(wallDrive.startsAtMs + wallDrive.preS * 1000).toISOString(), title: state.match?.title || '',
+        startsAt: new Date(now() - t * 1000).toISOString(), title: state.match?.title || '',
       };
     }
     return state.next;
@@ -1013,10 +1155,85 @@ export function create(ctx) {
     };
   }
 
+  /**
+   * WHERE THE PLAY IS — every robot and the ball, in the venue-local metres
+   * every camera here speaks.
+   *
+   * Two things need it and neither can be written without it. The gantry
+   * follows the flow of play rather than staring at the centre spot, and it
+   * sizes its lens to hold everybody: RFL's own broadcast camera
+   * (`gauntlet/football.py`) takes the mean of the players and the ball and
+   * then opens the lens until nobody is clipped, so the positions are the
+   * whole input. And the director holds the wide at the buzzer until the ball
+   * has settled, for a bundle whose clock does not say when that was.
+   *
+   * The ball's SPEED is measured off the PICTURE, not off physics we do not
+   * have. That makes two frames a lie and both are skipped rather than
+   * measured: a goal replay rewinds the stage by several seconds, and a
+   * programme hold freezes it. Differencing either reports metres per frame
+   * for a ball that has not moved, which would read as "still in play" for
+   * exactly as long as it took the average to decay.
+   *
+   * RFL drop FALLEN robots from the frame before averaging, from a fall
+   * tracker their simulation keeps and a recording does not carry. Every
+   * player is used here, which is their own fallback for the case where all
+   * of them are down.
+   */
+  const _ballPrev = new THREE.Vector3();
+  let ballPrevOk = false;
+  let ballSpeed = 0;
+  function trackPlay(dt) {
+    if (!bodyOk || !stage) { state.play = null; state.ball = null; ballPrevOk = false; ballSpeed = 0; return; }
+    root.updateWorldMatrix(true, false);
+    const local = (node) => {
+      node.updateWorldMatrix(true, false);
+      _bv.setFromMatrixPosition(node.matrixWorld);
+      root.worldToLocal(_bv);
+      return [+_bv.x.toFixed(3), +_bv.y.toFixed(3), +_bv.z.toFixed(3)];
+    };
+    const players = [];
+    for (const pl of stage.hud?.players || []) {
+      const node = pl?.anchor?.body ? bodyNode(pl.anchor.body) : null;
+      if (node) players.push(local(node));
+    }
+    const ballNode = bodyNode('ball');
+    const ball = ballNode ? local(ballNode) : null;
+    state.play = players.length || ball ? { players, ball } : null;
+
+    if (!ball) { state.ball = null; ballPrevOk = false; ballSpeed = 0; return; }
+    _bv.set(ball[0], ball[1], ball[2]);
+    // A rewound or frozen stage is not a measurement. Keep the last speed
+    // rather than inventing one, and re-seed the reference point.
+    //
+    // `state.replay` catches the goal holds, and it is not enough: a looping
+    // replay wraps from full time back to the start, a harness seeks, and the
+    // programme can jump. All of those move the ball the length of the pitch
+    // between two frames. So a DISCONTINUITY is caught by its size rather than
+    // by knowing what caused it — nothing in robot football crosses fourteen
+    // metres at 25 m/s, so anything that reads faster is the stage moving, not
+    // the ball. Without this the director holds the wide for six seconds at
+    // the start of every loop, on a ball that is sitting on the centre spot.
+    const step = _ballPrev.distanceTo(_bv);
+    const jumped = ballPrevOk && step / Math.max(dt, 1e-4) > BALL_MAX_MS;
+    const trust = dt > 1e-4 && !state.replay && !jumped;
+    if (trust && ballPrevOk) {
+      // Smoothed over about a fifth of a second: one frame of a bouncing ball
+      // is noise, and the director is deciding whether to hold a shot.
+      ballSpeed += (step / dt - ballSpeed) * (1 - Math.exp(-dt / 0.2));
+    }
+    if (jumped) ballSpeed = 0;      // wherever the stage went, play is not in flight there
+    if (trust || jumped) { _ballPrev.copy(_bv); ballPrevOk = true; }
+    state.ball = { pos: ball, speed: +ballSpeed.toFixed(3), measured: trust && ballPrevOk };
+  }
+
   function onProgramme(p) {
     if (!p?.items) return;
     skewMs = Date.now() - Date.parse(p.now || new Date().toISOString());
     state.channelTitle = p.channel?.title || null;
+    // The whole channel block, not just its name. `slots` and `timezone` are
+    // what the screens fall back to when the feed lists no fixture at all —
+    // see `nextSlot`.
+    state.channel = p.channel || null;
     state.live = p.items.find((i) => i.state === 'live') || null;
     // Enough for the screens, not just the scoreboard's one line: between
     // matches the big screen and the two side panels carry the programme, and
@@ -1029,6 +1246,16 @@ export function create(ctx) {
     state.recent = p.items.filter((i) => i.state === 'replay' && i.startsAt)
       .sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt)).slice(0, 6)
       .map((i) => ({ home: i.home, away: i.away, score: i.score, title: i.title, startsAt: i.startsAt }));
+    // The newest finished fixture that can actually be put on — what
+    // `now.json`'s `"bundle": "latest"` resolves to. Ordered by `publishedAt`
+    // like scripts/stadium-now.mjs, because that is the field that says when
+    // RFL made the bundle available rather than when the match was played.
+    const newest = p.items.filter((i) => i.state === 'replay' && i.bundleUrl)
+      .sort((a, b) => String(b.publishedAt || b.startsAt || '').localeCompare(String(a.publishedAt || a.startsAt || '')))[0] || null;
+    state.latestReplay = newest
+      ? { bundleId: newest.bundleId, bundleUrl: newest.bundleUrl, title: newest.title || null,
+          publishedAt: newest.publishedAt || null, startsAt: newest.startsAt || null }
+      : null;
     paintBoard();
     paintIdleScreens();
   }
@@ -1091,8 +1318,21 @@ export function create(ctx) {
     pitch.add(st.group);
     goals = (st.hud?.events || []).filter((e) => e?.type === 'goal');
     state.goals = goals.map((g) => ({ t: g.t, player: g.player ?? null, team: g.team ?? null, replay_s: g.replay_s ?? null }));
+    // The publisher's clock plan, said out loud. `play_end_t` is the one field
+    // a director cannot do without and cannot derive — when the ball came to
+    // rest after a buzzer — and reporting it is how anything outside this
+    // module can check that the wide was held across it.
+    const plan = st.hud?.clock;
+    state.clockPlan = plan
+      ? { duration_s: plan.duration_s ?? null, halves: plan.halves ?? 1,
+          buzzers: (plan.buzzers || []).map((b) => ({ kind: b.kind ?? null, t: b.t ?? null, play_end_t: b.play_end_t ?? null, restart_t: b.restart_t ?? null })) }
+      : null;
     state.replay = null;
     state.headcam = null;
+    state.play = null;
+    state.ball = null;
+    ballPrevOk = false;
+    ballSpeed = 0;
     attachBoards(st);
     labels = collectLabels(st.group);
     state.labels = { sprites: labels.length, refits: 0 };
@@ -1218,6 +1458,10 @@ export function create(ctx) {
       // Before kick-off the clock counts down to it; the tag says so.
       tag: period.preroll ? 'Kick-off' : period.tag, clock: mmss(period.preroll ? -t : period.remain),
       half: period.half, playing: period.playing, over: period.over,
+      // The clock has stopped but the ball has not: true through the seconds
+      // between a buzzer and the publisher's own "ball at rest". See
+      // `matchPeriod`, and the director's hold in /broadcast.
+      inPlay: period.inPlay === true, dead: period.dead === true,
       // Only a genuinely scheduled fixture wears LIVE. A replay the city put
       // on must not, and the publisher's own state is what distinguishes them
       // — RFL asked us to use their truth rather than fake it.
@@ -1404,8 +1648,13 @@ export function create(ctx) {
     stage = null;
     goals = [];
     state.goals = [];
+    state.clockPlan = null;
     state.replay = null;
     state.headcam = null;
+    state.play = null;
+    state.ball = null;
+    ballPrevOk = false;
+    ballSpeed = 0;
     state.bodies = null;
     state.boards = null;
     bodyOk = false;
@@ -1499,19 +1748,51 @@ export function create(ctx) {
       if (r.ok) doc = await r.json();
     } catch { return; }              // a poll that fails changes nothing
     if (disposed) return;
-    const url = typeof doc?.bundle === 'string' ? httpsOnly(doc.bundle) : null;
-    if (doc?.bundle && !url) state.errors.push('now: bundle must be an https URL');
+    // FOLLOW THE PROGRAMME, OR NAME ONE BUNDLE.
+    //
+    // A pinned URL never moves. m28 was put on by hand on 2026-09-14 and was
+    // still looping on 2026-09-15 with m32 and m33 aired and published behind
+    // it, because nothing in the city advances a constant — and RFL publish a
+    // fixture into `items` only near its kick-off, so for most of any day the
+    // feed has no live match to outrank the pin either. `"bundle": "latest"`
+    // is the standing instruction instead of the constant: whatever the feed
+    // says is the newest finished fixture. Every client resolves it from the
+    // same feed, so the city still agrees with itself, which is the whole
+    // point of this document.
+    const follow = doc?.bundle === 'latest' ? 'latest' : null;
+    const item = follow ? state.latestReplay : null;
+    const url = follow ? (item?.bundleUrl ? httpsOnly(item.bundleUrl) : null)
+      : typeof doc?.bundle === 'string' ? httpsOnly(doc.bundle) : null;
+    if (doc?.bundle && !follow && !url) state.errors.push('now: bundle must be an https URL');
     // `audio` is carried through because /broadcast reads it: the page is
     // silent by contract with RFL, and this is the one thing that lifts it.
-    state.now = url ? { bundle: url, title: doc.title || null, audio: doc.audio === true, loop: doc.loop === true } : null;
+    state.now = url
+      ? { bundle: url, title: (follow && item?.title ? `${item.title} (replay)` : doc.title) || null,
+          audio: doc.audio === true, loop: doc.loop === true,
+          follow, id: follow ? item?.bundleId ?? null : null }
+      : null;
     // A mount is a ~320 MB download that outlives several polls. Without this
     // the next tick would find no `override` yet, conclude nothing was on, and
     // start the download again — and again every sixty seconds until the first
     // one landed. Whatever the document says is reconciled by the poll after
     // the mount finishes, which is soon enough for a thing that takes minutes.
     if (mountingNow) return;
-    if (!url) { dropOverride(); return; }
+    // While FOLLOWING, "I have not read the programme yet" is not "nothing is
+    // on". The feed is polled by the SDK's schedule on its own clock and can
+    // fail transiently; tearing the stadium down on that would blank it for a
+    // missing HTTP response rather than for a decision.
+    if (!url) { if (!follow) dropOverride(); return; }
     if (override?.url === url) return;   // already showing it
+    // A NEW BUNDLE WAITS FOR A SEAM.
+    //
+    // Following the feed means the bundle changes by itself, and a swap is a
+    // teardown and a fresh ~320 MB download for every client in the bowl.
+    // Landing that mid-half would cut the picture at 2-1 in the second half,
+    // which is the same thing the page's own updater refuses to do and for
+    // the same reason. Every programme passes through a seam once a loop —
+    // the build-up, half time, the outro — and `bug.playing` is the
+    // publisher's own clock truth for all of them.
+    if (override && state.bug?.inPlay !== false) return;
     dropOverride();
     if (stage) return;                   // a live fixture has the pitch
     overrideDoc = doc;
@@ -1590,6 +1871,7 @@ export function create(ctx) {
         stage.update(dt, camera, renderer.domElement.clientHeight || 720);
         driveProgramme(dt);
         poseHeadcam(dt);
+        trackPlay(dt);
         // Read AFTER the programme has placed the stage, and held through a
         // replay: RFL's supervisor reads these, and a score that dips for five
         // seconds every goal is a fault however good the picture.
