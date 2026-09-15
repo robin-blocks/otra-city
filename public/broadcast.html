@@ -84,7 +84,7 @@ const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
 // page's behaviour changes. It is reported in `state().build` and on the note
 // line, so "the deployed page still says X" is settled by reading the page,
 // not by comparing memories of deploys.
-const BUILD = '2026-09-15a';
+const BUILD = '2026-09-15b';
 
 // Errors are evidence: a silent failure films a black hour, so every one is
 // kept for `state()`, echoed to the console the harness reads, and shown.
@@ -139,17 +139,25 @@ const capture = params.get('capture') === '1' || liveParam === '0';
 const live = !capture;
 const liveCap = Math.max(1, Math.min(256, Number(liveParam) > 1 ? Number(liveParam) : 32));
 
-// THE LIVE FEED HAS A CROWD, AND USED NOT TO.
+// THE LIVE STREAM IS EXACTLY WHAT IS IN THE STADIUM. NOTHING IS ADDED TO IT.
 //
-// `crowd` defaulted to 0 and the URL RFL capture is a bare
-// https://otra.city/broadcast — so every stand shot in the ambient list was a
-// slow push across six hundred empty seats, for as long as the stream has
-// existed. A deterministic capture still gets nothing unless it asks: a
-// harness comparing runs against footage filmed before today should not have
-// the frame change under it because a default moved. `?crowd=0` still means
-// an empty bowl in either mode.
-const LIVE_CROWD = 0.5;
-const crowdDensity = params.has('crowd') ? Math.max(0, Math.min(1, num('crowd', 0))) : (live ? LIVE_CROWD : 0);
+// So `crowd` defaults to 0 in BOTH modes, and the live feed shows only real
+// visitors. That is not a tuning choice, it is the point of the thing: going
+// to otra.city puts you on the broadcast, and the people you can see in the
+// stands are people. A synthetic crowd would mean nobody watching — including
+// the person standing there — could tell which figures were real, and the one
+// promise the stream makes would stop being checkable.
+//
+// This was already the rule and was already written down; it was overturned
+// on 2026-09-15 because the stands looked empty on air, and Robin put it back
+// the same day. The stands looking empty is the stream being honest. The fix
+// for that is to keep a stand shot SHORT — see live-cutlist.json — not to
+// fill the seats.
+//
+// `?crowd=0.7` still populates them for a harness that wants a full ground to
+// measure against; the gate uses it to exercise the instanced crowd's own
+// determinism. It is never the default anywhere.
+const crowdDensity = params.has('crowd') ? Math.max(0, Math.min(1, num('crowd', 0))) : 0;
 const timeofday = params.has('timeofday') ? Math.max(0, Math.min(24, num('timeofday', 0))) : null;
 let camtrackUrl = params.get('camtrack') ? httpsOnly(params.get('camtrack')) : null;
 if (params.get('camtrack') && !camtrackUrl) fail('camtrack', 'must be an https URL; ignored');
@@ -655,12 +663,12 @@ function watchForNewBuild({ everyMs = 5 * 60 * 1000 } = {}) {
  *           not a broadcast, and this is RFL's own camera rather than our
  *           impression of it — see `framePlay`; the easing is `easeGantry`.
  *
- *   STANDS  is pointed at a terrace with people in it, or dropped. The shot
- *           is a slow push in to about nine metres: with nobody there it is
- *           twenty-five seconds of empty seats, which is what the stream has
- *           been carrying. If no terrace has a crowd worth filming, the
- *           segment falls back to the pitchside handheld, which is a shot
- *           about the ground rather than about the people in it.
+ * That is the only one. A stand shot used to be re-pointed at whichever
+ * terrace had people in it, or dropped when none did — machinery that only
+ * made sense while the bowl was filled with a synthetic crowd. The stream
+ * shows the stadium as it is, so an empty terrace is the truth and the answer
+ * is to look at it briefly rather than to redirect the camera or fake the
+ * people. See live-cutlist.json.
  */
 function directed(c) {
   if (!c || !autoDirect) return c;
@@ -670,19 +678,6 @@ function directed(c) {
     // both eased in `easeGantry`, which is the one place that knows how long
     // the frame took; this only spends them.
     return { ...c, lookAt: gantryAim.map((v) => +v.toFixed(3)), fov: +gantryFov.toFixed(3) };
-  }
-  if (c.camera === 'stands') {
-    const occ = standOccupancy();
-    const asked = (c.params?.side ?? 0) % 4;
-    if (occ[asked] >= STAND_MIN_FANS) return c;
-    let best = 0;
-    for (let i = 1; i < 4; i++) if (occ[i] > occ[best]) best = i;
-    if (occ[best] >= STAND_MIN_FANS) {
-      return { ...CAMERAS.stands(c.t, c.seed, { ...c.params, side: best }),
-               segment: c.segment, camera: 'stands', standSide: best };
-    }
-    return { ...CAMERAS.pitchside(c.t, c.seed, {}),
-             segment: c.segment, camera: 'pitchside', insteadOf: 'stands' };
   }
   return c;
 }
@@ -755,32 +750,6 @@ let wasLive = false;
 // operator."
 let gantryAim = null;
 let gantryFov = null;
-
-/**
- * How many fans are sitting in each of the four terraces a STANDS shot frames,
- * in the order `CAMERAS.stands` numbers them: -x, +x, +z, -z.
- *
- * Computed from the venue's own seat list and the seats the crowd actually
- * took, so it stays right when the density changes, when the cap bites, or
- * when the bowl is re-seated. Each seat belongs to whichever axis it is
- * further out along, which is the same rule that puts the four anchors where
- * they are.
- */
-let standFans = null;
-function standOccupancy() {
-  if (standFans) return standFans;
-  standFans = [0, 0, 0, 0];
-  const seats = def?.seats || [];
-  for (const i of crowd?.seatsTaken || []) {
-    const st = seats[i];
-    if (!st) continue;
-    standFans[Math.abs(st[0]) > Math.abs(st[2]) ? (st[0] < 0 ? 0 : 1) : (st[2] > 0 ? 2 : 3)] += 1;
-  }
-  return standFans;
-}
-// Below this a slow push across a terrace is a shot of furniture. Twelve is
-// about what fills the frame of a 30° lens pushed in to 9 m.
-const STAND_MIN_FANS = 12;
 
 /**
  * Whether this page should make a sound — decided by the city, not the URL.
@@ -1179,11 +1148,9 @@ window.rflBroadcast = {
             // where the gantry is looking and how tight it is, so a viewer of
             // the state can tell a tracking wide from a locked one
             gantry: gantryAim ? { aim: gantryAim.map((v) => +v.toFixed(2)), fov: gantryFov === null ? null : +gantryFov.toFixed(2) } : null,
-            // fans per terrace in the order STANDS numbers them (-x, +x, +z, -z),
-            // and what the shot on air was asked for versus what it got
-            stands: crowd ? standOccupancy().slice() : null,
-            instead: lastTrackCam?.insteadOf ?? null,
-            standSide: lastTrackCam?.standSide ?? null }
+            // the visitors in the bowl, which on the live feed is the whole of
+            // the crowd — see the note on `crowdDensity`
+            peers: presence?.count ?? 0 }
         : null,
       // the broadcast graphics: what they are showing, or null when there is
       // nothing to show

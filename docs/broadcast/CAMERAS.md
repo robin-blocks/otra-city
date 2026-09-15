@@ -178,7 +178,7 @@ translucent standing panel it finds (`state().match.glass`), and
 | `camera=<name>` | one named camera for the whole run (default `gantry` in capture mode) |
 | `camtrack=<https url>` | a camera track file; overrides `camera` |
 | `bundle=<https url>` | a 4DGSX bundle to play on the pitch. In capture mode, absent means an empty pitch. In live mode it overrides what the stadium would otherwise be showing — and because it changes only the browser that asked, it is a debugging tool, not a way to put a match on the air |
-| `crowd=0..1` | how full the stands are. **Live mode defaults to 0.5**; capture mode defaults to `0` and must ask. `crowd=0` is an empty bowl in either |
+| `crowd=0..1` | how full the stands are; **`0` (default, both modes)** is an empty bowl holding only real visitors — see *Crowd*, and do not change it |
 | `seed=<int>` | selects one of many equally valid versions of the same shot and crowd |
 | `t0=<seconds>` | warm the scene to this point before frame 0 |
 | `timeofday=0..24` | shift the lighting; see the caveat below |
@@ -239,9 +239,10 @@ line at the bottom of the page) is the date the page's behaviour last
 changed. A harness that pins a copy of the page, or a proxy that holds one,
 will report an older date than `https://otra.city/broadcast` does — so a
 "the deployed page still says X" conversation is settled by reading it. The
-current build is **2026-09-15a** (the tracked gantry, a crowd on the live feed,
-a pre-roll list, the wide held past the buzzer, and the screens carrying the
-channel's timetable when the feed lists no fixture — before that, 2026-09-14c:
+current build is **2026-09-15b** (the live feed adds nobody to the stadium
+again, and a stand shot is a glance — before that, 2026-09-15a: the tracked
+gantry, a pre-roll list, the wide held past the buzzer, and the screens
+carrying the channel's timetable when the feed lists no fixture; 2026-09-14c:
 a live fixture follows its programme, pre-roll, kick-off, holds, post-roll;
 2026-09-14b: crests on the scorebug, the arena boards dressed, head-cam replays
 on a replay the city put on; 2026-09-14: the live feed runs the stadium's match
@@ -321,7 +322,7 @@ does depends on whether a match is on the pitch.
 **Between matches — `/broadcast/live-cutlist.json`.** A wide orbit of the bowl,
 two pushes into the stands where the visitors actually are, a pitch-level shot,
 the gantry — and **two holds on the screens**, which are the only shots in it
-that carry information rather than atmosphere. It loops every **174 seconds**
+that carry information rather than atmosphere. It loops every **136 seconds**
 and is deliberately unhurried: this runs for days, and a feed that cuts every
 few seconds is exhausting rather than alive. Nothing is at stake in an empty
 bowl, so the camera is allowed to move.
@@ -330,14 +331,15 @@ bowl, so the camera is allowed to move.
 shot shows the coming-up card, the fixture list and the results; `SCOREBOARD`
 frames the countdown. Both are held long enough to read — 12 s and 10 s.
 
-**A stand shot is never pointed at an empty terrace.** The push is a slow move
-in to about nine metres, so with nobody sitting there it is twenty-five seconds
-of furniture. The director asks the crowd which terraces are occupied — the
-venue's own seat list against the seats the crowd actually took — and if the
-one the segment names is thin it uses the fullest one instead; if no terrace
-has a crowd worth filming it drops to the pitchside handheld, which is a shot
-about the ground rather than about the people in it. `state().director.stands`
-reports fans per terrace in the order `stands` numbers them.
+**A stand shot is a glance, not a dwell — six seconds.** It used to be
+twenty-five, which on a terrace nobody had walked into was twenty-five seconds
+of furniture. Nothing is added to the bowl (see *Crowd*), so between matches
+those seats hold whoever actually came, which is usually nobody; the honest
+answer is to look briefly rather than to redirect the camera or fake the
+people. When visitors **are** in the bowl they are the shot, and six seconds
+is long enough to see them. Checked against the files by the gate — *no
+cut-list lingers on the stands* — so it holds whether or not anybody is there
+on the day.
 
 **During a fixture's build-up — `/broadcast/preroll-cutlist.json`.** RFL run
 three minutes of programme before kick-off with the bodies holding the
@@ -695,15 +697,26 @@ the CI fixture, so it cannot drift from what the page actually consumes.
 stadium), chosen by a seeded partial shuffle so density 0.3 and 0.6 agree on
 the first 30% rather than reshuffling the stand.
 
-**The live feed defaults to 0.5 — 300 of the 600 seats.** It used to default to
-0 in both modes, and since RFL capture a bare `https://otra.city/broadcast`
-that meant every stand shot the stream ever carried was a slow push across six
-hundred empty seats. A synthetic crowd that is obviously synthetic beats an
-empty bowl; `?crowd=0` still gives the empty bowl for anyone who wants it.
+> **THE LIVE STREAM IS EXACTLY WHAT IS IN THE STADIUM. NOTHING IS ADDED TO IT.**
+>
+> `crowd` **defaults to 0 in both modes**, so the live feed shows only real
+> visitors. This is not a tuning choice — it is the point of the thing. Going
+> to otra.city puts you on the broadcast, and the figures in the stands are
+> people: you can appear in the stream, and see who else is already there. A
+> synthetic crowd would mean nobody watching, including the person standing in
+> that terrace, could tell which figures were real, and the one promise the
+> stream makes would stop being checkable.
+>
+> This was overturned on 2026-09-15 — the terraces looked empty on air, so the
+> live feed was given a crowd — and put back the same day. **They look empty
+> because they are, and that is the stream being honest.** The answer is to
+> keep a stand shot short (see above), not to fill the seats.
+>
+> The gate asserts it: *the live feed adds nobody to the stadium*.
 
-**A deterministic capture still defaults to 0** and must ask. A harness
-comparing runs against footage filmed before 15 September 2026 should not have
-the frame change under it because a default moved.
+`?crowd=0.7` still populates them for a harness that wants a full ground to
+measure against, and the gate uses it to exercise the instanced crowd's own
+determinism. It is never the default anywhere.
 
 Each fan's seat, clothing, resting posture, idle rate and stand-up schedule
 come from the seed. Poses are a pure function of simulated time, so the crowd
@@ -717,8 +730,9 @@ fan. Measured cost of 400 fans from the gantry: about 10 draw calls and
 Match-event reactions are not implemented.
 
 `state().crowd` reports the density, the fans seated and how many are on their
-feet; `state().director.stands` reports fans per terrace, which is what the
-director uses to decide whether a stand shot is worth taking.
+feet — and is **null on the live feed**, which is how the gate knows nobody was
+added. `state().director.peers` is the visitor count, which on the live feed is
+the whole of the crowd.
 
 ## `timeofday` — read this before using it
 

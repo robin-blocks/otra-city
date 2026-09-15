@@ -461,27 +461,39 @@ try {
     !(sL.match?.source === 'schedule' && sL.silent === false),
     sL.match?.source === 'schedule' ? (sL.silent ? 'silent, as contracted' : 'DOUBLE AUDIO RISK') : 'no scheduled fixture on');
   check('the director is running', !!sL.director, sL.director ? `${sL.director.list} list, shot ${sL.director.shot}` : 'no director — a locked-off frame');
-  // THE STANDS HAD NOBODY IN THEM. `crowd` defaulted to 0 and RFL capture a
-  // bare /broadcast, so from the day the stream started every STANDS shot in
-  // the ambient list was a slow push across six hundred empty seats. Both
-  // halves are asserted, because either one alone is still a bad shot: there
-  // has to be a crowd, and the terraces the lists actually film have to be
-  // the ones it is sitting in.
-  check('the live feed has a crowd in it', (sL.crowd?.fans ?? 0) > 0,
-    sL.crowd ? `${sL.crowd.fans} fans of ${sL.crowd.seatsOffered} seats at density ${sL.crowd.density}` : 'NO CROWD — every stand shot is a shot of empty seats');
+  // THE LIVE STREAM IS EXACTLY WHAT IS IN THE STADIUM, and this is the line
+  // that keeps it so. Going to otra.city puts you on the broadcast; the people
+  // in the stands are people, and a viewer — including the one standing there
+  // — can tell. A synthetic crowd on the live feed would make that
+  // uncheckable, which is why the default is 0 and why it is asserted rather
+  // than trusted. It was overturned once, on 2026-09-15, because the terraces
+  // looked empty on air; they look empty because they are, and the answer is
+  // the short stand shots checked below.
+  check('the live feed adds nobody to the stadium',
+    sL.crowd === null,
+    sL.crowd ? `A SYNTHETIC CROWD IS ON THE LIVE FEED — ${sL.crowd.fans} figures at density ${sL.crowd.density}, and no viewer can tell them from a visitor`
+             : `only real visitors (${sL.director?.peers ?? 0} in the bowl right now)`);
   {
-    const occ = sL.director?.stands || [];
-    const NAMES = ['-x', '+x', '+z', '-z'];
-    const asked = [...JSON.parse(readFileSync(join(PUBLIC_DIR, 'broadcast/live-cutlist.json'), 'utf8')).segments, ...preList.segments]
-      .filter((seg) => String(seg.camera).toLowerCase() === 'stands')
-      .map((seg) => (seg.params?.side ?? 0) % 4);
-    const empty = [...new Set(asked)].filter((side) => (occ[side] ?? 0) < 12);
-    check('every terrace the cut-lists film has a crowd in it',
-      occ.length === 4 && empty.length === 0,
-      occ.length === 4
-        ? `${asked.length} stand shot(s) across ${[...new Set(asked)].length} terrace(s); fans per terrace ${NAMES.map((n, i) => `${n}:${occ[i]}`).join(' ')}`
-          + (empty.length ? ` — EMPTY: ${empty.map((i) => NAMES[i]).join(', ')} (the director will substitute, but the list should not ask)` : '')
-        : 'the director did not report stand occupancy');
+    // And because nothing fills the seats, a stand shot has to be a GLANCE.
+    // Twenty-five seconds of a terrace nobody walked into is the shot Robin
+    // called out; six is a look at who is there. Asserted against the files,
+    // so it holds whether or not anybody happens to be in the bowl today.
+    const MAX_STAND_S = 8;
+    const lists = ['live-cutlist.json', 'match-cutlist.json', 'preroll-cutlist.json'];
+    const long = [];
+    const seen = [];
+    for (const f of lists) {
+      const doc = JSON.parse(readFileSync(join(PUBLIC_DIR, 'broadcast', f), 'utf8'));
+      for (const seg of doc.segments || []) {
+        if (String(seg.camera).toLowerCase() !== 'stands') continue;
+        const secs = (seg.frames[1] - seg.frames[0]) / (doc.fps || 50);
+        seen.push(`${f.replace('-cutlist.json', '')} ${secs}s`);
+        if (secs > MAX_STAND_S) long.push(`${f} ${secs}s`);
+      }
+    }
+    check('no cut-list lingers on the stands', long.length === 0,
+      long.length ? `over ${MAX_STAND_S}s: ${long.join(', ')}`
+                  : `${seen.length} stand shot(s), longest ${Math.max(...seen.map((x) => parseFloat(x.split(' ')[1])))}s — ${seen.join(', ')}`);
   }
   // "NO MATCH SCHEDULED" is a true sentence and a dead screen, and for most of
   // any day it was the only thing the big screen had to say: RFL publish a
