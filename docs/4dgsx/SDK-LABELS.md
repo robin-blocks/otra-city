@@ -38,7 +38,8 @@ const apply = (t: string) => {
 (`canvas.width = w * DPR; canvas.height = h * DPR`), so **the canvas changes
 size on every message** — a new width per line, a new height when one wraps.
 With your constants (15 px font, 18 px line, 7 px padding, 2.5 px rule,
-`DPR = 3`) that is 87 px tall for one line and 141 px for two.
+`DPR = 3`) that is `ceil(lines * 18 + 7 * 2 + 2.5) * 3` — **105 px tall for
+one line and 159 px for two**, which is what we measure on a live match.
 
 It is in the shipped bundle exactly as it is in source. We fetched
 `https://4dgsx.com/sdk/v1/three.js` today: 32,171 bytes, ETag
@@ -167,9 +168,13 @@ size changes: 5 / 5      GL errors: 3 (as-is) / 0 (patched)
 ```
 
 Note the ratio: **five size changes, three errors.** The two that raised
-nothing are the shrinks, and those are the ones that corrupt silently. The
-harness reproduces the mechanism with your constants, not your drawing code —
-we did not want to claim more than we ran.
+nothing are the shrinks, and those are the ones that corrupt silently.
+
+The harness reproduces the **mechanism** — your `DPR` of 3, a 15 px label font,
+one `CanvasTexture` on a `Sprite`, redrawn at a text-derived size — with a
+stand-in for `draw()` rather than your own, so its pixel sizes are its own and
+not yours. We did not want to claim more than we ran. The numbers from your own
+code, on a real match, are in the paragraph below.
 
 Earlier, on a real match (`s3-m28`, stepping a fixed 50 fps clock from
 kick-off) we measured a bubble going `375x105 -> 561x159` at t = 22 s with
