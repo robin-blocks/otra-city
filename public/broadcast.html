@@ -84,7 +84,7 @@ const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
 // page's behaviour changes. It is reported in `state().build` and on the note
 // line, so "the deployed page still says X" is settled by reading the page,
 // not by comparing memories of deploys.
-const BUILD = '2026-09-14b';
+const BUILD = '2026-09-14c';
 
 // Errors are evidence: a silent failure films a black hour, so every one is
 // kept for `state()`, echoed to the console the harness reads, and shown.
@@ -893,6 +893,8 @@ window.rflBroadcast = {
   seekMatch(t) { return venues?.module(wantVenue, 'match-4dgsx')?.seek?.(Number(t)) ?? null; },
 
   camera: (name) => useCamera(name),
+  /** A harness's way to play RFL's schedule: see the module's `rehearseLive`. Live feed only. */
+  rehearseLive: (opts) => (live ? (venues?.module?.(wantVenue, 'match-4dgsx')?.rehearseLive?.(opts) ?? null) : null),
   // every name `camera=` accepts: the venue's authored views and the director's shots
   cameras: () => [...new Set([...Object.keys(def?.cameras || {}), ...Object.keys(CAMERAS)])],
 
@@ -950,6 +952,11 @@ window.rflBroadcast = {
           // the goal being run again, if one is; the head cam, if it has one;
           // the arena boards we dressed; whether the bundle's bodies were
           // reachable; the goals in this match, so a harness can find one
+          // how the clock is driven: 'wall' (a live fixture through its
+          // programme), 'dt' (a replay), null (the publisher's own)
+          drive: m.drive ?? null,
+          // the publisher's panels on the venue's screens: which slots, and whether attached
+          docks: m.docks ?? [],
           replay: m.replay ?? null,
           headcam: m.headcam ? { player: m.headcam.player, fov: m.headcam.fov } : null,
           replayCam: m.replayCam === true,

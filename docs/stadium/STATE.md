@@ -149,7 +149,7 @@ _none yet_
 2. Critic pass 1 (docs/stadium/CRITIQUE-1.md) pending; its ranked issues go here.
 3. Visual-regression diff from PROJECT §7 not implemented (deferred: no PNG decoder in the repo; shots are kept for eye review and CI artifacts).
 4. Live kick-off never observed end to end (next RFL slots today 16:01/16:02 London); only replays were mounted.
-5. 4DGSX follow-ups for Splat: the /sdk page's CORS note is stale; progressive track streaming (39 MB before first frame).
+5. 4DGSX follow-ups for Splat — now written up as one letter, `docs/4dgsx/SDK-LABELS.md`, UNSENT and waiting on Robin: the shout-bubble bug in `labels.ts` (with the three-line patch and a reproduction); the /sdk page's stale CORS note; progressive track streaming (39 MB before first frame). **4DGSX and RFL are different counterparties** — RFL is a producer publishing onto the format, not the SDK's maintainer, and told us so on 2026-09-14 after we sent them an SDK bug. Address SDK matters to Splat.
 
 ## Resolved
 - **A texture leaked per load/unload cycle** (found by the post-rebase check, then by registering every texture the renderer gave GPU resources): the match module replaced each screen's material and dropped the original. Once the scoreboard painted over its map, the venue's own plate texture was reachable only through that orphaned material, and venue disposal walks the scene graph — so nothing ever freed it. The module now RESTORES each original material on dispose and drops only its own. Three cycles: textures 31 → 31 → 31.

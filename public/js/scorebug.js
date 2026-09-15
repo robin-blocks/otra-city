@@ -164,10 +164,11 @@ export function createScorebug({ width, height, crests = CRESTS_URL } = {}) {
     g.fillText(bug.tag, px(372) - clockW - px(10), midY);
 
     // ---- b. LIVE, top right — only when it really is ---------------------
-    // ...and REPLAY while a goal is being run again from the scorer's head.
-    // A replay the city put on is never LIVE, so the two never compete.
-    const tag = bug.live ? { text: 'LIVE', colour: LIVE_RED, w: 66 }
-              : bug.replay ? { text: 'REPLAY', colour: REPLAY_AMBER, w: 92 } : null;
+    // ...and REPLAY while a goal is being run again from the scorer's head,
+    // which outranks LIVE for those seconds: a live match's replay is still a
+    // replay, and a viewer must never take a second look for the goal itself.
+    const tag = bug.replay ? { text: 'REPLAY', colour: REPLAY_AMBER, w: 92 }
+              : bug.live ? { text: 'LIVE', colour: LIVE_RED, w: 66 } : null;
     if (tag) {
       const x0 = W - 12 - tag.w;
       g.fillStyle = PANEL;

@@ -252,6 +252,16 @@ Learned while building the stadium (2026-09-03), true for every venue:
   update and before the draw) and three allocates it again at the right size.
   `state.labels.refits` counts these; `venue-check --match` asserts it moves
   and that the GL context reports no error over 40 s of play.
+  Verified against the SDK source 2026-09-15, which is why the walk is safe:
+  it collects SPRITES only, and the SDK's panels are meshes with their own
+  compare-and-dispose in `PanelLayer.rasterize`, so the two can never fight
+  over a texture. The three sprite kinds it does collect are the label pair,
+  the attribution mark and the fixture board; the last two draw at constant
+  sizes, so they are permanent no-ops. Collection at mount is COMPLETE — every
+  label sprite is built in one pass over the bundle's components at stage
+  construction, with no lazy or mid-match creation — and the workaround
+  depends on that staying true. Reported to 4DGSX with a patch:
+  `docs/4dgsx/SDK-LABELS.md`.
 - three.js allocates one shared Sprite geometry on first use, so GPU
   memory assertions compare two cycles, not the pre-first-use baseline.
 
