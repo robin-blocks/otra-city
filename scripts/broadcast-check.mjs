@@ -589,7 +589,26 @@ try {
           if (bites) still.push(o.name || m.type);
         }
       });
-      return { materials, still: [...new Set(still)] };
+      // When something IS still flagged, say enough to tell the two causes
+      // apart without another CI round trip: whether the pass had any roots at
+      // all (no roots = it takes its early return and prepares nothing), and
+      // where the offending object actually hangs.
+      const st = window.rflBroadcast.state?.().afterToneMap ?? null;
+      const where = [];
+      if (still.length) {
+        stage.traverse((o) => {
+          for (const m of [].concat(o.material || [])) {
+            if (!m) continue;
+            const bites = m.toneMapped === true
+              && (!m.isShaderMaterial || /tonemapping_fragment/.test(m.fragmentShader || ''));
+            if (!bites || where.length >= 3) continue;
+            const chain = [];
+            for (let p = o; p; p = p.parent) chain.push(p.name || p.type);
+            where.push(chain.join(' < '));
+          }
+        });
+      }
+      return { materials, still: [...new Set(still)], pass: st, where };
     })()`);
     let tm = await readToneMapped();
     let settled = false;
@@ -598,7 +617,7 @@ try {
     // frame here. 250 ms is a dozen of them at the pass's rate.
     if (!tm.error && tm.still.length) { await sleep(250); tm = await readToneMapped(); settled = true; }
     check('nothing drawn after the tone mapping is tone mapped again', !tm.error && tm.still.length === 0,
-      tm.error || `${tm.materials} materials in the stage, ${tm.still.length ? `still tone mapped after a frame: ${tm.still.join(', ')}` : `none tone mapped${settled ? ' (one arrived mid-frame and was cleared by the next pass)' : ''}`}`);
+      tm.error || `${tm.materials} materials in the stage, ${tm.still.length ? `still tone mapped after a frame: ${tm.still.join(', ')} — pass ${JSON.stringify(tm.pass)} — at ${tm.where.join(' | ')}` : `none tone mapped${settled ? ' (one arrived mid-frame and was cleared by the next pass)' : ''}`}`);
     // The bodies verify a second or two after the mount, once scene.json is read.
     for (const until = Date.now() + 15000; Date.now() < until && !sM.match?.bodies;) { await sleep(500); sM = await lv.state(); }
     const bd = sM.match?.bodies;
