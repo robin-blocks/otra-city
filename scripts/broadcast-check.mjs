@@ -377,6 +377,41 @@ try {
     const bo = sM.match.boards;
     check('every arena board found is dressed', !!bo && bo.found === bo.textured && bo.atlas !== 'failed',
       bo ? `${bo.found} boards, ${bo.textured} dressed (${JSON.stringify(bo.kinds || {})}), atlas ${bo.atlas}${bo.atlas === 'loading' ? ' — still fetching after 60 s, not a verdict on the boards' : ''}` : 'no boards field');
+    // NOTHING DRAWN AFTER THE TONE MAPPING MAY STILL BE TONE MAPPED. Their
+    // shader is a raw one three injects nothing into, but our own geometry
+    // inside their scene — those boards — is a stock material, and three tone
+    // maps those per material when it draws to the canvas, which is exactly
+    // where that pass draws. A board ACES'd on its own, against a wall that is
+    // not, is the same defect the pass exists to fix, in miniature: measured on
+    // s3-m28, the boards' dark ground drew 7 against artwork of 15.
+    //
+    // Read off the LIVE page rather than a `--bundle` capture, because that is
+    // the instance CI runs: neither CI invocation names a bundle, so a check
+    // in the capture block would never guard anything. It walks the real scene
+    // graph, so it fails if something reaches the stage later and is missed.
+    const tm = await lv.evaluate(`(() => {
+      const { scene } = window.rflBroadcast.three;
+      const stage = scene.getObjectByName('4dgsx-stage');
+      if (!stage) return { error: 'no 4dgsx-stage in the scene' };
+      const still = [];
+      let materials = 0;
+      stage.traverse((o) => {
+        for (const m of [].concat(o.material || [])) {
+          if (!m) continue;
+          materials += 1;
+          // The same rule after-tonemap.js applies: the flag is true by
+          // default everywhere and only bites where the shader carries the
+          // chunk — always on a stock material, never on a raw one, and on a
+          // ShaderMaterial only if its author asked for it.
+          const bites = m.toneMapped === true
+            && (!m.isShaderMaterial || /tonemapping_fragment/.test(m.fragmentShader || ''));
+          if (bites) still.push(o.name || m.type);
+        }
+      });
+      return { materials, still: [...new Set(still)] };
+    })()`);
+    check('nothing drawn after the tone mapping is tone mapped again', !tm.error && tm.still.length === 0,
+      tm.error || `${tm.materials} materials in the stage, ${tm.still.length ? `still tone mapped: ${tm.still.join(', ')}` : 'none tone mapped'}`);
     // The bodies verify a second or two after the mount, once scene.json is read.
     for (const until = Date.now() + 15000; Date.now() < until && !sM.match?.bodies;) { await sleep(500); sM = await lv.state(); }
     const bd = sM.match?.bodies;

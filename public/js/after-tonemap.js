@@ -85,7 +85,51 @@ export function createAfterToneMap({ renderer, camera }) {
     depthWrite: true,
   });
   const copy = new FullScreenQuad(copyMat);
-  const stat = { roots: 0, copies: 0, error: null };
+  const stat = { roots: 0, copies: 0, displayReferred: 0, error: null };
+
+  // ANYTHING DRAWN IN THIS PASS IS ALREADY A PICTURE, SO NOTHING HERE IS TONE
+  // MAPPED. The 4DGSX shader needs no help — it is a raw shader three injects
+  // nothing into. Our own meshes inside their scene do: three applies tone
+  // mapping per material when it draws to the canvas, which is exactly where
+  // this pass draws, so a stock material would be ACES'd on its own while the
+  // surface it is mounted on is not.
+  //
+  // That is not hypothetical. The arena's advertising boards are our geometry
+  // parented into the publisher's stage; drawn here with the default they came
+  // out crushed against their own artwork — dark ground 15 -> 7 — beside a
+  // wall rendering at full value (measured on s3-m28, 2026-09-14). A board is
+  // artwork, like their pitch; it renders as authored.
+  //
+  // Enforced here rather than at each author's material because this is the
+  // one place that knows an object is in the display-referred pass, and
+  // because objects arrive late: the boards are attached when their atlas
+  // finishes downloading, long after the first frame. The WeakSet makes it
+  // once per material, not once per frame.
+
+  // Whether three would actually tone map this material. `toneMapped` is true
+  // by default on EVERY material, the publisher's 370-odd shaders included,
+  // but three only applies the curve where the shader includes the chunk: a
+  // stock material always does, a ShaderMaterial only if its author wrote it,
+  // and a RawShaderMaterial never. So the flag is live on a board and inert on
+  // theirs. Clearing it only where it bites keeps the count honest and avoids
+  // dirtying several hundred of their materials for no change in pixels.
+  const wouldToneMap = (m) => m.toneMapped === true
+    && (!m.isShaderMaterial || /tonemapping_fragment/.test(m.fragmentShader || ''));
+
+  const prepared = new WeakSet();
+  function prepare(root) {
+    root.traverse((o) => {
+      for (const m of [].concat(o.material || [])) {
+        if (!m || prepared.has(m)) continue;
+        prepared.add(m);
+        if (wouldToneMap(m)) {
+          m.toneMapped = false;
+          m.needsUpdate = true;
+          stat.displayReferred += 1;
+        }
+      }
+    });
+  }
 
   // THE CANVAS MUST NOT BE MULTISAMPLED. The copied depth was rasterised at
   // pixel centres; a multisampled canvas tests a root's surfaces at sample
@@ -111,6 +155,7 @@ export function createAfterToneMap({ renderer, camera }) {
     const list = roots.filter(Boolean);
     stat.roots = list.length;
     if (!list.length) { composer.render(); return; }
+    for (const o of list) prepare(o);
     // The read buffer is what the RenderPass draws into, and the last pass
     // swaps the two — so it is taken now, before the swap moves it.
     const drawn = composer.readBuffer;
