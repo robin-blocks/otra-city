@@ -555,29 +555,56 @@ try {
     // the instance CI runs: neither CI invocation names a bundle, so a check
     // in the capture block would never guard anything. It walks the real scene
     // graph, so it fails if something reaches the stage later and is missed.
-    const tm = await lv.evaluate(`(() => {
-      const { scene } = window.rflBroadcast.three;
-      const stage = scene.getObjectByName('4dgsx-stage');
-      if (!stage) return { error: 'no 4dgsx-stage in the scene' };
-      const still = [];
-      let materials = 0;
-      stage.traverse((o) => {
-        for (const m of [].concat(o.material || [])) {
-          if (!m) continue;
-          materials += 1;
-          // The same rule after-tonemap.js applies: the flag is true by
-          // default everywhere and only bites where the shader carries the
-          // chunk — always on a stock material, never on a raw one, and on a
-          // ShaderMaterial only if its author asked for it.
-          const bites = m.toneMapped === true
-            && (!m.isShaderMaterial || /tonemapping_fragment/.test(m.fragmentShader || ''));
-          if (bites) still.push(o.name || m.type);
-        }
-      });
-      return { materials, still: [...new Set(still)] };
-    })()`);
+    // THE INVARIANT IS STEADY STATE, SO THE CHECK HAS TO WAIT FOR ONE. The
+    // pass clears the flag on the frame AFTER an object appears in the stage,
+    // and the publisher's SDK builds meshes on its own schedule — a dock
+    // surface, a rehearsal mounting. Reading between a creation and the next
+    // frame catches a material that is about to be corrected and calls it a
+    // defect. That is exactly how this line reddened main on 2026-09-15: it
+    // read 7 ms after the board atlas landed and named one unnamed
+    // MeshBasicMaterial, on a build that was correct a frame later.
+    //
+    // So it settles: two real animation frames per attempt, several attempts.
+    // A material that is genuinely never corrected survives all of them.
+    let tm = null;
+    for (let attempt = 1; attempt <= 8; attempt += 1) {
+      tm = await lv.evaluate(`(async () => {
+        const { scene } = window.rflBroadcast.three;
+        // Two frames, not one: the first may already be in flight, and it is
+        // the frame after the object exists that clears it. Raced against a
+        // timer so that a page which has stopped painting reports a real
+        // verdict rather than hanging until the evaluate budget expires.
+        await Promise.race([
+          new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+          new Promise((r) => setTimeout(r, 2000)),
+        ]);
+        const stage = scene.getObjectByName('4dgsx-stage');
+        if (!stage) return { error: 'no 4dgsx-stage in the scene' };
+        const still = [];
+        let materials = 0;
+        stage.traverse((o) => {
+          for (const m of [].concat(o.material || [])) {
+            if (!m) continue;
+            materials += 1;
+            // The same rule after-tonemap.js applies: the flag is true by
+            // default everywhere and only bites where the shader carries the
+            // chunk — always on a stock material, never on a raw one, and on a
+            // ShaderMaterial only if its author asked for it.
+            const bites = m.toneMapped === true
+              && (!m.isShaderMaterial || /tonemapping_fragment/.test(m.fragmentShader || ''));
+            if (bites) still.push(o.name || m.type);
+          }
+        });
+        return { materials, still: [...new Set(still)] };
+      })()`);
+      tm.attempts = attempt;
+      if (tm.error || tm.still.length === 0) break;
+      await sleep(400);
+    }
     check('nothing drawn after the tone mapping is tone mapped again', !tm.error && tm.still.length === 0,
-      tm.error || `${tm.materials} materials in the stage, ${tm.still.length ? `still tone mapped: ${tm.still.join(', ')}` : 'none tone mapped'}`);
+      tm.error || `${tm.materials} materials in the stage, ${tm.still.length
+        ? `still tone mapped after ${tm.attempts} settled reads: ${tm.still.join(', ')}`
+        : `none tone mapped (settled on read ${tm.attempts})`}`);
     // The bodies verify a second or two after the mount, once scene.json is read.
     for (const until = Date.now() + 15000; Date.now() < until && !sM.match?.bodies;) { await sleep(500); sM = await lv.state(); }
     const bd = sM.match?.bodies;
