@@ -1,0 +1,104 @@
+{
+  "_": "The stadium's direction DURING A FIXTURE'S PRE-ROLL — the three minutes of programme RFL run before kick-off, while the bodies hold the kick-off pose and the venue's own screens are back on the docks. Four fifths of it is those screens, because in the build-up \"when does this start\" IS the picture: SCREEN_MAIN frames the big screen and both side panels (the coming-up card, the fixtures, the results) and SCOREBOARD frames the countdown on the stand. The other fifth is the bowl filling up — an aerial, both terraces, a pitchside — so the shot changes often enough to read as a broadcast rather than a slate. The list loops, so it does not have to be exactly as long as the pre-roll; it has to read right wherever inside it the fixture is picked up. At the whistle the director hands over to match-cutlist.json, which only cuts.",
+  "_share": "4800 of 6000 frames on the screens = 80% (120s round the loop)",
+  "fps": 50,
+  "loop": true,
+  "segments": [
+    {
+      "frames": [
+        0,
+        1100
+      ],
+      "camera": "SCREEN_MAIN"
+    },
+    {
+      "frames": [
+        1100,
+        1340
+      ],
+      "camera": "HELI",
+      "seed": 11,
+      "params": {
+        "radius_m": 46,
+        "height_m": 26,
+        "period_s": 240,
+        "turbulence": 0.7,
+        "vfov_deg": 44
+      }
+    },
+    {
+      "frames": [
+        1340,
+        2190
+      ],
+      "camera": "SCOREBOARD"
+    },
+    {
+      "frames": [
+        2190,
+        2450
+      ],
+      "camera": "STANDS",
+      "seed": 4,
+      "params": {
+        "side": 2,
+        "from_m": 16,
+        "period_s": 22,
+        "vfov_deg": 30
+      }
+    },
+    {
+      "frames": [
+        2450,
+        3450
+      ],
+      "camera": "SCREEN_MAIN"
+    },
+    {
+      "frames": [
+        3450,
+        3700
+      ],
+      "camera": "PITCHSIDE",
+      "seed": 6,
+      "params": {}
+    },
+    {
+      "frames": [
+        3700,
+        4500
+      ],
+      "camera": "SCOREBOARD"
+    },
+    {
+      "frames": [
+        4500,
+        4750
+      ],
+      "camera": "STANDS",
+      "seed": 19,
+      "params": {
+        "side": 0,
+        "from_m": 15,
+        "period_s": 22,
+        "vfov_deg": 30
+      }
+    },
+    {
+      "frames": [
+        4750,
+        5800
+      ],
+      "camera": "SCREEN_MAIN"
+    },
+    {
+      "frames": [
+        5800,
+        6000
+      ],
+      "camera": "GANTRY",
+      "seed": 1,
+      "params": {}
+    }
+  ]
+}

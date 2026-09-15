@@ -58,7 +58,13 @@ visitor in the bowl, the camera on `/broadcast`, all from the same feed on the
 same clock. Nothing on our side needs telling when a match starts.
 
 **3. `/broadcast/now.json` — the city's shared override.** A document on our own
-origin naming a bundle the city has decided to show:
+origin saying what the city has decided to show. Either a standing instruction:
+
+```json
+{ "bundle": "latest", "loop": true }
+```
+
+or one bundle, pinned:
 
 ```json
 { "bundle": "https://cdn.4dgsx.com/channels/rfl/bundles/…", "title": "…" }
@@ -69,6 +75,28 @@ at Tier 2 — so changing that one file puts a replay in front of everyone who
 could see the pitch at all, the broadcast camera among them. A live fixture
 always takes the pitch back from it. `"bundle": null` takes it down. It is a
 ~320 MB download per client, so it is not something to leave on by accident.
+
+**`"latest"` is the normal posture, and the reason is a bug we shipped.** A
+pinned URL never moves: m28 was put on by hand on 14 September and was still
+looping the next day with m32 and m33 aired and published behind it, because
+nothing in the city advances a constant — and RFL publish a fixture into
+`items` only near its kick-off, so for most of any day there is no live match
+to outrank the pin either. `"latest"` resolves to the newest `replay` item
+carrying a `bundleUrl`, ordered by `publishedAt`. Every client resolves it
+against the same feed, so the city still agrees with itself, which is the whole
+point of this document.
+
+**A swap waits for a seam.** Following the feed means the bundle changes by
+itself, and a swap is a teardown and a fresh 320 MB download for every client
+in the bowl. Landing that mid-half would cut the picture at 2–1 in the second
+half — the same thing the page's own updater refuses to do, for the same
+reason. Every programme passes through a seam once a loop: the build-up, half
+time, the outro. And while the feed has not been read yet, "I do not know" is
+not "nothing is on": a failed poll leaves what is playing alone rather than
+blanking the stadium for a missing HTTP response.
+
+`state().match.now.follow` says whether the city is following or pinned, and
+`state().match.latest` what `"latest"` resolves to today.
 
 `state().match.source` says which of the three is on: `bundle`, `schedule` or
 `now`.
@@ -150,7 +178,7 @@ translucent standing panel it finds (`state().match.glass`), and
 | `camera=<name>` | one named camera for the whole run (default `gantry` in capture mode) |
 | `camtrack=<https url>` | a camera track file; overrides `camera` |
 | `bundle=<https url>` | a 4DGSX bundle to play on the pitch. In capture mode, absent means an empty pitch. In live mode it overrides what the stadium would otherwise be showing — and because it changes only the browser that asked, it is a debugging tool, not a way to put a match on the air |
-| `crowd=0..1` | how full the stands are; `0` (default) is empty |
+| `crowd=0..1` | how full the stands are. **Live mode defaults to 0.5**; capture mode defaults to `0` and must ask. `crowd=0` is an empty bowl in either |
 | `seed=<int>` | selects one of many equally valid versions of the same shot and crowd |
 | `t0=<seconds>` | warm the scene to this point before frame 0 |
 | `timeofday=0..24` | shift the lighting; see the caveat below |
@@ -211,12 +239,15 @@ line at the bottom of the page) is the date the page's behaviour last
 changed. A harness that pins a copy of the page, or a proxy that holds one,
 will report an older date than `https://otra.city/broadcast` does — so a
 "the deployed page still says X" conversation is settled by reading it. The
-current build is **2026-09-14c** (a live fixture follows its programme:
-pre-roll, kick-off, holds, post-roll — before that, 2026-09-14b: crests on the
-scorebug, the arena boards dressed, head-cam replays on a replay the city put on;
-2026-09-14: the live feed runs the stadium's match module, the director cuts
-during play, the sound switch; and 2026-09-11). Bump the constant at the top of
-`public/broadcast.html` whenever the page's behaviour changes.
+current build is **2026-09-15a** (the tracked gantry, a crowd on the live feed,
+a pre-roll list, the wide held past the buzzer, and the screens carrying the
+channel's timetable when the feed lists no fixture — before that, 2026-09-14c:
+a live fixture follows its programme, pre-roll, kick-off, holds, post-roll;
+2026-09-14b: crests on the scorebug, the arena boards dressed, head-cam replays
+on a replay the city put on; 2026-09-14: the live feed runs the stadium's match
+module, the director cuts during play, the sound switch; and 2026-09-11). Bump
+the constant at the top of `public/broadcast.html` whenever the page's
+behaviour changes.
 
 The gate asserts the field exists, and it can be pointed at the deployed
 site rather than a local copy of `public/`:
@@ -238,6 +269,11 @@ The contracted main position: 10.6 m back from the centre spot, 8.7 m up,
 looking north. Static. Authored in `venue.json`, and the gate re-verifies on
 every run that nothing otra.city builds obstructs the marked 14 × 9 area from
 it. Params: `x`, `back_m`, `height_m`, `vfov_deg`.
+
+**Asking for it by name always gets the locked shot** — `?camera=gantry`, a
+`camtrack` segment naming `GANTRY`, and every capture. Only the live director
+tracks with it, and only while a match is on the pitch. See *The tracked
+gantry* below.
 
 ### `heli`
 Orbiting aircraft. Params: `radius_m` (60), `height_m` (45), `period_s` (90 —
@@ -294,6 +330,31 @@ bowl, so the camera is allowed to move.
 shot shows the coming-up card, the fixture list and the results; `SCOREBOARD`
 frames the countdown. Both are held long enough to read — 12 s and 10 s.
 
+**A stand shot is never pointed at an empty terrace.** The push is a slow move
+in to about nine metres, so with nobody sitting there it is twenty-five seconds
+of furniture. The director asks the crowd which terraces are occupied — the
+venue's own seat list against the seats the crowd actually took — and if the
+one the segment names is thin it uses the fullest one instead; if no terrace
+has a crowd worth filming it drops to the pitchside handheld, which is a shot
+about the ground rather than about the people in it. `state().director.stands`
+reports fans per terrace in the order `stands` numbers them.
+
+**During a fixture's build-up — `/broadcast/preroll-cutlist.json`.** RFL run
+three minutes of programme before kick-off with the bodies holding the
+kick-off pose, and through it the venue's own screens are back on the docks
+carrying a countdown. In the build-up "when does this start" *is* the picture,
+so **four fifths of this list is those screens** — `SCREEN_MAIN` and
+`SCOREBOARD` — with the remaining fifth on the bowl filling up: an aerial,
+both terraces, a pitchside. It loops every 120 s, so it does not have to be
+exactly as long as the pre-roll; it has to read right wherever inside it a
+fixture is picked up. The share is checked in CI against the file.
+
+A **replay the city puts on** has a build-up too, and gets the same treatment:
+its programme has the same three segments and a build-up is a build-up whether
+the match is happening now or happened yesterday. During it the big screen
+belongs to the module, not to the broadcast feed — the countdown is the point,
+and painting the feed over it would show a picture of the stadium instead.
+
 ## The scorebug
 
 The broadcast graphics — a compact bug top left, a LIVE tag top right, and a
@@ -347,12 +408,23 @@ big screen and the two side panels used to show the plates they were painted
 with in Blender. They now carry the programme instead, from the same feed the
 scoreboard reads:
 
-| surface | between matches | during a match |
+| surface | between matches, and through any build-up or outro | while the match is on |
 |---|---|---|
-| `screen_main` | coming up: the next fixture, a live countdown, the London time | the SDK's broadcast feed |
-| `panel_left` | FIXTURES — the next five, with times | the SDK's line-up panel |
-| `panel_right` | RESULTS — the last five, with scores | the SDK's stats panel |
+| `screen_main` | coming up: the fixture, a live countdown, the London time | the broadcast feed |
+| `panel_left` | FIXTURES — the next four, with times | the SDK's line-up panel |
+| `panel_right` | RESULTS — the last four, with scores | the SDK's stats panel |
 | `screen_score` | NEXT MATCH and the countdown | the live score and clock |
+
+**When the feed lists no fixture at all**, which is most of any day — RFL
+publish one close to its kick-off, so `/api/v1/programme/rfl` spends hours
+carrying sixty replays and nothing upcoming — the screens fall back to the
+channel's own timetable rather than saying NO MATCH SCHEDULED. `channel.slots`
+and `channel.timezone` give the next slot; the countdown runs to that, labelled
+**NEXT SLOT** and not *next kick-off*, with "the fixture is announced nearer
+the time" under it. The FIXTURES panel becomes MATCH DAYS and lists the slots.
+If the channel declares no slots either, the big screen says what the stadium
+*is* showing instead of what it is not. The gate asserts the card is never a
+bare negative while there is anything true to put on it.
 
 Repainted once a second while the pitch is empty, so the countdown ticks. The
 SDK takes the docks over when a match mounts and hands back the *authored*
@@ -366,17 +438,65 @@ and a table computed here from whichever results the feed happens to include
 would be a table that is sometimes wrong under somebody else's name. If RFL
 publish standings, the right panel is where they go.
 
-**During a match — `/broadcast/match-cutlist.json`. Cuts, never drift.** Every
-shot is a static camera authored in `venue.json`, so a change of shot is a cut
-and nothing in frame moves except the match. RFL's encoder is CBR and a slow
-continuous camera move spends bitrate on every pixel of every frame; the
-subject is the football, so the bitrate should be too. The gantry holds about
-three quarters of the loop (108 s), with brief cuts to `stand_low`,
-`stand_high`, `aerial` and the scoreboard.
+**During a match — `/broadcast/match-cutlist.json`. One shot, and it is the
+gantry.** RFL asked for the gantry essentially throughout (their §4 of 14 Sep):
+two-a-side robot football is small in frame, and every cut away from the wide
+costs the viewer the thread of the play. Every shot in the list is a static
+camera authored in `venue.json`, so a change of shot is a cut and nothing in
+frame moves except the match — and the gantry itself, which tracks.
+
+## The tracked gantry
+
+A locked-off wide of two robots in a fourteen-metre frame is not a broadcast.
+RFL's own rendered matches use a gantry that pans and zooms from a fixed
+position, we asked to copy it rather than approximate it (REPLY-9 §3), and they
+said yes and pointed at `gauntlet/football.py`. **This is that block**,
+transposed from their Z-up match space into venue-local metres. Their numbers:
+
+| | |
+|---|---|
+| **what it aims at** | the mean of the players and the ball **counted twice** — "the ball is the story: weight it like two outfield players". Not the ball alone: a wide that tracks only the ball swings past the play every time it is cleared. |
+| **the bias** | the along-pitch component of that mean × **0.45**, "so the camera never swings to an extreme angle for one stray robot". Across the pitch it is unbiased. The aim sits at a fixed **0.45 m** above the turf. |
+| **the lens** | sized to hold **every player and the ball** with a **1.45** border, so nobody is clipped to the edge of frame. Vertical fov, horizontal spread divided by the aspect. Clamped **38°–52°**. |
+| **the smoothing** | first-order lags — RFL's 0.06 and 0.05 per frame at 50 fps, which is **0.32 s** on the aim and **0.39 s** on the lens. "A camera that snaps looks like a bug, and one that lags looks like a camera operator." |
+| **the position** | never moves. A real gantry pans and zooms from one place. |
+
+Measured against their arithmetic: four robots in a scrum on the centre spot
+gives **38°**, the tightest it goes; play spread end to end gives **52°**, wider
+than the locked 50°; a break to one goal pans the aim about 1.8 m and tightens.
+At the 52° ceiling the clamp wins and play spread corner to corner does lose
+somebody — their choice, and the gate counts those cases out loud rather than
+failing them.
+
+**Two differences from their renderer, both ours and both small.** They drop
+*fallen* robots before averaging, from a fall tracker their simulation keeps
+and a recording does not carry; every player is used here, which is their own
+fallback for the case where all of them are down. And their lags are per frame
+at a guaranteed 50 fps; this page paces itself from the wall clock — their own
+capture machine has been measured painting at a sixth of real time — so the
+constants are applied in seconds.
+
+The tracking needs the bundle's bodies to be reachable by name, which the
+module verifies before it uses them. When they are not, the shot is the locked
+gantry, exactly as before.
+
+**This is the one place the live feed spends bitrate on movement**, and it was
+put to RFL explicitly (REPLY-9 §3) against their §2 ask for cuts and not drift.
+They said yes.
 
 **A goal takes the scoreboard for four seconds**, then cuts back — the module
 paints `GOAL` there and the director goes to it, the way a gallery would. It
 interrupts the cut-list, never an explicitly requested `camera` or `camtrack`.
+
+**The buzzer is not the end of the play.** The half-time and full-time whistles
+arrive with the ball still travelling — a shot, a clearance, a save — and the
+director used to cut to the helicopter on the buzzer. RFL already measure the
+difference: every buzzer in `hud.clock` carries `play_end_t` beside
+`"ended": "ball at rest"`, five seconds after the whistle on every bundle we
+have looked at. The wide is held across that span, and for a bundle whose clock
+does not carry it there is a fallback of our own — hold while the ball is still
+moving faster than 0.6 m/s, capped at six seconds. `state().scorebug.inPlay` is
+the flag; `state().director.settling` says the fallback is what is holding it.
 
 The change of list is itself a cut: each list restarts on its own first shot
 rather than joining wherever its loop happened to be.
@@ -389,7 +509,10 @@ wants.
 That a match cut-list contains no moving shot is checked in CI
 (`scripts/broadcast-check.mjs`), against the file rather than against a
 running match: any segment naming a camera that is not authored in
-`venue.json`, or naming `heli`, `stands` or `pitchside`, fails the gate.
+`venue.json`, or naming `heli`, `stands` or `pitchside`, fails the gate. That
+is a property of the **list** — the tracked gantry is the director's, applied
+on top, and is checked separately as arithmetic: the bias, the lens range, the
+border, and that play which has not moved gives a frame which has not moved.
 
 ## Crests
 
@@ -435,6 +558,41 @@ client in the bowl and not only the broadcast.
 
 When the SDK learns `tex.proj`, a bundle whose boards already carry a texture
 should be left alone; that is the one change this will need.
+
+## The pitch has no goal line, and that is the publisher's
+
+Asked on 2026-09-15 and measured rather than guessed, against
+`s3-m28`'s `scene.json` and `geometry.bin`. The bundle carries **124 pitch
+markings**, every one a flat quad at z = 0.010–0.012 in rgba
+(0.9, 0.95, 0.9, 0.8):
+
+| marking | in the bundle |
+|---|---|
+| halfway line | **yes** — x = 0, the full 9 m |
+| centre circle | **yes** — about 120 arc segments, r ≈ 1.25 m |
+| penalty areas | **yes** — x = ±4.8, returning to x = ±7 |
+| goal areas | **yes** — x = ±6.27, returning to x = ±7 |
+| **goal lines** | **no** — nothing at x = ±7 |
+| **touchlines** | **no** — nothing at y = ±4.5 |
+
+The box lines run *into* x = ±7 and stop dead, which is exactly where a goal
+line would close them: the boxes are drawn unclosed. Nothing on our side
+touches them — the module hides only translucent draws that stand more than
+0.3 m tall (the arena's glass panels), and these are 2 mm tall and flat, which
+is precisely why that rule is written as a height and not as an alpha.
+
+The boundary is physically there even though it is not painted: the arena wall
+stands at y = ±4.5 to ±4.7 and the goal frames at x = ±7, so the ball is
+contained. It is a look, not a rule that cannot be applied.
+
+Two ways to fix it, and the choice is not obvious. **Ask 4DGSX** — their arena
+builder already emits five kinds of marking and the perimeter is one line of
+it, and then every viewer of a bundle gets it, not only ours. Or **draw it
+here**, the way the boards are: two quads at x = ±7, 0.08 m wide (the width
+every other line in the bundle uses), z = 0.011, in the same colour. That is
+about twenty lines in `match-4dgsx.js` and it would be right by construction —
+but it is painting a line on somebody else's pitch, and if their arena ever
+changes shape we would be the last to know.
 
 ## A live fixture follows its programme
 
@@ -537,9 +695,15 @@ the CI fixture, so it cannot drift from what the page actually consumes.
 stadium), chosen by a seeded partial shuffle so density 0.3 and 0.6 agree on
 the first 30% rather than reshuffling the stand.
 
-**It defaults to 0 in both modes**, so the live feed shows only real visitors
-and nobody has to wonder which of the figures in the stands is a person. Add
-`?crowd=0.3` if a fuller ground matters more than that.
+**The live feed defaults to 0.5 — 300 of the 600 seats.** It used to default to
+0 in both modes, and since RFL capture a bare `https://otra.city/broadcast`
+that meant every stand shot the stream ever carried was a slow push across six
+hundred empty seats. A synthetic crowd that is obviously synthetic beats an
+empty bowl; `?crowd=0` still gives the empty bowl for anyone who wants it.
+
+**A deterministic capture still defaults to 0** and must ask. A harness
+comparing runs against footage filmed before 15 September 2026 should not have
+the frame change under it because a default moved.
 
 Each fan's seat, clothing, resting posture, idle rate and stand-up schedule
 come from the seed. Poses are a pure function of simulated time, so the crowd
@@ -551,6 +715,10 @@ fan. Measured cost of 400 fans from the gantry: about 10 draw calls and
 50k triangles on top of the empty stadium.
 
 Match-event reactions are not implemented.
+
+`state().crowd` reports the density, the fans seated and how many are on their
+feet; `state().director.stands` reports fans per terrace, which is what the
+director uses to decide whether a stand shot is worth taking.
 
 ## `timeofday` — read this before using it
 
@@ -578,8 +746,9 @@ the board — season-4 titles are half again as long.
 
 ## What is not built
 
-- The tracked gantry RFL said yes to (their spec is in their note of 14 Sep).
 - Match-event crowd reactions (§6, explicitly a later phase).
+- Dropping *fallen* robots from the gantry's framing, which RFL's own renderer
+  does from a fall tracker a recording does not carry.
 - Crowd audio of any kind — no audio at all is produced; the venue PA is
   stripped from the module config on this page.
 - A tunnel or behind-goal camera.

@@ -1,10 +1,16 @@
 // Put a match on in the stadium, or take it down.
 //
-//   node scripts/stadium-now.mjs s3-m31            # by bundle id, resolved from the feed
+//   node scripts/stadium-now.mjs latest            # follow the programme (the default posture)
+//   node scripts/stadium-now.mjs s3-m31            # pin one fixture, by bundle id
 //   node scripts/stadium-now.mjs s3-m31 --loop     # ...and send it round again when it ends
-//   node scripts/stadium-now.mjs <https url>       # by bundle url
+//   node scripts/stadium-now.mjs <https url>       # pin one fixture, by bundle url
 //   node scripts/stadium-now.mjs off               # clear it
 //   node scripts/stadium-now.mjs --list            # what is available to show
+//
+// `latest` is not resolved here. It is written through as the literal string
+// and every client resolves it against the same feed at poll time, which is
+// what makes it a standing instruction rather than a pin with a fresh date on
+// it: a resolved URL would be exactly as stale tomorrow as the last one.
 //
 // Writes public/broadcast/now.json and nothing else. The deploy is what puts
 // it on air, which is why this is driven from a workflow rather than a web
@@ -47,17 +53,33 @@ if (list) {
 }
 
 if (!want) {
-  console.error('usage: stadium-now.mjs <bundle-id | https-url | off> [--list]');
+  console.error('usage: stadium-now.mjs <latest | bundle-id | https-url | off> [--loop] [--list]');
   process.exit(2);
 }
 
 const doc = JSON.parse(readFileSync(FILE, 'utf8'));
 
+if (/^latest$/i.test(want)) {
+  doc.bundle = 'latest';
+  doc.title = 'RFL — the latest match';
+  doc.loop = loop || doc.loop === true;
+  doc._put_on = `${new Date().toISOString().slice(0, 10)} — following the programme. Pin one fixture instead with: node scripts/stadium-now.mjs <bundle-id>`;
+  writeFileSync(FILE, JSON.stringify(doc, null, 2) + '\n');
+  const p = await programme();
+  const top = playable(p.items)[0];
+  console.log(`stadium: following the programme${doc.loop ? ' — on a loop' : ''}`);
+  console.log(`  newest right now: ${top ? `${top.bundleId} — ${top.title}` : 'nothing published'}`);
+  process.exit(0);
+}
+
 if (/^(off|none|null|clear)$/i.test(want)) {
   doc.bundle = null;
   doc.title = null;
   doc.loop = false;
-  delete doc._put_on;
+  // Rewritten rather than deleted: JSON.stringify writes keys in insertion
+  // order, so deleting this one and adding it back later moves it to the end
+  // of the file and the next diff is five lines of shuffle instead of one.
+  doc._put_on = `${new Date().toISOString().slice(0, 10)} — taken down. Put one on with: node scripts/stadium-now.mjs latest`;
   writeFileSync(FILE, JSON.stringify(doc, null, 2) + '\n');
   console.log('stadium: nothing on. The pitch goes back to empty at the next poll.');
   process.exit(0);
