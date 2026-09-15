@@ -555,6 +555,23 @@ try {
     // the instance CI runs: neither CI invocation names a bundle, so a check
     // in the capture block would never guard anything. It walks the real scene
     // graph, so it fails if something reaches the stage later and is missed.
+    //
+    // AFTER A FRAME HAS BEEN DRAWN, and that is not a formality. The rule is
+    // applied by `prepare()` at the top of each `after.render()`, so a
+    // material that arrives with the stage is cleared by the first frame that
+    // could draw it — never in a frame, always before one. Sampling between
+    // the mount (a network callback) and that frame reads a state no viewer
+    // can see, and on a software renderer painting one frame every few
+    // seconds that window is wide: main went red on it twice, on two
+    // different commits, while both their PR runs passed. `copies` counts the
+    // pass's own frames, so waiting for one is exactly "a frame has been
+    // drawn with this stage in the scene".
+    const copies0 = (await lv.state()).afterToneMap?.copies ?? 0;
+    let drewAFrame = false;
+    for (let i = 0; i < 120; i++) {
+      if (((await lv.state()).afterToneMap?.copies ?? 0) > copies0) { drewAFrame = true; break; }
+      await sleep(250);
+    }
     const tm = await lv.evaluate(`(() => {
       const { scene } = window.rflBroadcast.three;
       const stage = scene.getObjectByName('4dgsx-stage');
@@ -576,8 +593,9 @@ try {
       });
       return { materials, still: [...new Set(still)] };
     })()`);
-    check('nothing drawn after the tone mapping is tone mapped again', !tm.error && tm.still.length === 0,
-      tm.error || `${tm.materials} materials in the stage, ${tm.still.length ? `still tone mapped: ${tm.still.join(', ')}` : 'none tone mapped'}`);
+    check('nothing drawn after the tone mapping is tone mapped again', !tm.error && drewAFrame && tm.still.length === 0,
+      tm.error || (!drewAFrame ? 'the pass drew no frame within 30 s of the mount, so nothing was judged'
+        : `${tm.materials} materials in the stage, ${tm.still.length ? `still tone mapped: ${tm.still.join(', ')}` : 'none tone mapped'}`));
     // The bodies verify a second or two after the mount, once scene.json is read.
     for (const until = Date.now() + 15000; Date.now() < until && !sM.match?.bodies;) { await sleep(500); sM = await lv.state(); }
     const bd = sM.match?.bodies;
