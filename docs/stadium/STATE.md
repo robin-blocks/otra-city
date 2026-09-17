@@ -119,6 +119,60 @@ Both landed while this branch was in flight and both overlapped it:
 - `launchChrome` keeps main's `args` passthrough **and** this branch's `gpu`
   flag.
 
+## m42 AIRED FROM THE STADIUM — 2026-09-17, the first one
+
+The 19:01:42Z fixture (s3-m42, Synthetic Athletic v Singularity United) went to
+Twitch **from the stadium**, not from a rendered mp4. First time either side has
+seen it. The box's slot timer was `disable --now`'d so it could not stand the
+minipc's stream down, and the capture browser simply carried what the stadium
+did.
+
+Measured on the capture browser itself, through RFL's CDP:
+
+| | |
+|---|---|
+| mount | `{ seen: 63897, adopt: 345, up: 64241, docAge: 28843, ours: true }` |
+| 19:03:10Z | tag `Kick-off`, clock `01:32`, matchT −91.8, preroll true, live true, drive `wall` |
+| | programmeT **88.199**, audioOffset **88.199** — the same second |
+| premix | 19:02:49Z "no audioOffset yet (0s), waiting" → 19:02:51Z "offset 69.26s via state().scorebug.audioOffset" |
+
+The clock reading `01:32` at 19:03:10Z puts kick-off at 19:04:42Z, which is
+`startsAt + 180.00`. The programme drive (#98) is confirmed on air.
+
+**The grace period earned itself on its first outing.** RFL's supervisor asked
+for the offset two seconds before the page could answer, waited rather than
+guessing, and then took 69.26 s. Under the code it replaced it would have
+started the premix at 180 s — the kick-off call — two minutes early, and never
+corrected it.
+
+**Of the 64 s to the picture, 0.345 s was ours.** ~29 s was the programme feed
+being served stale at the read (`docAge`), and the rest was 292 MB of bundle.
+Both are written up and neither is in this repo: `docs/4dgsx/SCHEDULE-MOUNT.md`
+for the cache, `docs/broadcast/REPLY-13.md` §6 for the 157 MB
+`media/broadcast.mp4` that `/broadcast` never shows.
+
+### What Robin saw, and the two clocks behind it
+"The countdown got to 0 and nothing happened." True, and it was not one bug.
+The board counted to the feed's `startsAt` — the STREAM start, programme time 0
+— while the mounted card counts the match clock backwards, which is the
+WHISTLE. So the number hit zero at 19:01:42, sat there over a bare pitch for
+64 s, and then jumped FORWARD three minutes when the picture arrived. Two
+clocks, one number.
+
+Both now count to the whistle (`kickOffIso`), so it ticks through the mount
+without a jump and reaches zero when the ball is kicked. And the worse half:
+the moment the channel flips a fixture to `live`, `state.next` becomes
+TOMORROW'S — so during that same minute the screens were about to count down to
+a match sixteen hours away. `screenFixture` prefers a live fixture that is not
+on our pitch yet. `state().match.kickOff` reports the instant, and the gate
+asserts the gap to `streamStartsAt` is the publisher's pre-roll.
+
+**Still owed on the RFL side:** m42 is not in `broadcast.json`'s `streamed`, and
+`rfl-broadcast.timer` is disabled — both deliberate, both must be undone
+together or the next slot airs m42's mp4 again. The proper stadium slot mode
+(the box leaves the minipc up, sets the title, waits out the programme, then
+`mark_streamed`) is sketched in rfl-station's orchestration doc and not built.
+
 ## The stadium keeps the slots, and stands empty between them (2026-09-17, Robin)
 
 `public/broadcast/now.json` is `null`. The city no longer shows a replay for
