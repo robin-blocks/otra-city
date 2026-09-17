@@ -295,31 +295,53 @@ for (const id of ids) {
           const goal = (msA?.goals || [])[0];
           if (goal && mcfg.pa) {
             const bundleUrl = arg('bundle', DEFAULT_BUNDLE);
-            const startsAt = new Date(Date.now() - (180 + goal.t - 2) * 1000).toISOString();
-            const up = await mx.evaluate(`window.__venue.venues.module(${JSON.stringify(id)}, 'match-4dgsx')`
-              + `.rehearseLive({ bundleUrl: ${JSON.stringify(bundleUrl)}, startsAt: ${JSON.stringify(startsAt)} })`);
+            // THE AIM IS TAKEN IN THE PAGE, AT THE MOMENT OF THE CALL, and the
+            // first shot is deliberately thrown away.
+            //
+            // A live fixture's clock is the WALL clock from the `startsAt` we
+            // hand it, so aiming at the hold means naming an instant and then
+            // arriving before it. The mount in between is the problem: the SDK
+            // fetches the bundle again, and on a cold CI runner that took over
+            // 65 s — long enough to overshoot a five-second hold by a minute,
+            // and long enough to trip the fixture's default evaluate budget,
+            // which is how this turned main red the first time. So: mount once
+            // to warm the browser's cache, THEN aim, because the second mount
+            // is the fast one. Budget raised for both.
+            const mod = `window.__venue.venues.module(${JSON.stringify(id)}, 'match-4dgsx')`;
+            const rehearse = (secondsAgo) => mx.evaluate(
+              `${mod}.rehearseLive({ bundleUrl: ${JSON.stringify(bundleUrl)},`
+              + ` startsAt: new Date(Date.now() - ${secondsAgo} * 1000).toISOString() })`,
+              { timeoutMs: 180000 });
             const read = async () => {
               await mx.step(2);
               const st = (await mx.state()).venues.find((v) => v.id === id).modules[0].state;
               return { t: st.bug?.t, off: st.bug?.audioOffset, stem: st.pa?.stemT, drive: st.drive };
             };
-            let held = 0, worst = 0, prev = null, samples = 0, worstAt = null;
-            for (const until = Date.now() + 14000; Date.now() < until;) {
-              const r = await read();
-              if (r.drive !== 'wall' || r.stem == null || r.off == null) { await new Promise((z) => setTimeout(z, 200)); continue; }
-              samples += 1;
-              if (Math.abs(r.stem - r.off) > worst) { worst = Math.abs(r.stem - r.off); worstAt = r; }
-              // a hold: the picture is on one instant while the tape moves
-              if (prev && Math.abs(r.t - prev.t) < 0.05 && r.off - prev.off > 0.15) held += 1;
-              prev = r;
-              await new Promise((z) => setTimeout(z, 200));
+            let up = await rehearse(200);            // warm-up: anywhere in play
+            let held = 0, worst = 0, samples = 0, worstAt = null;
+            // Two shots at the hold. The first aimed mount is usually enough;
+            // a runner slow enough to miss it is slow enough to deserve another.
+            for (let attempt = 0; attempt < 2 && !held; attempt += 1) {
+              up = await rehearse(180 + goal.t - 2) && up;
+              let prev = null;
+              for (const until = Date.now() + 12000; Date.now() < until;) {
+                const r = await read();
+                if (r.drive !== 'wall' || r.stem == null || r.off == null) { await new Promise((z) => setTimeout(z, 200)); continue; }
+                samples += 1;
+                if (Math.abs(r.stem - r.off) > worst) { worst = Math.abs(r.stem - r.off); worstAt = r; }
+                // a hold: the picture is on one instant while the tape moves
+                if (prev && Math.abs(r.t - prev.t) < 0.05 && r.off - prev.off > 0.15) held += 1;
+                prev = r;
+                if (held) break;
+                await new Promise((z) => setTimeout(z, 200));
+              }
             }
             check('match: through a goal hold the PA follows the programme, not the match clock',
               up === true && held > 0 && worst < 0.05,
               `${samples} samples over the goal at ${goal.t}s: ${held} with the match clock held and the tape still running, `
               + `worst gap between where we play and the offset we publish ${worst.toFixed(3)}s${worstAt ? ` (stem ${worstAt.stem} vs offset ${worstAt.off} at match ${worstAt.t})` : ''}`
               + (up === true ? '' : ' — THE REHEARSAL DID NOT MOUNT'));
-            await mx.evaluate(`window.__venue.venues.module(${JSON.stringify(id)}, 'match-4dgsx').rehearseLive(null)`);
+            await mx.evaluate(`${mod}.rehearseLive(null)`, { timeoutMs: 60000 });
             await mx.step(5);
           }
           await mx.setTier(0);
