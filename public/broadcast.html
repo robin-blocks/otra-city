@@ -1112,6 +1112,10 @@ window.rflBroadcast = {
           // the slots it plays in, which is what the big screen falls back to
           // when the feed lists no fixture at all
           channel: m.channel ?? null,
+          // when the stadium's screens say the ball is kicked — the feed's
+          // stream start plus the publisher's pre-roll, which is the instant
+          // the countdown runs to and the scorebug hands over on
+          kickOff: m.kickOff ?? null,
           // what `now.json`'s "latest" resolves to today
           latest: m.latestReplay ?? null,
           // how many times a looping replay has been round. Reported because

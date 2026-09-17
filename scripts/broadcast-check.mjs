@@ -487,6 +487,26 @@ try {
   check('a scheduled fixture is never made audible here',
     !(sL.match?.source === 'schedule' && sL.silent === false),
     sL.match?.source === 'schedule' ? (sL.silent ? 'silent, as contracted' : 'DOUBLE AUDIO RISK') : 'no scheduled fixture on');
+  // THE COUNTDOWN RUNS TO THE WHISTLE, NOT TO THE STREAM START.
+  //
+  // m42, 2026-09-17, watched by Robin: the board counted to the feed's
+  // `startsAt`, reached 00:00 over a bare pitch, and sat there for the 64 s
+  // the bundle took to land — and then, on the mount, jumped FORWARD three
+  // minutes, because the mounted card counts the match clock backwards and
+  // that is the whistle. Two clocks for one card. Asserted on the reported
+  // instant rather than on painted pixels, and self-contained: whichever
+  // fixture it came from, the gap between the stream start it was derived
+  // from and the kick-off it points at is the publisher's pre-roll.
+  if (sL.match?.kickOff) {
+    const k = sL.match.kickOff;
+    const gap = (Date.parse(k.at) - Date.parse(k.streamStartsAt)) / 1000;
+    check('the screens count down to the whistle, not to the stream start',
+      Number.isFinite(gap) && Math.abs(gap - 180) < 0.5,
+      `${k.id || 'the next fixture'}: stream start ${k.streamStartsAt}, kick-off ${k.at} — ${gap.toFixed(0)}s of pre-roll`);
+  } else {
+    check('the screens count down to the whistle, not to the stream start',
+      !sL.match?.next, `no fixture listed, and none reported: next ${JSON.stringify(sL.match?.next?.startsAt ?? null)}`);
+  }
   check('the director is running', !!sL.director, sL.director ? `${sL.director.list} list, shot ${sL.director.shot}` : 'no director — a locked-off frame');
   // THE LIVE STREAM IS EXACTLY WHAT IS IN THE STADIUM, and this is the line
   // that keeps it so. Going to otra.city puts you on the broadcast; the people

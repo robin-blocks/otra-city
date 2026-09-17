@@ -153,6 +153,16 @@ function matchPublisherLook(group) {
 }
 const rgb = (c) => (Array.isArray(c) ? `rgb(${c.slice(0, 3).map((v) => Math.round(v * 255)).join(',')})` : '#8a86a0');
 const pad2 = (n) => String(n).padStart(2, '0');
+/**
+ * The whistle, from a fixture's stream start. RFL pin `startsAt` to programme
+ * time 0 — the first frame of the pre-roll — and kick off `PRE_ROLL_S` later.
+ * Anything unparseable comes back untouched: this is called from the paint
+ * loop, and `new Date(NaN).toISOString()` throws.
+ */
+function kickOffIso(startsAt) {
+  const t = Date.parse(startsAt);
+  return Number.isFinite(t) ? new Date(t + PRE_ROLL_S * 1000).toISOString() : startsAt;
+}
 function countdown(ms) {
   const s = Math.max(0, Math.ceil(ms / 1000));
   const d = Math.floor(s / 86400);
@@ -286,6 +296,8 @@ export function create(ctx) {
     // the arena boards we dressed, whether the bundle's bodies are reachable,
     // the goals in this match, and the replay + head cam when one is running
     boards: null, bodies: null, goals: [], replay: null, headcam: null, replayCam: false,
+    // when the screens say the ball is kicked, and the stream start it came from
+    kickOff: null,
     // the publisher's clock plan for the mounted match: halves, and every
     // buzzer with its "ball at rest"
     clockPlan: null,
@@ -444,17 +456,19 @@ export function create(ctx) {
       g.fillText('4dgsx.com is not answering — the pitch waits', W / 2, 380);
       text = 'NO SIGNAL';
     } else {
-      const nx = state.next;
+      // The whistle, and the fixture that is actually next — see `screenFixture`.
+      const nx = screenFixture();
+      const here = arriving(nx);
       // The channel's timetable when its feed lists no fixture — the same
       // fallback the big screen uses, for the same reason. See `nextSlot`.
       const nextUp = (nx || state.live) ? null : nextSlot();
       g.textAlign = 'center';
-      g.fillStyle = '#ffd479';
+      g.fillStyle = here ? '#ff3b30' : '#ffd479';
       g.font = '700 34px Menlo, monospace';
-      // Not "NEXT KICK-OFF": the feed's startsAt is when the programme
-      // reaches the pitch, and the build-up runs before the whistle. The
-      // board counts down to the thing it can actually see arrive.
-      g.fillText(nx ? 'NEXT MATCH' : state.live ? 'MATCH LOADING' : nextUp ? 'NEXT SLOT' : 'NO MATCH SCHEDULED', W / 2, 140);
+      // The number is the time to the WHISTLE, and the heading says so once we
+      // are inside the programme — "NEXT MATCH" over a bare pitch reads as
+      // "not yet", and by then it is very much yet.
+      g.fillText(nx ? (here ? 'KICK-OFF IN' : 'NEXT MATCH') : nextUp ? 'NEXT SLOT' : 'NO MATCH SCHEDULED', W / 2, 140);
       if (nx) {
         const ms = Date.parse(nx.startsAt) - now();
         g.fillStyle = '#e9edf6';
@@ -464,8 +478,10 @@ export function create(ctx) {
         g.font = '700 40px Menlo, monospace';
         g.fillText(`${nx.home?.code || '?'}  v  ${nx.away?.code || '?'}`, W / 2, 372);
         g.fillStyle = '#b9bcd6';
-        fitText(`${nx.home?.name || ''} v ${nx.away?.name || ''} · on at ${londonTime(nx.startsAt)} London`, W / 2, 416, { size: 32, maxW: W - 88 });
-        text = `next ${nx.home?.code}-${nx.away?.code} in ${countdown(ms)}`;
+        fitText(here ? `${nx.home?.name || ''} v ${nx.away?.name || ''} · the teams are coming out`
+                     : `${nx.home?.name || ''} v ${nx.away?.name || ''} · kick-off ${londonTime(nx.startsAt)} London`,
+          W / 2, 416, { size: 32, maxW: W - 88 });
+        text = `${here ? 'kick-off' : 'next'} ${nx.home?.code}-${nx.away?.code} in ${countdown(ms)}`;
       } else if (nextUp) {
         g.fillStyle = '#e9edf6';
         g.font = '900 150px Menlo, monospace';
@@ -587,11 +603,12 @@ export function create(ctx) {
     const nextUp = nx ? null : nextSlot();
     // What the stadium is showing while it waits, if it is showing anything.
     const showing = !nx && state.now?.title ? `showing: ${state.now.title}` : null;
+    const here = arriving(nx);
     ctx.textAlign = 'center';
     if (nx) {
-      ctx.fillStyle = '#47f2ff';
+      ctx.fillStyle = here ? '#ff3b30' : '#47f2ff';
       ctx.font = '700 32px Menlo, monospace';
-      ctx.fillText('COMING UP', W / 2, 190);
+      ctx.fillText(here ? 'KICK-OFF IN' : 'COMING UP', W / 2, 190);
       ctx.fillStyle = '#e9edf6';
       fitTextOn(ctx, `${nx.home?.code || '?'}  v  ${nx.away?.code || '?'}`, W / 2, 300,
         { weight: 900, size: 96, maxW: W - 120 });
@@ -602,7 +619,8 @@ export function create(ctx) {
       ctx.font = '700 56px Menlo, monospace';
       ctx.fillText(countdown(Date.parse(nx.startsAt) - now()), W / 2, 448);
       ctx.fillStyle = '#8a86a0';
-      fitTextOn(ctx, `on at ${londonTime(nx.startsAt)} London`, W / 2, 508, { size: 30, maxW: W - 120 });
+      fitTextOn(ctx, here ? 'the teams are coming out' : `kick-off ${londonTime(nx.startsAt)} London`,
+        W / 2, 508, { size: 30, maxW: W - 120 });
     } else if (state.sdk === 'loading') {
       ctx.fillStyle = '#8a86a0';
       ctx.font = '500 40px Menlo, monospace';
@@ -654,9 +672,15 @@ export function create(ctx) {
     // With no fixture in the feed the panel used to read "nothing listed",
     // which is a panel nobody reads next to a screen that now says when the
     // next slot is. It carries the channel's timetable instead.
+    // Kick-off, like the countdown on the screen next to it: a panel reading
+    // 20:01 beside a clock running to 20:04:42 is two answers to one question.
+    // `kickOffIso` returns the input unchanged on an unparseable date rather
+    // than throwing: `new Date(NaN).toISOString()` is a RangeError, and this
+    // runs inside the paint that draws every idle screen — one bad timestamp
+    // in the feed would take all three down.
     const fixtures = (state.upcoming || []).slice(0, 4).map((i) => ({
       a: `${i.home?.code || '?'}  v  ${i.away?.code || '?'}`,
-      b: londonTime(i.startsAt),
+      b: londonTime(kickOffIso(i.startsAt)),
     }));
     screens.right = fixtures.length
       ? paintList('right', 'FIXTURES', fixtures)
@@ -1160,6 +1184,49 @@ export function create(ctx) {
    * shows, and it is right for a replay we drive as well as for a fixture on
    * the wall clock, which the `startsAt` arithmetic was not.
    */
+  /**
+   * THE FIXTURE THE IDLE SCREENS ARE ABOUT, WITH `startsAt` MOVED TO THE WHISTLE.
+   *
+   * Two corrections, both of which m42 made on 2026-09-17 in front of Robin.
+   *
+   * 1. IT COUNTS TO KICK-OFF. RFL pin `startsAt` to the STREAM START —
+   *    programme time 0, the first frame of the pre-roll — and the whistle is
+   *    `PRE_ROLL_S` later. This used to count to `startsAt`, on the reasoning
+   *    that it was "the thing the board can actually see arrive". Both halves
+   *    of that were wrong. The picture did not arrive at `startsAt`: the
+   *    programme feed was 28.8 s stale and the bundle is 292 MB, so the stage
+   *    was handed over at +63.9 s, and the board sat on 00:00 over a bare
+   *    pitch for a minute. And when the match DID mount, `comingUp` below
+   *    switched to the match clock read backwards — which is the whistle — so
+   *    the number jumped forward by three minutes at the moment of the mount.
+   *    Counting to the whistle throughout is the one number that is both
+   *    continuous and the one a visitor means, and it reaches zero when the
+   *    ball is kicked.
+   *
+   * 2. A FIXTURE THAT IS ALREADY LIVE OUTRANKS THE NEXT ONE. The moment the
+   *    channel flips a fixture to `live`, `state.next` becomes TOMORROW's —
+   *    so for the minute the bundle is landing, the screens counted down to a
+   *    match sixteen hours away while the one they were waiting for was
+   *    arriving. `!stage` is what makes it safe: once the match is on the
+   *    pitch the scorebug owns the clock and this is not drawn.
+   */
+  function screenFixture() {
+    const item = (!stage && state.live) || state.next;
+    if (!item?.startsAt || !Number.isFinite(Date.parse(item.startsAt))) { state.kickOff = null; return null; }
+    const nx = {
+      ...item,
+      // kept so the screens can tell "not yet" from "landing right now"
+      streamStartsAt: item.startsAt,
+      startsAt: kickOffIso(item.startsAt),
+    };
+    // Reported, because "when does the stadium think the ball is kicked" is a
+    // question both sides have now got wrong from the outside, and because it
+    // is the only way to check the arithmetic on this without reading pixels.
+    state.kickOff = { at: nx.startsAt, streamStartsAt: nx.streamStartsAt, id: item.bundleId || null };
+    return nx;
+  }
+  /** True once the programme has started but the picture has not reached us. */
+  const arriving = (nx) => !!nx?.streamStartsAt && now() >= Date.parse(nx.streamStartsAt);
   function comingUp() {
     const t = stage ? programmeMatchT() : null;
     if (Number.isFinite(t) && t < 0) {
@@ -1169,7 +1236,7 @@ export function create(ctx) {
         startsAt: new Date(now() - t * 1000).toISOString(), title: state.match?.title || '',
       };
     }
-    return state.next;
+    return screenFixture();
   }
   /** The stage's score, except during a replay, when it is the score at the held time — the stage is rewound. */
   function heldScore(st) {
