@@ -119,6 +119,92 @@ Both landed while this branch was in flight and both overlapped it:
 - `launchChrome` keeps main's `args` passthrough **and** this branch's `gpu`
   flag.
 
+## The stadium keeps the slots, and stands empty between them (2026-09-17, Robin)
+
+`public/broadcast/now.json` is `null`. The city no longer shows a replay for
+the twenty-two hours that are not a fixture: the pitch is bare, the big screen
+counts down to the next kick-off, and the side panels carry the fixtures and
+the results. Robin's call, for the 19:01:42Z slot.
+
+What it buys, beyond the obvious: the pitch is EMPTY when a fixture arrives, so
+`adoptScheduled` has nothing to tear down first; nobody downloads ~320 MB to
+watch yesterday; and `/broadcast` can take a pending deploy in the hours when
+nothing is on, instead of waiting for a seam inside a looping replay.
+
+**And it took the CI gate's teeth with it, which is the part worth remembering.**
+Every assertion `broadcast-check` makes about a mounted match — the arena
+boards, the tone-mapping rule, the bodies, the crests, the forced goal replay,
+the rehearsed live fixture — is read off the LIVE page, and the live page mounts
+whatever `now.json` names. With `null` there, all of them degrade silently to
+printed notes. So the gate now serves the live page **its own** `now.json`
+(`--now latest`, a one-file overlay on the harness's static host) and CI passes
+it: what the city shows and what the gate tests are no longer the same decision.
+
+### The commentary follows the programme, not the match clock
+`program.map` and `audio.map` are the SAME array — read off s3-m41, 29
+breakpoints each, and RFL's exporter (`gauntlet/volumetric.py: export_audio`)
+hands one to both. So programme time IS stem time, and that is the only
+unambiguous number: RFL's broadcast stops the match clock and lets the tape run
+on in two places — the three-minute build-up, where the whole pre-roll answers
+to match t = 0, and every goal, where `replay_s` seconds of replay answer to the
+instant the ball crossed the line.
+
+The venue's PA was being positioned by mapping the match clock FORWARD, which
+has to pick an edge of such a span. Through every goal hold it returned the same
+second while the element played on, and `sync` hauled the playhead back to it
+every 0.35 s — a stutter over every goal call in the match, for anyone standing
+in the bowl with sound on. `stemSeconds()` in the module is now the single
+source for both the PA and the `audioOffset` we publish, and `pa.stemT` reports
+where the tape is being driven to even while silent, so the two can be seen to
+agree from outside. Guarded in `venue-check --match` (a rehearsed live fixture
+polled across its first goal) and in `broadcast-check` (the offset must run on
+while the match clock stands still).
+
+`/broadcast` deletes the `pa` block, so none of this is the stream's sound —
+that is RFL's premix, and §2 of `docs/broadcast/REPLY-13.md` is where it goes
+wrong.
+
+### A fixture holds a deploy for its whole programme
+The ETag self-updater waited for any seam that was not live play. A replay's
+seams are cheap; a fixture's are its build-up and its half time, and a reload in
+either is not a four-second black — the page comes back with an empty pitch and
+refetches the bundle, measured at ~100 s on 2026-09-15, which is longer than
+half time. A scheduled fixture on the pitch (`drive: 'wall'`) now holds the
+change for its whole programme, as does the fifteen minutes before one starts;
+`state().updater.holding` says which.
+
+### Measured on production, and it is the number RFL are missing
+2026-09-17, build 2026-09-15b, m39's replay in its pre-roll:
+
+| | programme | `audioOffset` | `<video>.currentTime` | `match.score.t` |
+|---|---|---|---|---|
+| 16:13:33.9Z | 19.7 s | **19.724** | 180.377 | 0 |
+| 16:14:28.1Z | 73.9 s | **73.892** | 180.106 | 0 |
+| 16:15:22.5Z | 128.2 s | **128.233** | 180.118 | 0 |
+
+`stadium_audio.py` positions RFL's premix from the first `<audio,video>` element
+on the page, falling back to `scene.audio.map` at `state().match.score.t`.
+**Both answer 180 — kick-off — for the whole build-up.** The element is the
+SDK's media dock for the bundle's `media/broadcast.mp4`, driven from the stage's
+clock, and the stage's track only covers the match, so it clamps to the first
+frame through the pre-roll; `score.t` is a score STEP, the time of the last
+goal, which is 0 before the first one. A premix started at the mount therefore
+opens with the kick-off call and, running uncorrected on the wall clock, stays
+that far ahead all match. `state().scorebug.audioOffset` is exact at every point
+of the programme, holds included.
+
+And the element freezes again at every goal — sampled at 200 ms through m39,
+the match clock held at 43.4 s while the programme ran 228.35 → 233.35 and the
+video moved 228.32 → 228.33, because it is driven from the match clock as well.
+Worst error over that window 5.02 s; in open play it is good to 0.15 s, which is
+why this has been invisible. Written up as `docs/broadcast/REPLY-13.md`.
+
+Also visible in that measurement: `/broadcast` reserves the big screen for the
+live feed, so the publisher's `main` dock is never attached — and the SDK builds
+its video element anyway (`readyState 4`, so it is fully fetched). That is 157 MB
+of a 292 MB bundle decoded for a surface nobody sees, and `mount()` has no way to
+decline it. A 4DGSX ask, in REPLY-13 §6.
+
 ## Decisions
 - 2026-09-02 Q1 placement: east end on the boulevard axis; lots x ≥ 48 reserved (Robin).
 - 2026-09-02 Q2 idle: countdown board only, no replays on the live site (Robin). Replays are fixture-only.

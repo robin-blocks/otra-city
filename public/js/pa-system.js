@@ -85,7 +85,12 @@ export function createPA({ listener, root, cfg = {}, log = console }) {
   const speed = cfg.speed_of_sound || SPEED_OF_SOUND;
   const state = {
     ready: false, playing: false, speakers: 0, source: cfg.source || 'commentary',
-    spreadMs: 0, nearestMs: 0, farthestMs: 0, drift: 0, error: null,
+    // `stemT` is where the caller last said the tape should be, recorded
+    // whether or not we are playing: it is the only way from outside to see
+    // that the stem is being driven by the programme and not by a match clock
+    // that stands still over every goal. Reported even when silent, because a
+    // check has no gesture to start audio with.
+    spreadMs: 0, nearestMs: 0, farthestMs: 0, drift: 0, stemT: null, error: null,
   };
 
   const master = ctx.createGain();
@@ -110,7 +115,6 @@ export function createPA({ listener, root, cfg = {}, log = console }) {
 
   let el = null;
   let src = null;
-  let map = null;
   let gain = cfg.gain ?? 1;
 
   function placeSpeakers() {
@@ -137,7 +141,6 @@ export function createPA({ listener, root, cfg = {}, log = console }) {
       const spec = (scene.audio?.sources || []).find((s) => s.id === state.source);
       if (!spec) { state.error = `bundle has no "${state.source}" source`; return false; }
       if (spec.anchor) { state.error = `"${state.source}" is anchored to a body — not ours to place`; return false; }
-      map = spec.map || scene.audio?.map || null;
       gain = (cfg.gain ?? 1) * (spec.gain ?? 1);
       el = document.createElement('audio');
       el.crossOrigin = 'anonymous';   // required, or the graph outputs silence
@@ -159,16 +162,29 @@ export function createPA({ listener, root, cfg = {}, log = console }) {
     }
   }
 
-  /** Put the stem where the match clock says it should be. */
-  function seek(matchT) {
-    if (!el) return;
-    const want = mapTime(map, matchT);
-    if (Number.isFinite(want) && want >= 0) el.currentTime = Math.min(want, el.duration || want);
+  /**
+   * Put the stem where the PROGRAMME says, in the stem's own seconds.
+   *
+   * Not a match time. The caller owns the clock, because the match clock is
+   * not a position in this file: RFL's broadcast holds the match still and
+   * lets the tape run on — three minutes of it before kick-off, and a few
+   * seconds again over every goal — so one match instant answers to a whole
+   * span of stem time and mapping it forward can only pick an edge. The
+   * module drives the programme and therefore knows which second of the tape
+   * this is; here we only put the playhead there.
+   */
+  function seek(stemT) {
+    if (!el || !Number.isFinite(stemT) || stemT < 0) return;
+    el.currentTime = Math.min(stemT, el.duration || stemT);
   }
 
-  async function start(matchT) {
+  /** Where the caller says the tape is, recorded even when nothing is playing. */
+  const mark = (stemT) => { if (Number.isFinite(stemT)) state.stemT = +stemT.toFixed(3); };
+
+  async function start(stemT) {
+    mark(stemT);
     if (!state.ready || state.playing) return;
-    seek(matchT);
+    seek(stemT);
     try {
       await el.play();
       state.playing = true;
@@ -185,12 +201,12 @@ export function createPA({ listener, root, cfg = {}, log = console }) {
     el.pause();
   }
 
-  /** Keep the stem on the match clock; the broadcast timeline is not linear. */
-  function sync(matchT) {
-    if (!state.playing || !el) return;
-    const want = mapTime(map, matchT);
-    state.drift = +(el.currentTime - want).toFixed(3);
-    if (Math.abs(state.drift) > RESEEK_S) seek(matchT);
+  /** Keep the stem on the programme clock, which is the one that runs evenly. */
+  function sync(stemT) {
+    mark(stemT);
+    if (!state.playing || !el || !Number.isFinite(stemT)) return;
+    state.drift = +(el.currentTime - stemT).toFixed(3);
+    if (Math.abs(state.drift) > RESEEK_S) seek(stemT);
   }
 
   function setEnabled(on) {
