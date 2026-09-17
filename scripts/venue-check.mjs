@@ -272,6 +272,56 @@ for (const id of ids) {
           await mx.step(5);
           const ms3 = (await mx.state()).venues.find((x) => x.id === id).modules[0]?.state;
           check('match: mute silences the stage', ms3?.audio === 'muted', `audio ${ms3?.audio}`);
+          // THE TAPE RUNS ON WHILE THE MATCH STANDS STILL, and a goal is the
+          // only place that can be seen. RFL's broadcast stops the match
+          // clock and inserts the replay, so `program.map` holds one match
+          // instant across a span of programme time — and the stem has to
+          // cross that span, because the commentator is calling the goal
+          // over it. Driving the stem from the match clock cannot: it maps
+          // the held instant to the near edge of the hold and stays there,
+          // so `sync` hauled the playhead back every 0.35 s for the length
+          // of every replay in the match. What the module publishes as
+          // `audioOffset` — the number RFL position their premix from — was
+          // right all along, which is exactly why this is asserted as the
+          // two agreeing rather than as either one alone.
+          //
+          // Polled across the whole window rather than aimed at the hold:
+          // the hold is about five seconds of WALL time (a live fixture's
+          // clock is the wall clock, so stepping frames does not move it)
+          // and the mount before it is not instant. Sampling throughout
+          // means the hold only has to pass while we are watching, and
+          // "a hold was seen at all" is asserted too — a check that can
+          // pass by never reaching the thing it tests is not a check.
+          const goal = (msA?.goals || [])[0];
+          if (goal && mcfg.pa) {
+            const bundleUrl = arg('bundle', DEFAULT_BUNDLE);
+            const startsAt = new Date(Date.now() - (180 + goal.t - 2) * 1000).toISOString();
+            const up = await mx.evaluate(`window.__venue.venues.module(${JSON.stringify(id)}, 'match-4dgsx')`
+              + `.rehearseLive({ bundleUrl: ${JSON.stringify(bundleUrl)}, startsAt: ${JSON.stringify(startsAt)} })`);
+            const read = async () => {
+              await mx.step(2);
+              const st = (await mx.state()).venues.find((v) => v.id === id).modules[0].state;
+              return { t: st.bug?.t, off: st.bug?.audioOffset, stem: st.pa?.stemT, drive: st.drive };
+            };
+            let held = 0, worst = 0, prev = null, samples = 0, worstAt = null;
+            for (const until = Date.now() + 14000; Date.now() < until;) {
+              const r = await read();
+              if (r.drive !== 'wall' || r.stem == null || r.off == null) { await new Promise((z) => setTimeout(z, 200)); continue; }
+              samples += 1;
+              if (Math.abs(r.stem - r.off) > worst) { worst = Math.abs(r.stem - r.off); worstAt = r; }
+              // a hold: the picture is on one instant while the tape moves
+              if (prev && Math.abs(r.t - prev.t) < 0.05 && r.off - prev.off > 0.15) held += 1;
+              prev = r;
+              await new Promise((z) => setTimeout(z, 200));
+            }
+            check('match: through a goal hold the PA follows the programme, not the match clock',
+              up === true && held > 0 && worst < 0.05,
+              `${samples} samples over the goal at ${goal.t}s: ${held} with the match clock held and the tape still running, `
+              + `worst gap between where we play and the offset we publish ${worst.toFixed(3)}s${worstAt ? ` (stem ${worstAt.stem} vs offset ${worstAt.off} at match ${worstAt.t})` : ''}`
+              + (up === true ? '' : ' — THE REHEARSAL DID NOT MOUNT'));
+            await mx.evaluate(`window.__venue.venues.module(${JSON.stringify(id)}, 'match-4dgsx').rehearseLive(null)`);
+            await mx.step(5);
+          }
           await mx.setTier(0);
           await mx.step(120);
           const m3 = await sweepOn(mx);

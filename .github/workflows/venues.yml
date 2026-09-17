@@ -61,7 +61,13 @@ jobs:
       # we cite in letters had never actually run here; it costs ~90 s.
       - run: node scripts/venue-check.mjs --all --match --out poc/out/venue-check.json
       - run: node scripts/venue-shot.mjs --all --out poc/out/shots
-      - run: node scripts/broadcast-check.mjs --out poc/out/broadcast-check.json --shots poc/out/shots
+      # `--now latest` puts a match on the LIVE page for the gate's own
+      # benefit. The city itself shows nothing between the channel's three
+      # slots (public/broadcast/now.json, 2026-09-17), and every assertion
+      # about a mounted match is read off that page — so without this the
+      # boards, the tone-mapping rule, the bodies, the crests, the goal replay
+      # and the rehearsed live fixture all quietly become printed notes.
+      - run: node scripts/broadcast-check.mjs --now latest --out poc/out/broadcast-check.json --shots poc/out/shots
       # the crowd and the cut-list have their own determinism to lose
       - run: node scripts/broadcast-check.mjs --frames 400 --crowd 0.7 --camtrack /broadcast/camtrack-example.json --out poc/out/broadcast-crowd.json
       - run: node scripts/presence-check.mjs

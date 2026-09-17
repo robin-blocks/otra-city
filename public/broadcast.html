@@ -260,7 +260,7 @@ let ambientCut = null, matchCut = null, prerollCut = null, cutNow = null, cutFro
 let livePaceFrom = null;
 // A capture that has been up for days is running the page it loaded on the day
 // it started. See `watchForNewBuild()`.
-const updater = { armed: false, etag: null, changed: false, checks: 0, reloading: false, heldSince: null };
+const updater = { armed: false, etag: null, changed: false, checks: 0, reloading: false, heldSince: null, holding: null };
 // The big screen's texture: a copy of the frame this page just drew.
 let feedTex = null, feedMesh = null;
 // The broadcast graphics. Live only: a deterministic capture would have to
@@ -603,6 +603,10 @@ function updateFeedScreen() {
  * that. Capture mode never arms it at all — a harness reloading itself
  * mid-capture would be a determinism bug of the worst kind.
  */
+// How long before a fixture's `startsAt` a pending deploy stops being taken.
+// Wide enough to cover the whole build-up plus the mount, so a change that
+// arrives during it waits for the post-roll rather than racing kick-off.
+const FIXTURE_GUARD_MS = 15 * 60 * 1000;
 function watchForNewBuild({ everyMs = 5 * 60 * 1000 } = {}) {
   if (!live) return;
   const url = location.pathname;
@@ -642,7 +646,28 @@ function watchForNewBuild({ everyMs = 5 * 60 * 1000 } = {}) {
       // truth about it — their clock, extended across the seconds between a
       // buzzer and their own "ball at rest" — and it is false in all of them.
       const m = matchState();
-      if (m?.phase === 'match' && m?.bug?.inPlay !== false) return;
+      if (m?.phase === 'match' && m?.bug?.inPlay !== false) return (updater.holding = 'play');
+      // A SEAM IS NOT ENOUGH DURING A LIVE FIXTURE, and that is the difference
+      // between a replay and a match. A replay's seams come round every
+      // seventeen minutes and its cost is a gap nobody was watching; a
+      // fixture's seams are its build-up and its half time, and reloading in
+      // either is not a four-second black — the page comes back with an empty
+      // pitch and has to fetch the bundle again, measured at ~100 s on
+      // 2026-09-15. Half time does not last that long. So a fixture the
+      // schedule put on holds the change for its whole programme, and it is
+      // taken at the post-roll when the stage comes down.
+      // `live` before `drive`, because the worst moment of all is the one in
+      // between: the channel has flipped the fixture to live, nothing is on
+      // our pitch yet, and by every other test here the stadium looks idle.
+      // A reload there lands squarely in the mount it is waiting for.
+      if (m?.live) return (updater.holding = 'fixture live on the channel');
+      if (m?.drive === 'wall' || m?.source === 'schedule') return (updater.holding = 'fixture');
+      // And the same for the run-up to one: a reload two minutes before
+      // kick-off spends the build-up booting, and the bundle is not ours to
+      // pre-fetch — the feed withholds `bundleUrl` until `startsAt`.
+      const startsIn = m?.next?.startsAt ? Date.parse(m.next.startsAt) - Date.now() : Infinity;
+      if (startsIn > 0 && startsIn < FIXTURE_GUARD_MS) return (updater.holding = 'kick-off soon');
+      updater.holding = null;
       updater.reloading = true;
       console.log('/broadcast: the page changed and the pitch is empty — reloading');
       location.reload();

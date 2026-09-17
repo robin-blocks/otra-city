@@ -971,6 +971,33 @@ export function create(ctx) {
     return stage?.time ?? 0;
   }
   /**
+   * WHERE THE COMMENTARY STEM SHOULD BE, in its own seconds.
+   *
+   * The programme clock, not the match clock mapped forward — and the
+   * difference is the whole of it. `program.map` and `audio.map` are the SAME
+   * array (read off s3-m41: 29 identical breakpoints, and the publisher's
+   * exporter hands one to both), so while we drive, programme time IS stem
+   * time, exactly and with no arithmetic.
+   *
+   * Going the other way cannot work, because match time is not a position on
+   * the tape. RFL's broadcast stops the match clock and lets the tape run on
+   * in two places: the three-minute build-up, where the whole pre-roll answers
+   * to match t = 0, and every goal, where a few seconds of replay answer to
+   * the instant the ball crossed the line. `mapTime` has to pick an edge of
+   * such a span, so it returned the SAME second for as long as the hold
+   * lasted while the element played on — and `sync` then dragged the playhead
+   * back to it every 0.35 s. That is a stutter over every goal call in the
+   * match, and three minutes of it before kick-off.
+   *
+   * With no map at all, the stem is the match: that is what a v0.1 bundle
+   * without a programme means, and it is what the fallback says.
+   */
+  function stemSeconds() {
+    if (driving()) return programmeT;
+    const t = programmeMatchT();
+    return audioMap ? mapTime(audioMap, t) : t;
+  }
+  /**
    * Programme seconds since the fixture's programme started, clamped to the
    * programme. On the machine's own clock, like the lock it replaces: the
    * feed's `now` is the generation time of a response the CDN caches for
@@ -1549,11 +1576,12 @@ export function create(ctx) {
       // through the publisher's own map, replay holds and all. Neither needs
       // a surface we happen to be drawing.
       t: +t.toFixed(3),
-      // While the programme drives, the offset IS the programme clock: RFL's
-      // `program.map` and `audio.map` are the same array, so mapping back and
-      // forth would be arithmetic in a circle.
-      audioOffset: driving() ? +programmeT.toFixed(3)
-                 : audioMap ? +mapTime(audioMap, t).toFixed(3) : null,
+      // The same number our own speakers are playing at, from the same
+      // expression, so the two can never drift apart — see `stemSeconds`.
+      // `null` is a real answer and not a zero: it says this page does not yet
+      // know where the tape should be, which is a thing an encoder syncing to
+      // us has to be able to tell from "the very beginning".
+      audioOffset: (driving() || audioMap) ? +stemSeconds().toFixed(3) : null,
       // where in the whole programme, and which of its three parts — only
       // meaningful while we drive; a live fixture is wherever its clock is
       programmeT: driving() ? +programmeT.toFixed(3) : null,
@@ -1953,15 +1981,22 @@ export function create(ctx) {
           if (map && map.flipY !== false) { map.flipY = false; map.needsUpdate = true; }
         }
         if (pa) {
-          // reported whether or not it is ready: a PA that failed to load is
-          // exactly the thing worth seeing in the state
-          state.pa = pa.state;
           if (pa.state.ready) {
-            const t = programmeMatchT();
-            if (!pa.state.playing && state.audio === 'on') pa.start(t);
-            pa.sync(t);
+            const stemT = stemSeconds();
+            if (!pa.state.playing && state.audio === 'on') pa.start(stemT);
+            pa.sync(stemT);
             pa.update();            // arrival delays follow the visitor
           }
+          // Reported whether or not it is ready — a PA that failed to load is
+          // exactly the thing worth seeing in the state — but AFTER the sync,
+          // not before it. Read before, `pa.stemT` is the PREVIOUS frame's,
+          // and anyone comparing it with `bug.audioOffset` from this one is
+          // measuring the gap between two frames. A live fixture's clock is
+          // the wall clock, so on a software renderer painting a 2M-triangle
+          // scene that gap is SECONDS: it read as a six-second disagreement
+          // between where we play and where we say the tape is, on code where
+          // both come from the same expression.
+          state.pa = pa.state;
         }
       }
       boardTimer -= dt;

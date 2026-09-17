@@ -12,15 +12,28 @@
 //
 //   node scripts/broadcast-check.mjs [--frames 250] [--camera gantry]
 //                                    [--bundle <url>] [--out report.json]
-//                                    [--shots dir] [--gpu]
+//                                    [--shots dir] [--gpu] [--now latest]
 //                                    [--origin https://otra.city]
 //
 // `--origin` points the same gate at a deployed site instead of serving
 // public/ locally — so "is production the build we described?" is a command
 // with a PASS line, not a comparison of memories. Everything else, the two
 // independent processes included, runs unchanged against it.
+//
+// `--now` IS WHY THE MATCH BLOCK STILL RUNS. Everything this gate asserts
+// about a mounted match — the arena boards, the tone-mapping rule, the
+// bodies, the crests, the goal replay, the rehearsed live fixture — is read
+// off the LIVE page, because that is the instance RFL capture, and the live
+// page mounts whatever `public/broadcast/now.json` names. On 2026-09-17 that
+// became `null` on purpose: the stadium keeps the channel's three slots and
+// stands empty between them. So the gate hands the served tree its own
+// `now.json` instead of relying on what the city happens to be showing, and
+// the two are no longer the same decision. Without it every one of those
+// checks silently degrades to a printed note, which is the shape of a gate
+// that has stopped gating.
 import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
+import { tmpdir } from 'node:os';
 import { serve } from '../lib/static-server.mjs';
 import { launchChrome } from '../lib/headless-chrome.mjs';
 import { PUBLIC_DIR } from '../lib/venue-harness.mjs';
@@ -36,6 +49,19 @@ const CAMTRACK = arg('camtrack');
 const SHOTS = arg('shots');
 const out = arg('out');
 const ORIGIN = (arg('origin') || '').replace(/\/+$/, '') || null;
+// `latest`, or a bundle URL. Meaningless against `--origin`: a deployed site
+// serves its own document, and asking it what it is showing is the point.
+const NOW = ORIGIN ? null : arg('now');
+const nowFile = NOW ? join(tmpdir(), `otra-now-${process.pid}.json`) : null;
+if (nowFile) {
+  writeFileSync(nowFile, JSON.stringify({
+    _: 'written by scripts/broadcast-check.mjs --now; the repo\'s own now.json is not touched',
+    bundle: NOW, title: 'harness', audio: false, loop: true,
+  }) + '\n');
+}
+// One overlay, shared by all three browsers, so they are looking at the same
+// stadium as each other.
+const MOUNTS = nowFile ? { '/broadcast/now.json': (rel) => (rel === '' ? nowFile : null) } : {};
 
 /**
  * How far off frame centre a point lands, as a fraction of the half-frame:
@@ -70,7 +96,7 @@ const check = (name, ok, detail = '') => {
 
 /** Open /broadcast in its own browser and expose the page's contract. */
 async function openBroadcast({ width = 1280, height = 720, liveMode = false } = {}) {
-  const { server, origin } = ORIGIN ? { server: null, origin: ORIGIN } : await serve(PUBLIC_DIR);
+  const { server, origin } = ORIGIN ? { server: null, origin: ORIGIN } : await serve(PUBLIC_DIR, { mounts: MOUNTS });
   const chrome = await launchChrome({ width, height, gpu: flag('gpu') });
   const problems = [];
   chrome.onConsole((type, text) => { if (type === 'error') problems.push(text); });
@@ -123,7 +149,8 @@ async function openBroadcast({ width = 1280, height = 720, liveMode = false } = 
 }
 
 console.log(`broadcast check — camera ${CAMERA}, ${FRAMES} frames${BUNDLE ? `, bundle ${BUNDLE}` : ', ambient'}`
-  + `${CROWD ? `, crowd ${CROWD}` : ''}${CAMTRACK ? `, camtrack ${CAMTRACK}` : ''}${ORIGIN ? `, against ${ORIGIN}` : ''}\n`);
+  + `${CROWD ? `, crowd ${CROWD}` : ''}${CAMTRACK ? `, camtrack ${CAMTRACK}` : ''}${ORIGIN ? `, against ${ORIGIN}` : ''}`
+  + `${NOW ? `, the live page shown "${NOW}"` : ''}\n`);
 
 let a = null, b = null, lv = null, failed = 0;
 const report = { camera: CAMERA, frames: FRAMES, bundle: BUNDLE || null, origin: ORIGIN, checks };
@@ -736,6 +763,31 @@ try {
       check('on a goal\'s hold a LIVE fixture replays from the scorer\'s head',
         !!seen && seen.scorebug?.replay === true && seen.scorebug?.live === true,
         seen ? `goal ${g0.t}s by ${g0.player}: replay t=${seen.match.replay.t}, shot ${seen.director?.shot}, bug ${seen.scorebug?.replay ? 'REPLAY' : 'no tag'}, LIVE ${seen.scorebug?.live}` : `no replay: drive ${hold.x?.match?.drive}, replay ${JSON.stringify(hold.x?.match?.replay)}, shot ${hold.x?.director?.shot}`);
+      // AND THE TAPE RUNS ON ACROSS IT. `audioOffset` is where RFL put their
+      // premix — they play it into the bus that captures this page — and the
+      // match clock is not a position on that tape: a hold is one instant of
+      // the match stretched across several seconds of programme, because the
+      // commentator is calling the goal over it. So the offset must keep
+      // moving while the clock does not. It is also the number our own
+      // speakers are driven from in the bowl (`stemSeconds` in the module,
+      // reported back as `pa.stemT`), which is why there is one expression
+      // and not two: a stem positioned by mapping the held clock forward
+      // sticks on the near edge of the hold and is dragged back to it every
+      // third of a second, for the length of every goal in the match.
+      if (seen) {
+        let ran = null;
+        for (let i = 0; i < 20 && !ran; i++) {
+          await sleep(200);
+          const x = await lv.state();
+          if (!x.scorebug || x.match?.drive !== 'wall') continue;
+          if (Math.abs((x.scorebug.t ?? 0) - (seen.scorebug.t ?? 0)) < 0.05
+              && (x.scorebug.audioOffset ?? 0) - (seen.scorebug.audioOffset ?? 0) > 0.15) ran = x;
+        }
+        check('and the premix offset runs on across the hold while the match clock stands still',
+          !!ran, ran
+            ? `match clock held at ${ran.scorebug.t}s while the offset went ${seen.scorebug.audioOffset}s -> ${ran.scorebug.audioOffset}s`
+            : `the offset never moved past ${seen.scorebug?.audioOffset}s with the clock held at ${seen.scorebug?.t}s`);
+      }
       const down = await lv.evaluate('window.rflBroadcast.rehearseLive(null)', { timeoutMs: 60000 });
       let after = await lv.state();
       for (let i = 0; i < 12 && after.match?.drive === 'wall'; i++) { await sleep(250); after = await lv.state(); }
@@ -745,7 +797,8 @@ try {
       console.log('  note  live fixture not rehearsed: no bundle on the live page');
     }
   } else {
-    console.log(`  note  nothing mounted on the live page (phase "${sM.match?.phase ?? 'none'}"); boards, bodies and the replay were not exercised`);
+    console.log(`  note  nothing mounted on the live page (phase "${sM.match?.phase ?? 'none'}"); boards, bodies and the replay were not exercised`
+      + `${NOW ? ` — and one WAS asked for ("${NOW}")` : '. Pass --now latest to put one on'}`);
   }
   // 4dgsx being down is their outage, not our failure — but it must be said
   // out loud rather than passed over in silence.
