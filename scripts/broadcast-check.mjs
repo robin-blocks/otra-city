@@ -630,11 +630,34 @@ try {
           if (bites) still.push(o.name || m.type);
         }
       });
-      return { materials, still: [...new Set(still)] };
+      // When something IS still flagged, say enough to tell the causes apart
+      // without another CI round trip. A material type name on its own —
+      // "MeshBasicMaterial" — names 400 objects in this scene and none of
+      // them in particular; the parent chain says which one and, more useful,
+      // whether it hangs somewhere the pass's roots do not cover. The pass's
+      // own counters go out beside it: roots 0 means it takes its early
+      // return and prepares nothing, which is a different fault from missing
+      // one object. (No backticks in here — this whole function is a template
+      // literal, and one closes it.)
+      const where = [];
+      if (still.length) {
+        stage.traverse((o) => {
+          for (const m of [].concat(o.material || [])) {
+            if (!m || where.length >= 3) continue;
+            const bites = m.toneMapped === true
+              && (!m.isShaderMaterial || /tonemapping_fragment/.test(m.fragmentShader || ''));
+            if (!bites) continue;
+            const chain = [];
+            for (let q = o; q; q = q.parent) chain.push(q.name || q.type);
+            where.push(chain.join(' < '));
+          }
+        });
+      }
+      return { materials, still: [...new Set(still)], where, pass: window.rflBroadcast.state?.().afterToneMap ?? null };
     })()`);
     check('nothing drawn after the tone mapping is tone mapped again', !tm.error && drewAFrame && tm.still.length === 0,
       tm.error || (!drewAFrame ? 'the pass drew no frame within 30 s of the mount, so nothing was judged'
-        : `${tm.materials} materials in the stage, ${tm.still.length ? `still tone mapped: ${tm.still.join(', ')}` : 'none tone mapped'}`));
+        : `${tm.materials} materials in the stage, ${tm.still.length ? `still tone mapped: ${tm.still.join(', ')} — at ${(tm.where || []).join(' | ')}; pass ${JSON.stringify(tm.pass)}` : 'none tone mapped'}`));
     // The bodies verify a second or two after the mount, once scene.json is read.
     for (const until = Date.now() + 15000; Date.now() < until && !sM.match?.bodies;) { await sleep(500); sM = await lv.state(); }
     const bd = sM.match?.bodies;
