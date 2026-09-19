@@ -434,11 +434,72 @@ plate when it unmounts, not ours — so the paint re-applies its own texture
 every tick rather than assuming it is still there. `state().match.screens`
 says what each one is showing.
 
-**The league table is not among them, because it is not in the feed.**
-`/api/v1/programme/rfl` carries fixtures, results and scores but no standings,
-and a table computed here from whichever results the feed happens to include
-would be a table that is sometimes wrong under somebody else's name. If RFL
-publish standings, the right panel is where they go.
+**The venue's idle screens still do not carry a league table.** The programme
+feed has no standings, and its rolling results window is not a whole season.
+The **broadcast's post-match overlay** now uses RFL's separate complete-season
+archive instead; it does not change the venue's fixtures/results panels.
+
+### Post-match league table — 19 September 2026
+
+On the automatic live `/broadcast` programme, full time does **not** immediately
+cue the table. The scorebug must report `over: true`, `inPlay: false`, the
+director's ball-settling hold must have ended, and the actual shot must be
+`heli`. A measured ball must be at or below 0.6 m/s; without a measurement we
+require the publisher's full-time `play_end_t`. Half time, pre-roll, goal
+replays, explicit cameras/tracks and deterministic capture never show it.
+
+After a 0.7-second settling beat: a title-safe navy panel enters over 0.55 s,
+shows the **before-match** table until 1.8 s, animates the rows into their new
+positions by 3 s, holds, and fades out between 17.4 and 18 s. All clubs remain
+visible (2–12 supported). Columns are position, club/crest, played, goal
+difference and points. Both match teams are highlighted, with separate cards
+showing their new position, places gained/lost, or **NO CHANGE**. Direction is
+shown by vector arrows and words, not colour alone. The table carries its own
+full-time result strap, temporarily replacing the bottom score bar; the compact
+top-left scorebug remains. Everything is composited into the WebGL frame before
+`frame()`, `pixels()` and the stadium screen copy, not into a DOM-only overlay.
+
+**Data and honesty.** `js/league-table-data.mjs` reads the public
+[RFL league archive](https://raw.githubusercontent.com/robot-football-league/rfl-league-data/main/site.json).
+It joins the exact publisher `watch.id` (also accepting its verified hex-suffix
+bundle folder), home/away club codes and final score. Complete season fixtures,
+unique teams/results, known statuses, valid unique aired timestamps, and status
+counts are required. Recomputed **every-row** P/W/D/L/GF/GA/GD/Pts/position must
+match the published table before any match-specific graphic is permitted.
+Ranking follows the publisher's
+[`_standings` implementation](https://github.com/robot-football-league/rfl-engine/blob/b6ce1ab1c8d6b5a5a9d6df07f0ccf73e9bc1687d/gauntlet/league.py#L227-L260):
+3/1/0 points, then points/GD/GF descending, then stable configured team order.
+
+Only aired results preceding this result in the archive's `aired_at` sequence
+enter its before table; exactly this result creates the after table. Later
+fixtures cannot leak into a historical replay. The archive's own `prev`/`move`
+arrows compare **rounds**, not this match, so we deliberately ignore them.
+`aired_at` orders league results; it is **not a playback-completion clock**:
+our full-time and settled-ball gates remain independently necessary.
+
+The archive is fetched only on the automatic live page while a match is
+mounted, at most once per minute with a ten-second timeout. The on-air snapshot
+is frozen. Missing/unpublished scores, ambiguous chronology, unsupported table
+sizes or a failed reconciliation retain the ordinary full-time scoreboard;
+there is no guessed or latest-table fallback. If data is not ready within
+25 seconds of the safe post-match cue, the graphic is skipped for that play.
+Season 3 reconciled against all 39 aired results on 19 September; seasons 1–2
+currently lack complete aired timestamps and deliberately do not qualify.
+The archive may lag a live result, so an overlay is not guaranteed for every
+fixture until its matching result is published.
+
+`js/post-match-table.mjs` owns cue/reset/polling; `js/league-overlay.js` owns the
+canvas texture and explicit-time animation. A loop, replacement match or
+backward seek resets the cue; a camera cut or return to play clears it.
+`state().leagueTable` reports status, withheld reason, source and both clubs'
+from/to/change. `npm run league:check` exercises accounting, cueing and actual
+browser/WebGL compositing without an external data dependency. For the real
+bundle/director path, add `--league` to `scripts/broadcast-check.mjs` with
+`--now` pinned to an archived Season 3 bundle. On 19 September, S3 M28 passed
+55/55 checks, including no table during 617–622 s dead-ball play, a table on
+the settled `heli` shot, SYA 5→3 / MSP 9→9, and clearing on a seek back to play.
+The separate offline gate passed 106 accounting/cue tests and the WebGL pixel,
+crest, animation, texture-cache and disposal checks.
 
 **During a match — `/broadcast/match-cutlist.json`. One shot, and it is the
 gantry.** RFL asked for the gantry essentially throughout (their §4 of 14 Sep):
