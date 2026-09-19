@@ -13,7 +13,9 @@
 //   node scripts/broadcast-check.mjs [--frames 250] [--camera gantry]
 //                                    [--bundle <url>] [--out report.json]
 //                                    [--shots dir] [--gpu] [--now latest]
-//                                    [--origin https://otra.city]
+//                                    [--origin https://otra.city] [--league]
+// --league additionally rehearses the post-match table; pin --now to a known
+// archived S3 result so this check is not a race with a just-aired publication.
 //
 // `--origin` points the same gate at a deployed site instead of serving
 // public/ locally — so "is production the build we described?" is a command
@@ -171,6 +173,7 @@ try {
   // over a socket on their own schedule, and footage that quietly used them is
   // only distinguishable from a deterministic run on the day it is re-filmed.
   check('live mode is off unless asked for', s0.live === null, s0.live ? JSON.stringify(s0.live) : 'deterministic');
+  check('deterministic capture has no live league-table controller', s0.leagueTable === null);
   // With a bundle, "ready" has to mean the match is ON the pitch. The venue
   // reaches Tier 2 in one tick and the bundle lands seconds later, so a page
   // that resolved at Tier 2 would hand the harness an empty pitch to film.
@@ -768,6 +771,38 @@ try {
         + (rest.director?.settling ? ' — still holding on our own ball measurement' : ''));
     } else {
       console.log(`  note  the buzzer hold was not exercised: ${bz ? `source ${sM.match.source}` : 'this bundle\'s clock carries no play_end_t'}`);
+    }
+    // Optional historical post-match rehearsal. Pin --now to a result with
+    // complete aired chronology (e.g. S3 M28); never make the general gate
+    // depend on how quickly the league publishes a just-finished fixture.
+    if (flag('league') && sM.match.source === 'now') {
+      const full = sM.match.clockPlan?.buzzers?.find((b) => b.kind === 'full' && b.play_end_t > b.t);
+      check('post-match rehearsal has a measured full-time boundary', !!full);
+      if (full) {
+        await lv.evaluate(`window.rflBroadcast.seekMatch(${full.t + 0.2})`);
+        let dead = await lv.state();
+        for (let i = 0; i < 40 && !(dead.scorebug?.over && dead.scorebug?.inPlay); i++) { await sleep(100); dead = await lv.state(); }
+        check('full-time dead ball is still football, never a table',
+          dead.scorebug?.over === true && dead.scorebug?.inPlay === true && dead.leagueTable?.visible === false && dead.director?.list === 'match');
+        await lv.evaluate(`window.rflBroadcast.seekMatch(${full.play_end_t + 2})`);
+        let shown = await lv.state();
+        const until = Date.now() + 90000;
+        while (Date.now() < until && !(shown.leagueTable?.visible && shown.leagueTable.elapsed >= 3)) {
+          await sleep(250); shown = await lv.state();
+          if (shown.leagueTable?.status === 'unavailable' || shown.leagueTable?.status === 'complete') break;
+        }
+        check('verified post-match table is composited on the settled aerial',
+          shown.leagueTable?.visible === true && shown.director?.shot === 'heli'
+            && shown.scorebug?.inPlay === false && shown.director?.settling === false
+            && shown.leagueTable?.movements?.length === 2,
+          JSON.stringify(shown.leagueTable));
+        report.leagueTable = shown.leagueTable;
+        if (SHOTS && shown.leagueTable?.visible) writeFileSync(join(SHOTS, 'broadcast-league-table.png'), await lv.png());
+        await lv.evaluate('window.rflBroadcast.seekMatch(100)');
+        let back = await lv.state();
+        for (let i = 0; i < 40 && back.leagueTable?.visible; i++) { await sleep(100); back = await lv.state(); }
+        check('returning to play clears the league table immediately', back.leagueTable?.visible === false);
+      }
     }
     // ---- a live fixture, rehearsed --------------------------------------
     // The scheduled path airs three times a day and CI is not there for any

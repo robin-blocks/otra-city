@@ -77,6 +77,8 @@ import { createDoorSystem } from '/js/doors.js';
 import { createCrowd } from '/js/crowd.js';
 import { CAMERAS, createTrack, framePlay, GANTRY_AIM_LAG_S, GANTRY_FOV_LAG_S } from '/js/broadcast-cameras.js';
 import { createScorebug } from '/js/scorebug.js';
+import { createLeagueOverlay } from '/js/league-overlay.js';
+import { createPostMatchTable } from '/js/post-match-table.mjs';
 
 const FPS = 50;                 // the brief's timebase; one step is 20 ms
 const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
@@ -84,7 +86,7 @@ const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
 // page's behaviour changes. It is reported in `state().build` and on the note
 // line, so "the deployed page still says X" is settled by reading the page,
 // not by comparing memories of deploys.
-const BUILD = '2026-09-17a';
+const BUILD = '2026-09-19a';
 
 // Errors are evidence: a silent failure films a black hour, so every one is
 // kept for `state()`, echoed to the console the harness reads, and shown.
@@ -266,6 +268,10 @@ let feedTex = null, feedMesh = null;
 // The broadcast graphics. Live only: a deterministic capture would have to
 // reproduce the clock exactly, and the clock comes off the publisher's stage.
 const scorebug = live ? createScorebug({ width: W, height: H }) : null;
+// Only the automatic live programme owns the post-match cue. Explicit cameras
+// and deterministic capture remain untouched, including their network budget.
+const postMatchTable = autoDirect ? createPostMatchTable() : null;
+const leagueOverlay = autoDirect ? createLeagueOverlay({ width: W, height: H, crestFor: (team) => scorebug.crestFor(team) }) : null;
 const feedStat = { wanted: false, mesh: null, slot: null, attached: false, yielded: false, copies: 0, error: null };
 
 async function boot() {
@@ -983,9 +989,15 @@ function draw() {
   // ground's screen actually shows. It nests, because the feed camera can see
   // the screen; it converges within a nesting or two and reads as a screen in
   // shot.
+  const m = scorebug ? matchState() : null;
+  const tableCue = postMatchTable?.update({ match: m, camera: c?.camera, settling: settleUntil > 0, time: simT });
   if (scorebug) {
-    scorebug.draw(matchState()?.bug ?? null);
+    scorebug.draw(m?.bug ?? null, { compactOnly: !!tableCue });
     scorebug.render(renderer);
+  }
+  if (leagueOverlay) {
+    leagueOverlay.draw(tableCue?.presentation ?? null, tableCue?.elapsed ?? 0);
+    if (tableCue) leagueOverlay.render(renderer);
   }
   if (feedTex && feedMesh && feedMesh.material.map === feedTex) {
     try {
@@ -1190,6 +1202,7 @@ window.rflBroadcast = {
       // the broadcast graphics: what they are showing, or null when there is
       // nothing to show
       scorebug: live ? (matchState()?.bug ?? null) : null,
+      leagueTable: postMatchTable?.state() ?? null,
       // the crests behind the scorebug: the manifest, and how many images landed
       crests: live && scorebug?.crests ? scorebug.crests : null,
       calls: r.calls, tris: r.triangles,

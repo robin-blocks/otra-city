@@ -127,8 +127,8 @@ export function createScorebug({ width, height, crests = CRESTS_URL } = {}) {
   }
 
   /** Draw one state. Returns false when nothing changed and the canvas was left alone. */
-  function draw(bug) {
-    const key = bug && JSON.stringify(bug);
+  function draw(bug, { compactOnly = false } = {}) {
+    const key = bug && JSON.stringify([bug, compactOnly]);
     if (key === painted) return false;
     painted = key;
     g.clearRect(0, 0, width, height);
@@ -182,6 +182,10 @@ export function createScorebug({ width, height, crests = CRESTS_URL } = {}) {
       g.textAlign = 'left';
       g.fillText(tag.text, px(x0 + 26), px(21));
     }
+
+    // The post-match table carries its own result strap; keep the compact
+    // score/time identity but do not stack two full-width result graphics.
+    if (compactOnly) { tex.needsUpdate = true; return true; }
 
     // ---- c. the full scoreboard, bottom centre ---------------------------
     const cx = px(W / 2);
