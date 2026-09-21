@@ -439,7 +439,7 @@ feed has no standings, and its rolling results window is not a whole season.
 The **broadcast's post-match overlay** now uses RFL's separate complete-season
 archive instead; it does not change the venue's fixtures/results panels.
 
-### Post-match league table — 19 September 2026
+### Post-match league table — 19 September, first-air fix 21 September 2026
 
 On the automatic live `/broadcast` programme, full time does **not** immediately
 cue the table. The scorebug must report `over: true`, `inPlay: false`, the
@@ -470,23 +470,61 @@ Ranking follows the publisher's
 [`_standings` implementation](https://github.com/robot-football-league/rfl-engine/blob/b6ce1ab1c8d6b5a5a9d6df07f0ccf73e9bc1687d/gauntlet/league.py#L227-L260):
 3/1/0 points, then points/GD/GF descending, then stable configured team order.
 
-Only aired results preceding this result in the archive's `aired_at` sequence
-enter its before table; exactly this result creates the after table. Later
-fixtures cannot leak into a historical replay. The archive's own `prev`/`move`
-arrows compare **rounds**, not this match, so we deliberately ignore them.
+There are two result paths; neither uses the archive's `prev`/`move` arrows,
+which compare **rounds**, not this match:
+
+- **Published result / historical replay:** only aired results preceding this
+  result in the archive's `aired_at` sequence enter its before table; exactly
+  this result creates the after table. Later fixtures cannot leak into a replay.
+  A published score disagreement fails closed; it never invokes the other path.
+- **First broadcast, result not yet archived:** the actual mounted match must
+  have `source: schedule`, `state: live` and its original `startsAt`. The
+  controller retains this occurrence with the match, not the rolling `live`
+  item (which can already name the next fixture). It must cross the publisher's
+  full-time `play_end_t` and every ordinary safety gate. Only then can the HUD's
+  final score be applied once to the fully reconciled **before** table.
+  The exact canonical season/fixture/home/away ID and any supplied bundle
+  folder must agree; no re-render suffix or fuzzy club-name guess is allowed.
+
+The first-air boundary follows RFL's documented **ascending fixture order, one
+pending fixture per slot**, not an assumed ordering of arbitrary history. The
+match must be the smallest still-scheduled fixture in the current season; all
+lower numbers must be aired or explicitly skipped, no higher number may be
+aired, and existing aired chronology must agree with that order and precede
+this occurrence. Otherwise the boundary is ambiguous and we withhold the table.
+Slot predictions, where present, must be valid and strictly increasing. Missing
+predictions on the later pending tail are normal: RFL's site exporter gives
+only its first twelve pending fixtures a `kickoff_utc`. These predictions also
+roll forward on each export; they are **not** equated to stream start or actual
+kickoff. The mounted occurrence must be no older than two hours and the archive
+no older than six hours (at most 60 s future clock skew). These are safety
+limits, not a claim that archive generation certifies upstream sync freshness.
+
+Source inspected read-only at `rfl-station` revision
+`4984e83f83a5b41de6b614c2d67b94bc4cfc94a1`: `gauntlet/schedule.py:21–22,149–163`
+(order), `scripts/build_site_data.py:246–302` (ledger/statuses/twelve-slot
+horizon), and `gauntlet/broadcast.py:993–1004` (marking aired after streaming).
+The archive can lag the entire post-roll; that is why waiting for `watch.id`
+on a first broadcast failed for S3 M42 on 21 September. A manually reordered
+or incompletely published season remains unsupported rather than guessed.
+
+The first-air graphic is labelled **“RFL · Including this result”**, with
+`basis: first-air-hud` in diagnostics. Published results use
+`basis: published-result`. If publication arrives before the cue, that result
+is validated normally rather than applied twice. Once on air, the table and
+its archive timestamp/provenance are frozen even if the archive refreshes.
 `aired_at` orders league results; it is **not a playback-completion clock**:
-our full-time and settled-ball gates remain independently necessary.
+our full-time and settled-ball gates remain independently necessary. When
+`play_end_t` is present, a small measured speed cannot bypass it.
 
 The archive is fetched only on the automatic live page while a match is
-mounted, at most once per minute with a ten-second timeout. The on-air snapshot
-is frozen. Missing/unpublished scores, ambiguous chronology, unsupported table
-sizes or a failed reconciliation retain the ordinary full-time scoreboard;
-there is no guessed or latest-table fallback. If data is not ready within
-25 seconds of the safe post-match cue, the graphic is skipped for that play.
-Season 3 reconciled against all 39 aired results on 19 September; seasons 1–2
-currently lack complete aired timestamps and deliberately do not qualify.
-The archive may lag a live result, so an overlay is not guaranteed for every
-fixture until its matching result is published.
+mounted, at most once per minute with a ten-second timeout. Missing prior
+results, ambiguous chronology, unsupported table sizes or failed reconciliation
+retain the ordinary full-time scoreboard. An unpublished result on a direct or
+replay mount also stays withheld; first-air permission is not a general score
+override. If data is not ready within 25 seconds of the safe post-match cue,
+the graphic is skipped for that play. Seasons 1–2 currently lack complete aired
+timestamps and deliberately do not qualify.
 
 `js/post-match-table.mjs` owns cue/reset/polling; `js/league-overlay.js` owns the
 canvas texture and explicit-time animation. A loop, replacement match or
@@ -498,6 +536,27 @@ bundle/director path, add `--league` to `scripts/broadcast-check.mjs` with
 `--now` pinned to an archived Season 3 bundle. On 19 September, S3 M28 passed
 55/55 checks, including no table during 617–622 s dead-ball play, a table on
 the settled `heli` shot, SYA 5→3 / MSP 9→9, and clearing on a seek back to play.
+
+The first-air regression uses the saved 21 September M42 incident in
+`scripts/fixtures/league-first-air-m42.json`: all 90 fixtures, unchanged official
+pre-match table and the publisher's HUD; M42 still has no published result.
+`league:check` runs its offline controller/accounting tests alongside the
+original tests: **245/245 passed** (106 existing + 139 first-air), plus the
+WebGL renderer gate. The real M42 scheduled rehearsal passed with no page
+errors; the published M28 broadcast regression also retained **55/55** passes.
+The real scheduled browser path is reproduced with:
+
+```sh
+node scripts/league-first-air-browser.mjs --gpu --out qa-out/league/first-air-fix/local
+# Same rehearsal of deployed code, never touching the public schedule:
+node scripts/league-first-air-browser.mjs --gpu --origin https://otra.city --out qa-out/league/first-air-fix/production
+```
+
+That harness substitutes only its own browser's clock and feed reads, mounts
+the real M42 bundle through `rehearseLive`, crosses full-time dead ball into
+post-roll, checks **SGU 6→3 / SYA 4→5** for the 3–6 result, saves the frame,
+waits for the 18-second exit and checks suppression on return to play. The
+publisher's SDK and bundle must be reachable; the offline tests need neither.
 The separate offline gate passed 106 accounting/cue tests and the WebGL pixel,
 crest, animation, texture-cache and disposal checks.
 

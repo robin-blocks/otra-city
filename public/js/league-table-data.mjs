@@ -80,8 +80,38 @@ function identifies(value, id) {
   return value === id || (typeof value === 'string' && value.startsWith(`${id}-`) && /^[a-f\d]{6,64}$/i.test(value.slice(id.length + 1)));
 }
 
-/** No throwing into the render loop: unavailable data is a diagnostic, not an on-air error. */
-export function buildMatchTable(doc, { matchId, bundleUrl, home, away, score } = {}) {
+const fixtureId = (season, match) => `s${season.season}-m${match.n}_${match.home}_${match.away}`;
+
+// RFL's normal first-air pipeline is ordered: gauntlet/schedule.py explicitly
+// assigns ascending fixtures to slots. build_site_data.py emits only the first
+// twelve pending slot predictions; an untimed later tail is NOT a missing game.
+// This narrower path must never change historical replay ordering by aired_at.
+// A reconciled table alone is insufficient: a stale ledger can reconcile too.
+const FIRST_AIR_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+const ARCHIVE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+function firstAirBoundary(doc, season, match, aired, firstAir) {
+  require(firstAir && stamp(firstAir.startsAt) && Number.isFinite(firstAir.nowMs), 'first-air schedule evidence required');
+  const start = Date.parse(firstAir.startsAt), now = firstAir.nowMs, generated = Date.parse(doc.generated_at);
+  require(start <= now && now - start <= FIRST_AIR_MAX_AGE_MS, 'first-air occurrence is not current');
+  require(generated <= now + 60000 && now - generated <= ARCHIVE_MAX_AGE_MS, 'first-air archive is stale or future-dated');
+  require(season.season === doc.current_season, 'first-air season is not current');
+  require(season.matches.every((m) => m.n >= match.n || m.status === 'aired' || m.status === 'skipped'), 'earlier fixture result is missing');
+  require(aired.every((m, i) => m.n < match.n && (!i || aired[i - 1].n < m.n)), 'first-air fixture order is ambiguous');
+  require(aired.every((m) => Date.parse(m.aired_at) < start && Date.parse(m.aired_at) <= generated), 'first-air archive crosses the match boundary');
+  // These timestamps are rolling SLOT PREDICTIONS, not actual kickoff times.
+  // Check contradictions, never equate them to programme startsAt (pre-roll).
+  let previousSlot = -Infinity;
+  for (const m of season.matches.filter((m) => m.status === 'scheduled').sort((a, b) => a.n - b.n)) {
+    if (m.kickoff_utc == null) continue;
+    require(stamp(m.kickoff_utc) && Date.parse(m.kickoff_utc) > previousSlot, 'first-air schedule order is ambiguous');
+    previousSlot = Date.parse(m.kickoff_utc);
+  }
+}
+
+/** firstAir is supplied only by a controller which has confirmed final play-end
+ * on a mounted scheduled programme. Never authorize it from publication alone.
+ * No throwing into the render loop: unavailable data is a diagnostic. */
+export function buildMatchTable(doc, { matchId, bundleUrl, home, away, score, firstAir = null } = {}) {
   try {
     require(Array.isArray(doc?.seasons) && stamp(doc.generated_at), 'invalid league archive');
     let folder = null;
@@ -89,27 +119,46 @@ export function buildMatchTable(doc, { matchId, bundleUrl, home, away, score } =
     const candidates = [];
     for (const season of doc.seasons) {
       for (const match of season.matches || []) {
-        if (match.watch?.id && (identifies(matchId, match.watch.id) || identifies(folder, match.watch.id))) candidates.push({ season, match });
+        const id = match.status === 'scheduled' ? fixtureId(season, match) : match.watch?.id;
+        if (id && (identifies(matchId, id) || identifies(folder, id))) candidates.push({ season, match, id });
       }
     }
     require(candidates.length === 1, 'result not yet published or match identity unavailable');
-    const { season, match } = candidates[0];
-    require(match.status === 'aired', 'result not yet published');
+    const { season, match, id } = candidates[0];
+    require(match.status === 'aired' || (match.status === 'scheduled' && firstAir), 'result not yet published');
     require(home?.code === match.home_code && away?.code === match.away_code, 'on-air teams do not match league result');
-    require(scoreOK(score) && scoreOK(match.score) && score.every((n, i) => n === match.score[i]), 'on-air score does not match league result');
+    require(scoreOK(score), 'invalid on-air final score');
+    // First-air identity is stricter: both mounted identifiers, if present,
+    // must refer to this exact fixture. No canonical guess for a re-render id.
+    if (match.status === 'scheduled') {
+      require((!matchId || identifies(matchId, id)) && (!bundleUrl || (folder && identifies(folder, id))), 'first-air match identity disagrees');
+      require(!match.watch || match.watch.id === id, 'first-air published identity disagrees');
+    }
+    if (match.status === 'aired' || match.score != null)
+      require(scoreOK(match.score) && score.every((n, i) => n === match.score[i]), 'on-air score does not match league result');
     const { teams, aired } = validateSeason(season);
     const rows = empty(teams);
     let before = null, after = null;
-    for (const m of aired) {
-      if (m === match) before = rank(rows);
-      apply(rows, m);
-      if (m === match) { after = rank(rows); break; }
+    const basis = match.status === 'aired' ? 'published-result' : 'first-air-hud';
+    if (basis === 'first-air-hud') {
+      firstAirBoundary(doc, season, match, aired, firstAir);
+      for (const m of aired) apply(rows, m);
+      before = rank(rows);
+      apply(rows, { ...match, score });
+      after = rank(rows);
+    } else {
+      for (const m of aired) {
+        if (m === match) before = rank(rows);
+        apply(rows, m);
+        if (m === match) { after = rank(rows); break; }
+      }
     }
     require(before && after, 'no confirmed result boundary');
     const previous = new Map(before.map((r) => [r.slug, r]));
     return { table: {
-      matchId: match.watch.id, season: season.season, label: season.preseason ? 'PRE-SEASON' : `SEASON ${season.season}`,
-      home, away, score: score.slice(), sourceLabel: 'RFL · Aired results',
+      matchId: id, season: season.season, label: season.preseason ? 'PRE-SEASON' : `SEASON ${season.season}`,
+      basis, generatedAt: doc.generated_at,
+      home, away, score: score.slice(), sourceLabel: basis === 'first-air-hud' ? 'RFL · Including this result' : 'RFL · Aired results',
       rows: after.map((r) => {
         const p = previous.get(r.slug);
         return { code: r.code, name: r.name, color: r.color,
