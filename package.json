@@ -24,7 +24,7 @@
     "venue:shot": "node scripts/venue-shot.mjs",
     "venue:bench": "node scripts/venue-bench.mjs",
     "broadcast:check": "node scripts/broadcast-check.mjs",
-    "league:check": "node --test scripts/league-table-check.mjs scripts/league-first-air-check.mjs && node scripts/league-overlay-check.mjs",
+    "league:check": "node --test scripts/league-table-check.mjs scripts/league-first-air-check.mjs scripts/league-camera-check.mjs && node scripts/league-overlay-check.mjs",
     "shopfronts": "node scripts/rebuild-shopfronts.mjs",
     "clock:check": "node --test scripts/match-clock-check.mjs"
   },

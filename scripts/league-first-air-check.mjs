@@ -374,11 +374,12 @@ test('controller cold-loads the incident at full time and waits for the safe aer
   ]);
 });
 
-test('prime during play then cue only after full publisher play_end_t, once for 18 seconds', async () => {
+test('prime during play then cue only after full publisher play_end_t, once for 54 seconds', async () => {
   const h = harness(); await h.prime();
   hidden(h, 0); hidden(h, 0.699); visible(h, 0.7);
-  assert.equal(TABLE_DURATION_S, 18);
-  visible(h, 18.699); hidden(h, 18.7); hidden(h, 24);
+  assert.equal(TABLE_DURATION_S, 54);
+  for (const t of [18.7, 25.01, 45.7, 54.699]) visible(h, t);
+  hidden(h, 54.7); hidden(h, 59);
   assert.equal(h.calls.length, 1);
 });
 

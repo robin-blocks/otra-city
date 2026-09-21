@@ -86,7 +86,7 @@ const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
 // page's behaviour changes. It is reported in `state().build` and on the note
 // line, so "the deployed page still says X" is settled by reading the page,
 // not by comparing memories of deploys.
-const BUILD = '2026-09-21a';
+const BUILD = '2026-09-21b';
 
 // Errors are evidence: a silent failure films a black hour, so every one is
 // kept for `state()`, echoed to the console the harness reads, and shown.
@@ -257,6 +257,9 @@ let crowd = null, track = null, lastTrackCam = null;
 // joining wherever its loop happened to be — the change of programme reads as
 // a cut, which is what it is.
 let ambientCut = null, matchCut = null, prerollCut = null, cutNow = null, cutFrom = 0;
+// Last on-air table aerial. The ordinary 45s shot may end before the 54s
+// graphic; defer only that ambient cut, never play, goals or explicit cameras.
+let leagueAerial = null;
 // Where the live feed started counting, so `state().pace` can say whether
 // simulated time is keeping up with the wall. See the comment on the loop.
 let livePaceFrom = null;
@@ -909,6 +912,24 @@ function cameraAt(name, frameNo) {
   const cut = track || cutNow;
   if (cut) {
     const c = cut.at(track ? frameNo : frameNo - cutFrom);
+    // Keep the actual animated heli behind a table that is still on air.
+    // Rewind just the pending ambient cut's clock; once the graphic clears,
+    // the next authored shot resumes instead of jumping over the cut-list.
+    // Use the controller's previous-frame cue, but never override play/goal/
+    // headcam/explicit-camera priority (those paths are selected above).
+    if (!track && autoDirect && cut === ambientCut && leagueAerial
+      && (leagueAerial.held || c?.camera !== 'heli') && postMatchTable?.state().visible && !settleUntil) {
+      const m = matchState();
+      if (m?.bug?.over && m.bug.inPlay === false && !m.bug.preroll && !m.bug.replay) {
+        // Park AT the pending next shot on the first held frame. Rewinding
+        // that crossing could show the old 45s orbit for one frame on exit.
+        if (leagueAerial.held) cutFrom += Math.max(0, frameNo - leagueAerial.frame);
+        const t = leagueAerial.t + (frameNo - leagueAerial.frame) / FPS;
+        const held = { ...leagueAerial, ...CAMERAS.heli(t, leagueAerial.seed, leagueAerial.params), t, held: true };
+        lastTrackCam = held;
+        return held;
+      }
+    }
     // Past the end of the track the last segment's final framing is held,
     // rather than snapping somewhere arbitrary mid-capture.
     if (c) { const d = track ? c : directed(c); lastTrackCam = d; return d; }
@@ -991,6 +1012,7 @@ function draw() {
   // shot.
   const m = scorebug ? matchState() : null;
   const tableCue = postMatchTable?.update({ match: m, camera: c?.camera, settling: settleUntil > 0, time: simT });
+  leagueAerial = tableCue && c?.camera === 'heli' ? { ...c, frame } : null;
   if (scorebug) {
     scorebug.draw(m?.bug ?? null, { compactOnly: !!tableCue });
     scorebug.render(renderer);

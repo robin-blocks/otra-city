@@ -450,7 +450,13 @@ replays, explicit cameras/tracks and deterministic capture never show it.
 
 After a 0.7-second settling beat: a title-safe navy panel enters over 0.55 s,
 shows the **before-match** table until 1.8 s, animates the rows into their new
-positions by 3 s, holds, and fades out between 17.4 and 18 s. All clubs remain
+positions by 3 s, holds, and fades out between 53.4 and 54 s. Robin requested
+**three times the original 18-second duration** on 21 September: only the reading
+hold grows; entrance, row movement and 0.6-second fade keep their speed. The
+controller and renderer share `js/league-timing.mjs`. The 54-second change passed
+267 offline tests plus the WebGL gate (including pixel/cache stability at 50 s
+and fade at 53.7 s), and an actual M42 browser rehearsal through the extended
+heli, completion and resumed cut-list. All clubs remain
 visible (2–12 supported). Columns are position, club/crest, played, goal
 difference and points. Both match teams are highlighted, with separate cards
 showing their new position, places gained/lost, or **NO CHANGE**. Direction is
@@ -458,6 +464,12 @@ shown by vector arrows and words, not colour alone. The table carries its own
 full-time result strap, temporarily replacing the bottom score bar; the compact
 top-left scorebug remains. Everything is composited into the WebGL frame before
 `frame()`, `pixels()` and the stadium screen copy, not into a DOM-only overlay.
+
+The ambient list's first heli normally ends after 45 seconds. While the table
+is on air, only that pending ambient cut is deferred: the orbit continues until
+the table clears, then the next shot resumes. No change to the idle/half-time
+cut-list or public schedule. Live play, goal/headcam and explicit-camera paths
+retain priority; the controller still suppresses the table on any unsafe state.
 
 **Data and honesty.** `js/league-table-data.mjs` reads the public
 [RFL league archive](https://raw.githubusercontent.com/robot-football-league/rfl-league-data/main/site.json).
@@ -555,7 +567,8 @@ node scripts/league-first-air-browser.mjs --gpu --origin https://otra.city --out
 That harness substitutes only its own browser's clock and feed reads, mounts
 the real M42 bundle through `rehearseLive`, crosses full-time dead ball into
 post-roll, checks **SGU 6→3 / SYA 4→5** for the 3–6 result, saves the frame,
-waits for the 18-second exit and checks suppression on return to play. The
+checks the table is still on heli after 50 seconds, waits for the 54-second exit,
+checks the ambient cut-list resumes, and checks suppression on return to play. The
 publisher's SDK and bundle must be reachable; the offline tests need neither.
 The separate offline gate passed 106 accounting/cue tests and the WebGL pixel,
 crest, animation, texture-cache and disposal checks.

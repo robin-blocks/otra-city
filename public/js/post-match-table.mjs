@@ -3,7 +3,8 @@
 // never creates this controller (or fetches the league archive).
 import { buildMatchTable, LEAGUE_DATA_URL } from './league-table-data.mjs';
 
-export const TABLE_DURATION_S = 18;
+import { TABLE_DURATION_S } from './league-timing.mjs';
+export { TABLE_DURATION_S } from './league-timing.mjs';
 const CUE_DELAY_S = 0.7;
 const CUE_WINDOW_S = 25;
 const REFRESH_MS = 60000;

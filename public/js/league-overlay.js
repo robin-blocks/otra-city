@@ -2,6 +2,7 @@
 // All coordinates are in a title-safe 1280 x 720 design space. The caller owns
 // the presentation, the clock, and hiding the scorebug's bottom scoreboard.
 import * as THREE from 'three';
+import { TABLE_DURATION_S, TABLE_FADE_S, TABLE_FADE_START_S } from './league-timing.mjs';
 
 const W = 1280;
 const H = 720;
@@ -49,7 +50,7 @@ function validPresentation(p) {
 /**
  * @param {{width?: number, height?: number, crestFor?: (team: object) => string|null}} options
  * draw(presentation, elapsedSeconds): an absolute, caller-controlled clock.
- * 0–.55 intro; old standings to 1.8; reorder to 3; hold to 17.4; out at 18.
+ * 0–.55 intro; old standings to 1.8; reorder to 3; hold to 53.4; out at 54.
  * draw(null, ...) clears stale pixels. Invalid/incomplete tables also hide;
  * in particular, this renderer NEVER truncates tables with more than 12 clubs.
  * render(renderer) must follow the world/composer render, before frame capture.
@@ -326,11 +327,11 @@ export function createLeagueOverlay({ width = W, height = H, crestFor } = {}) {
     const elapsed = Number.isFinite(elapsedSeconds) ? Math.max(0, elapsedSeconds) : 0;
     if (!presentation) return hide('hidden', elapsed);
     if (!validPresentation(presentation)) return hide('unsupported', elapsed);
-    if (elapsed >= 18) return hide('finished', elapsed);
+    if (elapsed >= TABLE_DURATION_S) return hide('finished', elapsed);
     const p = presentation;
     const progress = smooth((elapsed - 1.8) / 1.2);
     const intro = smooth(elapsed / .55);
-    const outro = smooth((elapsed - 17.4) / .6);
+    const outro = smooth((elapsed - TABLE_FADE_START_S) / TABLE_FADE_S);
     const opacity = intro * (1 - outro);
     const slide = 18 * (1 - intro) + 8 * outro;
     const y = -slide * scale * 2 / canvas.height;
@@ -344,7 +345,7 @@ export function createLeagueOverlay({ width = W, height = H, crestFor } = {}) {
     const urls = teams.map(requestCrest);
     const key = JSON.stringify([p, urls, imageRevision, progress]);
     status = {
-      visible: opacity > 0, phase: elapsed < .55 ? 'entering' : elapsed < 1.8 ? 'before' : elapsed < 3 ? 'moving' : elapsed < 17.4 ? 'held' : 'leaving',
+      visible: opacity > 0, phase: elapsed < .55 ? 'entering' : elapsed < 1.8 ? 'before' : elapsed < 3 ? 'moving' : elapsed < TABLE_FADE_START_S ? 'held' : 'leaving',
       elapsedSeconds: elapsed, matchId: p.matchId ?? null, rowCount: rows.length,
     };
     if (key === paintedKey) return changed;

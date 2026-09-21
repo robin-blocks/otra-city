@@ -377,8 +377,8 @@ test('an explicitly unmeasured or negative speed is not proof of a stopped ball'
   }
 });
 
-test('full-time + stopped ball + heli cues after 0.7s, shows once for 18s, then clears', async () => {
-  assert.equal(TABLE_DURATION_S, 18);
+test('full-time + stopped ball + heli cues after 0.7s, shows once for 54s, then clears', async () => {
+  assert.equal(TABLE_DURATION_S, 54);
   const h = harness();
   await h.prime();
   hidden(h, 0);
@@ -391,12 +391,11 @@ test('full-time + stopped ball + heli cues after 0.7s, shows once for 18s, then 
     { code: 'DEL', from: 4, to: 2, change: 2 },
     { code: 'ALP', from: 2, to: 3, change: -1 },
   ]);
-  assert.ok(h.frame(18.699));
-  hidden(h, 18.7);
+  for (const t of [18.7, 25.01, 45.7, 54.699]) assert.ok(h.frame(t), `still on air at ${t}s`);
+  hidden(h, 54.7);
   assert.equal(h.controller.state().status, 'complete');
-  hidden(h, 19);
-  hidden(h, 24);
-  hidden(h, 40);
+  hidden(h, 55);
+  hidden(h, 59);
   assert.equal(h.calls.length, 1, 'render frames do not cause repeated fetches');
 });
 
@@ -484,8 +483,9 @@ test('a new loop clears the old presentation and permits exactly one fresh delay
   hidden(h, 1);
   hidden(h, 1.69);
   assert.ok(h.frame(1.71));
-  hidden(h, 20);
-  hidden(h, 21);
+  assert.ok(h.frame(40));
+  hidden(h, 56);
+  hidden(h, 57);
 });
 
 test('match changes clear the old result and reset cueing using the new exact snapshot', async () => {
@@ -578,4 +578,18 @@ test('idle/missing match never fetches and clears any presentation', () => {
   hidden(h, 1, { match: { phase: 'loading' } });
   hidden(h, 2, { match: { phase: 'match', match: { id: 'unknown' } } });
   assert.equal(h.calls.length, 0);
+});
+
+// The extra reading time must not weaken immediate safety or freeze semantics.
+for (const [name, mutate, changes] of [
+  ['resumed play', (m) => { m.bug.inPlay = true; }, {}],
+  ['moving ball', (m) => { m.ball.speed = 1; }, {}],
+  ['headcam', (m) => { m.headcam = true; }, {}],
+  ['camera change', () => {}, { camera: 'scoreboard' }],
+  ['settling', () => {}, { settling: true }],
+]) test(`extended hold clears immediately on ${name}`, async () => {
+  const h = harness(); const first = await onAir(h);
+  assert.deepEqual(h.frame(50).presentation, first.presentation);
+  mutate(h.match); hidden(h, 50.1, changes);
+  h.match = liveMatch(); hidden(h, 50.2);
 });
