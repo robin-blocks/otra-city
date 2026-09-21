@@ -79,6 +79,7 @@ import { CAMERAS, createTrack, framePlay, GANTRY_AIM_LAG_S, GANTRY_FOV_LAG_S } f
 import { createScorebug } from '/js/scorebug.js';
 import { createLeagueOverlay } from '/js/league-overlay.js';
 import { createPostMatchTable } from '/js/post-match-table.mjs';
+import { createCleanOutput } from '/js/broadcast-output.mjs';
 
 const FPS = 50;                 // the brief's timebase; one step is 20 ms
 const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
@@ -86,7 +87,7 @@ const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
 // page's behaviour changes. It is reported in `state().build` and on the note
 // line, so "the deployed page still says X" is settled by reading the page,
 // not by comparing memories of deploys.
-const BUILD = '2026-09-21b';
+const BUILD = '2026-09-21c';
 
 // Errors are evidence: a silent failure films a black hour, so every one is
 // kept for `state()`, echoed to the console the harness reads, and shown.
@@ -194,6 +195,10 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
 renderer.info.autoReset = false;
 document.getElementById('stage').appendChild(renderer.domElement);
+const cleanOutput = createCleanOutput({ source: renderer.domElement, onError: (message) => fail('clean-output', message) });
+let renderSerial = 0;
+renderer.domElement.addEventListener('webglcontextlost', () => cleanOutput.stop('WebGL context lost; restart clean output after recovery'));
+addEventListener('pagehide', () => cleanOutput.stop('Broadcast page closed or reloaded'));
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0817);
@@ -1013,14 +1018,25 @@ function draw() {
   const m = scorebug ? matchState() : null;
   const tableCue = postMatchTable?.update({ match: m, camera: c?.camera, settling: settleUntil > 0, time: simT });
   leagueAerial = tableCue && c?.camera === 'heli' ? { ...c, frame } : null;
+  const separateLive = cleanOutput.enabled;
   if (scorebug) {
-    scorebug.draw(m?.bug ?? null, { compactOnly: !!tableCue });
+    scorebug.draw(m?.bug ?? null, { compactOnly: !!tableCue, separateLive });
     scorebug.render(renderer);
   }
   if (leagueOverlay) {
     leagueOverlay.draw(tableCue?.presentation ?? null, tableCue?.elapsed ?? 0);
     if (tableCue) leagueOverlay.render(renderer);
   }
+  renderSerial += 1;
+  // The SAME completed frame/clock/camera, before just the LIVE badge. The
+  // detached output never steps or renders the scene and never changes the
+  // visible canvas. REPLAY and every other graphic are already in this copy.
+  if (separateLive) {
+    cleanOutput.copy({ serial: renderSerial, frame, t: simT, camera: c?.camera ?? wantCam,
+      matchId: m?.match?.id ?? null, clock: m?.bug?.clock ?? null, audioOffset: m?.bug?.audioOffset ?? null });
+    scorebug?.renderLive(renderer);
+  }
+  // Keep the stadium's own screen on the original LIVE-bearing feed too.
   if (feedTex && feedMesh && feedMesh.material.map === feedTex) {
     try {
       renderer.copyFramebufferToTexture(feedTex);
@@ -1073,7 +1089,13 @@ window.rflBroadcast = {
     return { frame, t: frame / FPS };
   },
 
-  /** The current frame as a PNG data URL. The drawing buffer is preserved, so this may be called any time after `step()`. */
+  /** Opt-in same-frame recording surface. The visible/Twitch output is unchanged. */
+  cleanOutput() {
+    if (!live) throw new Error('Clean output requires the live /broadcast page, not ?capture=1');
+    return cleanOutput.start();
+  },
+
+  /** The current LIVE-bearing frame as a PNG data URL. Existing callers are unchanged. */
   frame() { return renderer.domElement.toDataURL('image/png'); },
 
   /** Raw RGBA for a harness that would rather not decode PNG. Bottom-up, as WebGL reads it. */
@@ -1102,6 +1124,7 @@ window.rflBroadcast = {
       build: BUILD,
       venue: wantVenue, camera: wantCam, frame, t: frame / FPS, fps: FPS,
       width: W, height: H, pixelRatio: renderer.getPixelRatio(),
+      renderSerial, cleanOutput: cleanOutput.state(),
       tier: V?.tier ?? null, loaded: !!V?.near,
       bundle, seed, street: withStreet,
       // `cap` is how many peer avatars THIS browser draws — not a limit on

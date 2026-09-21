@@ -41,6 +41,93 @@ silently: hours of footage that simply never repeats.
 
 `?live=0` is accepted as a synonym for `?capture=1`.
 
+## Clean recording output — same live programme, without the LIVE badge
+
+**Build `2026-09-21c` adds an opt-in surface on the existing live page.** It
+is not `?capture=1`, another browser, another clock or a deterministic replay.
+Leave Twitch's capture on its existing visible canvas / `frame()` / `pixels()`.
+Those interfaces still include the red-dot **LIVE** badge.
+
+From JavaScript **inside that same page**:
+
+```js
+const broadcast = window.rflBroadcast;
+await broadcast.ready;
+const clean = broadcast.cleanOutput();
+await clean.ready;                   // first normal programme frame, not a redraw
+const canvas = clean.canvas;         // detached HTMLCanvasElement, 1280 × 720
+const video = clean.captureStream(50); // video-only MediaStream; fps is a ceiling
+// Pass video to your in-page MediaRecorder/WebRTC pipeline, or read canvas.
+// Keep RFL's premix and existing audioOffset/mux timing; no audio is added here.
+// After the recorder has finalized:
+// clean.stop();
+```
+
+The copy is taken after the city, match, scorebug, **REPLAY** tag and league
+table are composited, but before **only** the top-right red-dot/LIVE panel.
+Scores, clock, banners, replays, crests, camera cuts and the 54-second table all
+come from that one render. No masking, cropping, black box, extra scene pass,
+clock read or match seek. The scene behind the badge is genuinely present.
+The main canvas then receives LIVE; the stadium screen still copies that
+original broadcast. Consequently a tiny LIVE label *inside a filmed stadium
+screen* can remain: removing it would change the scene, not just the requested
+top-right overlay.
+
+### Capture contract and integration limits
+
+- Nothing is allocated/copied for this output until `cleanOutput()` is called.
+  The canvas is not attached to the DOM and never changes the visible page.
+  `?capture=1` / `?live=0` reject this API rather than silently changing modes.
+- Repeated starts return the **same active handle**. It is one shared output,
+  not reference-counted: any handle's `stop()` ends all streams it created.
+  `stop()` is idempotent and releases the canvas backing store. There is no
+  extra scorebug texture/material to release: both passes use the original.
+  Start again for a new handle/canvas. A stale handle cannot stop the new output.
+- `clean.ready` rejects if stopped before its first frame. Wait for it before
+  `captureStream(fps)`; fps must be finite, greater than zero and at most 60.
+  The browser samples the clean canvas at up to that rate; it cannot invent
+  frames when the renderer is slow. No second render loop is started.
+- `clean.state()` and `broadcast.state().cleanOutput` report `active`, `copies`,
+  `error`, dimensions and the last copied `frame`: `serial`, `frame`, `t`,
+  `camera`, `matchId`, `clock`, `audioOffset`. `serial` equals the main page's
+  `state().renderSerial` for that draw. `audioOffset` is the existing scorebug's
+  programme/premix position, not a new audio clock.
+- Canvas/stream objects live **in the browser**; returning one through
+  Puppeteer/Playwright/CDP JSON does not transfer video to Node or FFmpeg. RFL
+  must consume it in-page or explicitly transport the frames/stream. Ordinary
+  OBS/window capture still sees LIVE. The browser's canvas is sRGB/top-down;
+  existing `pixels()` remains WebGL RGBA/bottom-up.
+- MediaRecorder/WebRTC codec, transport and RFL-premix muxing belong to the
+  recorder. For MediaRecorder, choose a supported MIME type with
+  `MediaRecorder.isTypeSupported`, consume `dataavailable` chunks promptly
+  (`start(1000)`, for example), and do not retain a whole match's blobs in RAM.
+  Do not combine the page's stadium PA with the RFL premix.
+- Copying uses native `drawImage` at buffer size, not per-frame PNG encoding or
+  CPU `readPixels`. It is **not a zero-copy or 50-fps performance guarantee**;
+  benchmark enabled capture on the recording machine. Background-tab/browser
+  throttling is unchanged. No extra capture work when stopped.
+- A copy/dimension error stops clean streams and records an error without
+  aborting the live draw. WebGL context loss stops the output; restart after
+  recovery. Page reload/navigation ends the handle and its streams: reacquire
+  from the new `rflBroadcast` after `ready`, as for any page-owned capture.
+
+Implementation: `public/js/broadcast-output.mjs`, `public/js/scorebug.js` and the
+single `draw()` in `public/broadcast.html`. While capturing, WebGL scissors
+partition the **original combined scorebug texture** into shared pixels and
+LIVE; each pixel is drawn once, with renderer scissor/clear state restored.
+Do not independently repaint LIVE on another canvas: Linux canvas alpha
+rasterization produced a one-byte edge difference that the exact-pixel gate
+caught. The league slab and its shadow must stay below the LIVE region, as
+checked by the live-versus-ordinary framebuffer oracle. A null bug draws no
+quad (avoids stale cleared-canvas uploads on software renderers).
+Offline pixel/lifecycle/order gate:
+`npm run broadcast-output:check`. Real scheduled M42 rehearsal, using a
+browser-local saved archive/clock only:
+
+```sh
+node scripts/league-first-air-browser.mjs --gpu --clean-output --out qa-out/clean-output/m42
+```
+
 ## What is on the pitch, and who decides
 
 Three things can put a match in the stadium. They are listed in the order they
@@ -239,16 +326,11 @@ line at the bottom of the page) is the date the page's behaviour last
 changed. A harness that pins a copy of the page, or a proxy that holds one,
 will report an older date than `https://otra.city/broadcast` does — so a
 "the deployed page still says X" conversation is settled by reading it. The
-current build is **2026-09-15b** (the live feed adds nobody to the stadium
-again, and a stand shot is a glance — before that, 2026-09-15a: the tracked
-gantry, a pre-roll list, the wide held past the buzzer, and the screens
-carrying the channel's timetable when the feed lists no fixture; 2026-09-14c:
-a live fixture follows its programme, pre-roll, kick-off, holds, post-roll;
-2026-09-14b: crests on the scorebug, the arena boards dressed, head-cam replays
-on a replay the city put on; 2026-09-14: the live feed runs the stadium's match
-module, the director cuts during play, the sound switch; and 2026-09-11). Bump
-the constant at the top of `public/broadcast.html` whenever the page's
-behaviour changes.
+build in this source is **2026-09-21c** (opt-in clean recording output).
+Before it: 2026-09-21b extended the post-match table to 54 seconds;
+2026-09-21a added verified first-air standings. The source build is not proof
+of deployment: read the running page for that. Bump the constant at the top
+of `public/broadcast.html` whenever the page's behaviour changes.
 
 The gate asserts the field exists, and it can be pointed at the deployed
 site rather than a local copy of `public/`:

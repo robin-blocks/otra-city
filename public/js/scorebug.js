@@ -83,7 +83,65 @@ export function createScorebug({ width, height, crests = CRESTS_URL } = {}) {
   const scene = new THREE.Scene();
   const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
-  scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat));
+  const geometry = new THREE.PlaneGeometry(2, 2);
+  scene.add(new THREE.Mesh(geometry, mat));
+  // Defer LIVE by scissoring the SAME original scorebug texture. Painting it
+  // again on a separate canvas changes antialiased alpha bytes on Linux.
+  // No second texture/material; the four outer rectangles and inner badge
+  // partition the original draw without drawing any pixel twice.
+  let separateLive = false, visible = false;
+  const savedScissor = new THREE.Vector4();
+  const liveRect = {
+    x: Math.floor((LAYOUT_W - 12 - 66) * width / LAYOUT_W) - 2,
+    y: height - (Math.ceil(34 * width / LAYOUT_W) + 2),
+    right: Math.ceil((LAYOUT_W - 12) * width / LAYOUT_W) + 2,
+    top: height - (Math.floor(8 * width / LAYOUT_W) - 2),
+  };
+  function paintTag(ctx, tag) {
+    const x0 = LAYOUT_W - 12 - tag.w;
+    ctx.fillStyle = PANEL;
+    roundRect(ctx, px(x0), px(8), px(tag.w), px(26), px(7));
+    ctx.fillStyle = tag.colour;
+    ctx.beginPath();
+    ctx.arc(px(x0 + 15), px(21), px(5), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = font(700, 14);
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.fillText(tag.text, px(x0 + 26), px(21));
+  }
+  function renderLayer(renderer, part = null) {
+    const wasAutoClear = renderer.autoClear;
+    if (!part) {
+      renderer.autoClear = false;
+      try { renderer.render(scene, cam); }
+      finally { renderer.autoClear = wasAutoClear; }
+      return;
+    }
+    renderer.getScissor(savedScissor);
+    const wasScissor = renderer.getScissorTest();
+    const { x, y, right, top } = liveRect;
+    const rectangles = part === 'live' ? [[x, y, right, top]]
+      : [[0, 0, width, y], [0, top, width, height], [0, y, x, top], [right, y, width, top]];
+    renderer.autoClear = false;
+    try {
+      renderer.setScissorTest(true);
+      for (let [x0, y0, x1, y1] of rectangles) {
+        if (wasScissor) {
+          x0 = Math.max(x0, savedScissor.x); y0 = Math.max(y0, savedScissor.y);
+          x1 = Math.min(x1, savedScissor.x + savedScissor.z); y1 = Math.min(y1, savedScissor.y + savedScissor.w);
+        }
+        if (x1 <= x0 || y1 <= y0) continue;
+        renderer.setScissor(x0, y0, x1 - x0, y1 - y0);
+        renderer.render(scene, cam);
+      }
+    } finally {
+      renderer.setScissor(savedScissor);
+      renderer.setScissorTest(wasScissor);
+      renderer.autoClear = wasAutoClear;
+    }
+  }
 
   const S = width / LAYOUT_W;          // one scale for both axes: the spec is 16:9
   const px = (v) => v * S;
@@ -127,7 +185,9 @@ export function createScorebug({ width, height, crests = CRESTS_URL } = {}) {
   }
 
   /** Draw one state. Returns false when nothing changed and the canvas was left alone. */
-  function draw(bug, { compactOnly = false } = {}) {
+  function draw(bug, { compactOnly = false, separateLive: deferLive = false } = {}) {
+    visible = !!bug;
+    separateLive = !!(deferLive && bug?.live && !bug.replay);
     const key = bug && JSON.stringify([bug, compactOnly]);
     if (key === painted) return false;
     painted = key;
@@ -169,19 +229,7 @@ export function createScorebug({ width, height, crests = CRESTS_URL } = {}) {
     // replay, and a viewer must never take a second look for the goal itself.
     const tag = bug.replay ? { text: 'REPLAY', colour: REPLAY_AMBER, w: 92 }
               : bug.live ? { text: 'LIVE', colour: LIVE_RED, w: 66 } : null;
-    if (tag) {
-      const x0 = W - 12 - tag.w;
-      g.fillStyle = PANEL;
-      roundRect(g, px(x0), px(8), px(tag.w), px(26), px(7));
-      g.fillStyle = tag.colour;
-      g.beginPath();
-      g.arc(px(x0 + 15), px(21), px(5), 0, Math.PI * 2);
-      g.fill();
-      g.fillStyle = '#ffffff';
-      g.font = font(700, 14);
-      g.textAlign = 'left';
-      g.fillText(tag.text, px(x0 + 26), px(21));
-    }
+    if (tag) paintTag(g, tag);
 
     // The post-match table carries its own result strap; keep the compact
     // score/time identity but do not stack two full-width result graphics.
@@ -238,15 +286,16 @@ export function createScorebug({ width, height, crests = CRESTS_URL } = {}) {
   return {
     draw,
     /** Lay it over whatever is already in the buffer. */
-    render(renderer) {
-      const wasAutoClear = renderer.autoClear;
-      renderer.autoClear = false;
-      renderer.render(scene, cam);
-      renderer.autoClear = wasAutoClear;
-    },
+    render(renderer) { if (visible) renderLayer(renderer, separateLive ? 'shared' : null); },
+    /** Only called after the clean copy. In ordinary mode LIVE is still in draw(). */
+    renderLive(renderer) { if (separateLive) renderLayer(renderer, 'live'); },
     /** Whether the crests are there: the manifest, and how many images landed. */
     get crests() { return { ...crestStat }; },
     crestFor: (team) => crestUrlFor(team),
-    dispose() { tex.dispose(); mat.dispose(); for (const r of images.values()) r.img.src = ''; images.clear(); },
+    dispose() {
+      tex.dispose(); mat.dispose(); geometry.dispose();
+      for (const r of images.values()) r.img.src = '';
+      images.clear();
+    },
   };
 }
