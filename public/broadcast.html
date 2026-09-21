@@ -86,7 +86,7 @@ const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
 // page's behaviour changes. It is reported in `state().build` and on the note
 // line, so "the deployed page still says X" is settled by reading the page,
 // not by comparing memories of deploys.
-const BUILD = '2026-09-19a';
+const BUILD = '2026-09-21a';
 
 // Errors are evidence: a silent failure films a black hour, so every one is
 // kept for `state()`, echoed to the console the harness reads, and shown.
@@ -1116,6 +1116,7 @@ window.rflBroadcast = {
           // the resolved bundle base, so nobody has to scrape it off a media
           // element that this page may not have created
           bundleUrl: m.match?.bundleUrl ?? null,
+          startsAt: m.match?.startsAt ?? null,
           state: m.stage ?? null, clock: m.clock ?? null, score: m.score ?? null,
           // The text actually painted on the stadium scoreboard, not the
           // SDK clock above: the gate compares it with the on-air scorebug.
