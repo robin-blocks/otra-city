@@ -814,25 +814,89 @@ try {
     const bundleUrl = sM.match.bundleUrl;
     if (bundleUrl && g0 && sM.match.source === 'now') {
       const at = (secondsAgo) => new Date(Date.now() - secondsAgo * 1000).toISOString();
-      const rehearse = async (secondsAgo) => {
+      const rehearse = async (secondsAgo, waitForMap = true) => {
         const ok = await lv.evaluate(`window.rflBroadcast.rehearseLive({ bundleUrl: ${JSON.stringify(bundleUrl)}, startsAt: ${JSON.stringify(at(secondsAgo))} })`, { timeoutMs: 120000 });
         // The new stage is up when the promise resolves; the bug and the
         // director follow on the next ticks. Wait for the programme clock to
         // read the NEW start, not the previous rehearsal's.
         let x = null;
-        for (let i = 0; i < 40; i++) { await sleep(250); x = await lv.state(); if (x.match?.drive === 'wall' && (x.scorebug?.programmeT ?? -1) >= secondsAgo) break; }
+        for (let i = 0; i < 40; i++) {
+          await sleep(250); x = await lv.state();
+          if (x.match?.drive === 'wall' && (waitForMap ? (x.scorebug?.programmeT ?? -1) >= secondsAgo : !!x.scorebug)) break;
+        }
         return { ok, x };
       };
+      // The pure clock tests cannot tell whether paintBoard still reads the
+      // SDK's clock. Check the text actually painted on the mounted board,
+      // alongside the real bug. The board repaints every 0.25 simulation
+      // seconds, so wait for a shared frame rather than compare a stale paint
+      // against a newly rounded second (especially on software WebGL).
+      const boardReading = async (label, previous = null) => {
+        let x = null;
+        const deadline = Date.now() + 30000;
+        do {
+          x = await lv.state();
+          if (x.scorebug?.clock && x.match?.board?.endsWith(`${label} ${x.scorebug.clock}`)
+              && (previous === null || x.scorebug.clock !== previous)) return { ok: true, x };
+          await sleep(250);
+        } while (Date.now() < deadline);
+        return { ok: false, x };
+      };
+      // A mounted stage can precede the venue's programme-map read. Exercise
+      // that state with map-less scene responses in THIS browser only; the
+      // actual HUD, tracks and stage still come from the publisher's bundle.
+      // This also catches a failed map read, not only a fast cache hit.
+      await lv.evaluate(`(() => {
+        const original = window.fetch;
+        window.__restoreClockFetch = () => { window.fetch = original; delete window.__restoreClockFetch; };
+        window.__clockMaplessReads = 0;
+        window.fetch = async function(input, init) {
+          const response = await original.call(this, input, init);
+          const url = new URL(typeof input === 'string' ? input : input.url || String(input), location.href);
+          if (url.href !== ${JSON.stringify(`${bundleUrl.replace(/\/+$/, '')}/scene.json`)} || !response.ok) return response;
+          const scene = await response.json();
+          delete scene.program;
+          if (scene.audio) delete scene.audio.map;
+          window.__clockMaplessReads++;
+          return new Response(JSON.stringify(scene), { status: response.status, headers: { 'Content-Type': 'application/json' } });
+        };
+        return true;
+      })()`);
+      try {
+        const early = await rehearse(64, false);
+        const read = await boardReading('KICK-OFF IN');
+        const b = read.x?.scorebug;
+        const maplessReads = await lv.evaluate('window.__clockMaplessReads');
+        check('before a programme map is available, the board and premix offset follow the live wall clock',
+          early.ok && read.ok && maplessReads > 0 && b?.programmeT === null && b?.preroll === true
+            && b.t > -116 && b.t < -80 && Number.isFinite(b.audioOffset)
+            && Math.abs(b.audioOffset - (180 + b.t)) < 0.1,
+          `map-less reads ${maplessReads}, board "${read.x?.match?.board}", match t ${b?.t}, audioOffset ${b?.audioOffset}`);
+      } finally {
+        await lv.evaluate('window.__restoreClockFetch?.()');
+      }
       const pre = await rehearse(60);
       check('a live fixture 60 s into its programme is in the pre-roll, on the venue\'s own screens',
         pre.ok === true && pre.x.match?.drive === 'wall' && pre.x.scorebug?.tag === 'Kick-off' && pre.x.scorebug?.live === true
           && pre.x.director?.list === 'preroll' && !(pre.x.match?.docks || []).some((d) => d.attached) && /coming up/i.test(pre.x.match?.screens?.main || ''),
         `drive ${pre.x?.match?.drive}, tag ${pre.x?.scorebug?.tag} ${pre.x?.scorebug?.clock}, live ${pre.x?.scorebug?.live}, list ${pre.x?.director?.list}, docks ${JSON.stringify((pre.x?.match?.docks || []).map((d) => d.attached))}, screen "${pre.x?.match?.screens?.main}"`);
+      const preBoard = await boardReading('KICK-OFF IN');
+      check('the mounted scoreboard counts down to kick-off with the scorebug, not the SDK clock',
+        preBoard.ok && preBoard.x.scorebug?.preroll === true,
+        `board "${preBoard.x?.match?.board}", bug ${preBoard.x?.scorebug?.tag} ${preBoard.x?.scorebug?.clock}`);
+      const nextBoard = await boardReading('KICK-OFF IN', preBoard.x?.scorebug?.clock);
+      check('the mounted scoreboard countdown advances with the scorebug',
+        nextBoard.ok && nextBoard.x.scorebug?.preroll === true,
+        `board "${nextBoard.x?.match?.board}", bug ${preBoard.x?.scorebug?.clock} -> ${nextBoard.x?.scorebug?.clock}`);
       const play = await rehearse(200);
       check('at 200 s it has kicked off: the publisher\'s panels, the gantry, the premix 200 s in',
         play.ok === true && play.x.scorebug?.playing === true && play.x.director?.list === 'match'
           && (play.x.match?.docks || []).some((d) => d.attached) && Math.abs((play.x.scorebug?.audioOffset ?? 0) - 200) < 8,
         `tag ${play.x?.scorebug?.tag} ${play.x?.scorebug?.clock}, list ${play.x?.director?.list} shot ${play.x?.director?.shot}, docks ${JSON.stringify((play.x?.match?.docks || []).map((d) => d.attached))}, audioOffset ${play.x?.scorebug?.audioOffset}`);
+      const playBoard = await boardReading('FIRST HALF');
+      check('in play the mounted scoreboard shows the same half clock as the scorebug',
+        playBoard.ok && playBoard.x.scorebug?.playing === true && playBoard.x.scorebug?.half === 1,
+        `board "${playBoard.x?.match?.board}", bug ${playBoard.x?.scorebug?.tag} ${playBoard.x?.scorebug?.clock}`);
       // Just before the goal, so the hold arrives while we watch, however long
       // the mount from cache took.
       const hold = await rehearse(180 + g0.t - 1.5);

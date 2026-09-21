@@ -937,7 +937,10 @@ export function create(ctx) {
   /** Match time as the programme has it while we drive; the stage's own otherwise. */
   function programmeMatchT() {
     if (driving()) return unmapTime(programme.map, programmeT);
-    if (wallDrive) return programmeT - wallDrive.preS;   // the map has not landed yet
+    // onMount resets programmeT and the map may arrive late (or not at all).
+    // The wall clock already knows where the build-up is; never restart it
+    // at 03:00 while waiting for the map that drives the match itself.
+    if (wallDrive) return wallProgrammeT() - wallDrive.preS;
     return stage?.time ?? 0;
   }
   /**

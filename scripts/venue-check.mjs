@@ -201,8 +201,20 @@ for (const id of ids) {
           const mainOk = maps[mcfg.docks?.main] === 'video';
           const scoreOk = maps[mcfg.scoreboard] === 'canvas';
           check('match: screens carry the SDK textures, glTF-oriented', mainOk && scoreOk && dom.maps.every(([, t]) => !t.endsWith('/flipY')), dom.maps.map((m) => m.join('=')).join(', '));
-          const ms2 = (await mx.state()).venues.find((x) => x.id === id).modules[0]?.state;
-          check('match: scoreboard paints hud truth', /[A-Z]{2,4} \d+-\d+ [A-Z]{2,4} \d+:\d\d/.test(ms2?.board || ''), `board "${ms2?.board}", clock ${ms2?.clock}, stage ${ms2?.stage}`);
+          const boardMatches = (s) => {
+            const b = s?.bug;
+            if (!b) return /[A-Z]{2,4} \d+-\d+ [A-Z]{2,4} \d+:\d\d/.test(s?.board || ''); // legacy, no clock block
+            const label = b.preroll ? 'KICK-OFF IN' : b.over ? 'FULL TIME' : !b.playing ? 'HALF TIME' : b.tag.toUpperCase();
+            return s.board === `${b.home.code} ${b.a}-${b.b} ${b.away.code} ${label} ${b.clock}`;
+          };
+          let ms2 = (await mx.state()).venues.find((x) => x.id === id).modules[0]?.state;
+          // A board paints every quarter simulation second, not every frame.
+          for (let i = 0; i < 30 && !boardMatches(ms2); i++) {
+            await mx.step(1);
+            ms2 = (await mx.state()).venues.find((x) => x.id === id).modules[0]?.state;
+          }
+          check('match: scoreboard paints hud truth and the scorebug clock', boardMatches(ms2),
+            `board "${ms2?.board}", bug ${ms2?.bug?.tag} ${ms2?.bug?.clock}, stage clock ${ms2?.clock}`);
           // The publisher's shouts are canvas sprites whose canvas is resized for
           // every message, and three allocates a texture's storage once — so a
           // label whose canvas grew and was NOT re-allocated is an INVALID_VALUE

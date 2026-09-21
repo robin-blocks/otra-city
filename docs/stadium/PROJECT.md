@@ -125,8 +125,15 @@ rendered live by the 4DGSX three.js SDK (`https://4dgsx.com/sdk`).
   countdown board shows what is next (decided: no replays on the live
   site; replays are fixture-only); docks `main/left/right`
   attached to the screens; our scoreboard from `stage.hud/score` and the
-  programme clock (`/js/match-clock.mjs`, shared with the scorebug), never
-  the stage's own `clock`, which reads 9:59 through the whole build-up;
+  programme clock (`/js/match-clock.mjs`, shared with the scorebug):
+  `KICK-OFF IN mm:ss` through the build-up, the current half's clock in
+  play, then named `HALF TIME` / `FULL TIME`. The SDK clock is only a
+  fallback for legacy bundles without `hud.clock`; on current bundles it
+  reads 9:59 through the whole build-up. Before the programme map arrives,
+  a scheduled build-up counts down from the wall clock rather than resetting
+  to 03:00; the premix offset is available from that same wall clock.
+  `npm run clock:check` runs in venue CI; the browser gates compare the
+  painted board to the scorebug, including the map-unavailable pre-roll;
   crowd and commentary placed in the stands and on tannoy positions;
   the single mute button controls it; the city loop is silent in the
   bowl (the venue owns the mix, same rule as shops); attribution kept;

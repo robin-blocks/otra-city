@@ -1117,6 +1117,9 @@ window.rflBroadcast = {
           // element that this page may not have created
           bundleUrl: m.match?.bundleUrl ?? null,
           state: m.stage ?? null, clock: m.clock ?? null, score: m.score ?? null,
+          // The text actually painted on the stadium scoreboard, not the
+          // SDK clock above: the gate compares it with the on-air scorebug.
+          board: m.board ?? null,
           next: m.next ? { id: m.next.bundleId, startsAt: m.next.startsAt } : null,
           // what the city says is on, the sound switch included
           now: m.now ?? null,
