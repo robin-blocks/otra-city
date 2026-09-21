@@ -1,0 +1,201 @@
+{
+  "origin": {
+    "description": "Offline reduction of saved M42 first-air incident. Full season 3 fixture ledger and configured team order; no reports, radio or programme window used for standings.",
+    "directory": "qa-out/league/incident-20260921/",
+    "sha256": {
+      "site.json": "e923cc3e2cb3c6edda62254b29d1e6e0f20d81292d73ec7e3f0a2a2fefb1988d",
+      "hud.json": "7f209a8e002d35eb9c2e864a86d3d55d3cdcb15a373a827e9f2b689211fe43e3",
+      "programme.json": "1263bf4b0633a2fc70c5e9074c72b6731ffbb3e882370c64a1a95804523821f5"
+    }
+  },
+  "archive": {
+    "generated_at": "2026-09-21T10:59:49+00:00",
+    "current_season": 3,
+    "seasons": [
+      {
+        "season": 3,
+        "preseason": false,
+        "total_matches": 90,
+        "aired_count": 39,
+        "skipped_count": 6,
+        "teams": [
+          {"slug":"real_machina","code":"RMA","name":"Real Machina","color":"#e5e5f4"},
+          {"slug":"singularity_united","code":"SGU","name":"Singularity United","color":"#60adf2"},
+          {"slug":"dynamo_datacenter","code":"DYD","name":"Dynamo Datacenter","color":"#f2c119"},
+          {"slug":"synthetic_athletic","code":"SYA","name":"Synthetic Athletic","color":"#cc1e2d"},
+          {"slug":"frontier_fable","code":"FAB","name":"AFC Fable","color":"#d97756"},
+          {"slug":"frontier_sol","code":"CDX","name":"Codex City","color":"#0a0d0b"},
+          {"slug":"frontier_gemini","code":"GEM","name":"Gemini Flash FC","color":"#1e6bea"},
+          {"slug":"frontier_muse","code":"MSP","name":"Muse Spark FC","color":"#0572f2"},
+          {"slug":"frontier_glm","code":"GLM","name":"GLM FC","color":"#2659ff"},
+          {"slug":"frontier_deepseek","code":"DSK","name":"DeepSeek Rovers","color":"#112dbf"}
+        ],
+        "table": [
+          {"pos":1,"slug":"frontier_gemini","name":"Gemini Flash FC","code":"GEM","color":"#1e6bea","P":8,"W":8,"D":0,"L":0,"GF":59,"GA":32,"GD":27,"Pts":24,"prev":1,"move":0},
+          {"pos":2,"slug":"real_machina","name":"Real Machina","code":"RMA","color":"#e5e5f4","P":9,"W":7,"D":0,"L":2,"GF":71,"GA":36,"GD":35,"Pts":21,"prev":2,"move":0},
+          {"pos":3,"slug":"dynamo_datacenter","name":"Dynamo Datacenter","code":"DYD","color":"#f2c119","P":9,"W":4,"D":1,"L":4,"GF":56,"GA":50,"GD":6,"Pts":13,"prev":4,"move":1},
+          {"pos":4,"slug":"synthetic_athletic","name":"Synthetic Athletic","code":"SYA","color":"#cc1e2d","P":8,"W":4,"D":1,"L":3,"GF":44,"GA":39,"GD":5,"Pts":13,"prev":3,"move":-1},
+          {"pos":5,"slug":"frontier_sol","name":"Codex City","code":"CDX","color":"#0a0d0b","P":8,"W":4,"D":0,"L":4,"GF":38,"GA":45,"GD":-7,"Pts":12,"prev":7,"move":2},
+          {"pos":6,"slug":"singularity_united","name":"Singularity United","code":"SGU","color":"#60adf2","P":7,"W":3,"D":1,"L":3,"GF":48,"GA":36,"GD":12,"Pts":10,"prev":5,"move":-1},
+          {"pos":7,"slug":"frontier_fable","name":"AFC Fable","code":"FAB","color":"#d97756","P":8,"W":2,"D":3,"L":3,"GF":41,"GA":43,"GD":-2,"Pts":9,"prev":8,"move":1},
+          {"pos":8,"slug":"frontier_deepseek","name":"DeepSeek Rovers","code":"DSK","color":"#112dbf","P":8,"W":3,"D":0,"L":5,"GF":42,"GA":53,"GD":-11,"Pts":9,"prev":6,"move":-2},
+          {"pos":9,"slug":"frontier_muse","name":"Muse Spark FC","code":"MSP","color":"#0572f2","P":6,"W":0,"D":2,"L":4,"GF":29,"GA":46,"GD":-17,"Pts":2,"prev":9,"move":0},
+          {"pos":10,"slug":"frontier_glm","name":"GLM FC","code":"GLM","color":"#2659ff","P":7,"W":0,"D":0,"L":7,"GF":18,"GA":66,"GD":-48,"Pts":0,"prev":10,"move":0}
+        ],
+        "matches": [
+          {"n":1,"home":"real_machina","away":"singularity_united","home_code":"RMA","away_code":"SGU","status":"aired","score":[5,8],"aired_at":"2026-09-02T19:04:42Z","watch":{"id":"s3-m1_real_machina_singularity_united"}},
+          {"n":2,"home":"dynamo_datacenter","away":"frontier_deepseek","home_code":"DYD","away_code":"DSK","status":"aired","score":[9,11],"aired_at":"2026-09-03T11:04:48Z","watch":{"id":"s3-m2_dynamo_datacenter_frontier_deepseek"}},
+          {"n":3,"home":"synthetic_athletic","away":"frontier_glm","home_code":"SYA","away_code":"GLM","status":"aired","score":[4,3],"aired_at":"2026-09-03T15:04:41Z","watch":{"id":"s3-m3_synthetic_athletic_frontier_glm"}},
+          {"n":4,"home":"frontier_fable","away":"frontier_muse","home_code":"FAB","away_code":"MSP","status":"aired","score":[7,7],"aired_at":"2026-09-03T19:04:49Z","watch":{"id":"s3-m4_frontier_fable_frontier_muse"}},
+          {"n":5,"home":"frontier_sol","away":"frontier_gemini","home_code":"CDX","away_code":"GEM","status":"aired","score":[4,8],"aired_at":"2026-09-04T11:04:52Z","watch":{"id":"s3-m5_frontier_sol_frontier_gemini"}},
+          {"n":6,"home":"frontier_deepseek","away":"real_machina","home_code":"DSK","away_code":"RMA","status":"aired","score":[0,8],"aired_at":"2026-09-04T15:04:47Z","watch":{"id":"s3-m6_frontier_deepseek_real_machina"}},
+          {"n":7,"home":"singularity_united","away":"frontier_glm","home_code":"SGU","away_code":"GLM","status":"aired","score":[16,3],"aired_at":"2026-09-04T19:04:47Z","watch":{"id":"s3-m7_singularity_united_frontier_glm"}},
+          {"n":8,"home":"dynamo_datacenter","away":"frontier_muse","home_code":"DYD","away_code":"MSP","status":"aired","score":[7,4],"aired_at":"2026-09-05T11:04:36Z","watch":{"id":"s3-m8_dynamo_datacenter_frontier_muse"}},
+          {"n":9,"home":"synthetic_athletic","away":"frontier_gemini","home_code":"SYA","away_code":"GEM","status":"aired","score":[4,6],"aired_at":"2026-09-05T15:04:37Z","watch":{"id":"s3-m9_synthetic_athletic_frontier_gemini"}},
+          {"n":10,"home":"frontier_fable","away":"frontier_sol","home_code":"FAB","away_code":"CDX","status":"aired","score":[6,4],"aired_at":"2026-09-05T19:04:42Z","watch":{"id":"s3-m10_frontier_fable_frontier_sol"}},
+          {"n":11,"home":"real_machina","away":"frontier_glm","home_code":"RMA","away_code":"GLM","status":"aired","score":[10,2],"aired_at":"2026-09-06T11:04:44Z","watch":{"id":"s3-m11_real_machina_frontier_glm"}},
+          {"n":12,"home":"frontier_deepseek","away":"frontier_muse","home_code":"DSK","away_code":"MSP","status":"aired","score":[9,7],"aired_at":"2026-09-06T15:04:48Z","watch":{"id":"s3-m12_frontier_deepseek_frontier_muse"}},
+          {"n":13,"home":"singularity_united","away":"frontier_gemini","home_code":"SGU","away_code":"GEM","status":"aired","score":[6,7],"aired_at":"2026-09-06T19:04:34Z","watch":{"id":"s3-m13_singularity_united_frontier_gemini"}},
+          {"n":14,"home":"dynamo_datacenter","away":"frontier_sol","home_code":"DYD","away_code":"CDX","status":"aired","score":[3,8],"aired_at":"2026-09-07T11:04:48Z","watch":{"id":"s3-m14_dynamo_datacenter_frontier_sol"}},
+          {"n":15,"home":"synthetic_athletic","away":"frontier_fable","home_code":"SYA","away_code":"FAB","status":"aired","score":[6,3],"aired_at":"2026-09-07T15:04:34Z","watch":{"id":"s3-m15_synthetic_athletic_frontier_fable"}},
+          {"n":16,"home":"frontier_muse","away":"real_machina","home_code":"MSP","away_code":"RMA","status":"aired","score":[4,13],"aired_at":"2026-09-07T19:04:38Z","watch":{"id":"s3-m16_frontier_muse_real_machina"}},
+          {"n":17,"home":"frontier_glm","away":"frontier_gemini","home_code":"GLM","away_code":"GEM","status":"aired","score":[5,11],"aired_at":"2026-09-08T11:04:36Z","watch":{"id":"s3-m17_frontier_glm_frontier_gemini"}},
+          {"n":18,"home":"frontier_deepseek","away":"frontier_sol","home_code":"DSK","away_code":"CDX","status":"aired","score":[4,6],"aired_at":"2026-09-08T15:04:44Z","watch":{"id":"s3-m18_frontier_deepseek_frontier_sol"}},
+          {"n":19,"home":"singularity_united","away":"frontier_fable","home_code":"SGU","away_code":"FAB","status":"aired","score":[4,4],"aired_at":"2026-09-08T19:04:35Z","watch":{"id":"s3-m19_singularity_united_frontier_fable"}},
+          {"n":20,"home":"dynamo_datacenter","away":"synthetic_athletic","home_code":"DYD","away_code":"SYA","status":"aired","score":[8,4],"aired_at":"2026-09-09T11:04:42Z","watch":{"id":"s3-m20_dynamo_datacenter_synthetic_athletic"}},
+          {"n":21,"home":"real_machina","away":"frontier_gemini","home_code":"RMA","away_code":"GEM","status":"aired","score":[4,5],"aired_at":"2026-09-09T15:04:32Z","watch":{"id":"s3-m21_real_machina_frontier_gemini"}},
+          {"n":22,"home":"frontier_muse","away":"frontier_sol","home_code":"MSP","away_code":"CDX","status":"aired","score":[2,5],"aired_at":"2026-09-09T19:04:49Z","watch":{"id":"s3-m22_frontier_muse_frontier_sol"}},
+          {"n":23,"home":"frontier_glm","away":"frontier_fable","home_code":"GLM","away_code":"FAB","status":"aired","score":[2,8],"aired_at":"2026-09-10T11:04:42Z","watch":{"id":"s3-m23_frontier_glm_frontier_fable"}},
+          {"n":24,"home":"frontier_deepseek","away":"synthetic_athletic","home_code":"DSK","away_code":"SYA","status":"aired","score":[4,5],"aired_at":"2026-09-10T15:04:38Z","watch":{"id":"s3-m24_frontier_deepseek_synthetic_athletic"}},
+          {"n":25,"home":"singularity_united","away":"dynamo_datacenter","home_code":"SGU","away_code":"DYD","status":"aired","score":[3,8],"aired_at":"2026-09-10T19:04:37Z","watch":{"id":"s3-m25_singularity_united_dynamo_datacenter"}},
+          {"n":26,"home":"frontier_sol","away":"real_machina","home_code":"CDX","away_code":"RMA","status":"aired","score":[4,8],"aired_at":"2026-09-11T11:04:47Z","watch":{"id":"s3-m26_frontier_sol_real_machina"}},
+          {"n":27,"home":"frontier_gemini","away":"frontier_fable","home_code":"GEM","away_code":"FAB","status":"aired","score":[8,4],"aired_at":"2026-09-11T15:04:35Z","watch":{"id":"s3-m27_frontier_gemini_frontier_fable"}},
+          {"n":28,"home":"frontier_muse","away":"synthetic_athletic","home_code":"MSP","away_code":"SYA","status":"aired","score":[5,5],"aired_at":"2026-09-11T19:04:47Z","watch":{"id":"s3-m28_frontier_muse_synthetic_athletic"}},
+          {"n":29,"home":"frontier_glm","away":"dynamo_datacenter","home_code":"GLM","away_code":"DYD","status":"aired","score":[1,10],"aired_at":"2026-09-12T11:04:44Z","watch":{"id":"s3-m29_frontier_glm_dynamo_datacenter"}},
+          {"n":30,"home":"frontier_deepseek","away":"singularity_united","home_code":"DSK","away_code":"SGU","status":"aired","score":[5,9],"aired_at":"2026-09-12T15:04:49Z","watch":{"id":"s3-m30_frontier_deepseek_singularity_united"}},
+          {"n":31,"home":"real_machina","away":"frontier_fable","home_code":"RMA","away_code":"FAB","status":"aired","score":[8,5],"aired_at":"2026-09-12T19:04:40Z","watch":{"id":"s3-m31_real_machina_frontier_fable"}},
+          {"n":32,"home":"frontier_sol","away":"synthetic_athletic","home_code":"CDX","away_code":"SYA","status":"aired","score":[3,12],"aired_at":"2026-09-14T15:04:54Z","watch":{"id":"s3-m32_frontier_sol_synthetic_athletic"}},
+          {"n":33,"home":"frontier_gemini","away":"dynamo_datacenter","home_code":"GEM","away_code":"DYD","status":"aired","score":[7,3],"aired_at":"2026-09-14T19:39:40Z","watch":{"id":"s3-m33_frontier_gemini_dynamo_datacenter"}},
+          {"n":34,"home":"frontier_muse","away":"singularity_united","home_code":"MSP","away_code":"SGU","status":"skipped","skipped_reason":"not played: Muse Spark FC could not start the match","skipped_at":"2026-09-15T13:42:36Z"},
+          {"n":35,"home":"frontier_glm","away":"frontier_deepseek","home_code":"GLM","away_code":"DSK","status":"aired","score":[2,7],"aired_at":"2026-09-15T19:04:46Z","watch":{"id":"s3-m35_frontier_glm_frontier_deepseek"}},
+          {"n":36,"home":"synthetic_athletic","away":"real_machina","home_code":"SYA","away_code":"RMA","status":"aired","score":[4,7],"aired_at":"2026-09-16T11:04:42Z","watch":{"id":"s3-m36_synthetic_athletic_real_machina"}},
+          {"n":37,"home":"frontier_fable","away":"dynamo_datacenter","home_code":"FAB","away_code":"DYD","status":"aired","score":[4,4],"aired_at":"2026-09-16T15:04:42Z","watch":{"id":"s3-m37_frontier_fable_dynamo_datacenter"}},
+          {"n":38,"home":"frontier_sol","away":"singularity_united","home_code":"CDX","away_code":"SGU","status":"aired","score":[4,2],"aired_at":"2026-09-16T19:04:41Z","watch":{"id":"s3-m38_frontier_sol_singularity_united"}},
+          {"n":39,"home":"frontier_gemini","away":"frontier_deepseek","home_code":"GEM","away_code":"DSK","status":"aired","score":[7,2],"aired_at":"2026-09-17T11:04:36Z","watch":{"id":"s3-m39_frontier_gemini_frontier_deepseek"}},
+          {"n":40,"home":"frontier_muse","away":"frontier_glm","home_code":"MSP","away_code":"GLM","status":"skipped","skipped_reason":"not played: Muse Spark FC could not start the match","skipped_at":"2026-09-16T21:21:09Z"},
+          {"n":41,"home":"real_machina","away":"dynamo_datacenter","home_code":"RMA","away_code":"DYD","status":"aired","score":[8,4],"aired_at":"2026-09-17T15:04:33Z","watch":{"id":"s3-m41_real_machina_dynamo_datacenter"}},
+          {"n":42,"home":"synthetic_athletic","away":"singularity_united","home_code":"SYA","away_code":"SGU","status":"scheduled","kickoff_utc":"2026-09-21T11:00:00Z"},
+          {"n":43,"home":"frontier_fable","away":"frontier_deepseek","home_code":"FAB","away_code":"DSK","status":"scheduled","kickoff_utc":"2026-09-21T15:00:00Z"},
+          {"n":44,"home":"frontier_sol","away":"frontier_glm","home_code":"CDX","away_code":"GLM","status":"scheduled","kickoff_utc":"2026-09-21T19:00:00Z"},
+          {"n":45,"home":"frontier_gemini","away":"frontier_muse","home_code":"GEM","away_code":"MSP","status":"skipped","skipped_reason":"not played: Muse Spark FC could not start the match","skipped_at":"2026-09-18T08:31:44Z"},
+          {"n":46,"home":"singularity_united","away":"real_machina","home_code":"SGU","away_code":"RMA","status":"scheduled","kickoff_utc":"2026-09-22T11:00:00Z"},
+          {"n":47,"home":"frontier_deepseek","away":"dynamo_datacenter","home_code":"DSK","away_code":"DYD","status":"scheduled","kickoff_utc":"2026-09-22T15:00:00Z"},
+          {"n":48,"home":"frontier_glm","away":"synthetic_athletic","home_code":"GLM","away_code":"SYA","status":"scheduled","kickoff_utc":"2026-09-22T19:00:00Z"},
+          {"n":49,"home":"frontier_muse","away":"frontier_fable","home_code":"MSP","away_code":"FAB","status":"skipped","skipped_reason":"not played: Muse Spark FC could not start the match","skipped_at":"2026-09-18T20:30:16Z"},
+          {"n":50,"home":"frontier_gemini","away":"frontier_sol","home_code":"GEM","away_code":"CDX","status":"scheduled","kickoff_utc":"2026-09-23T11:00:00Z"},
+          {"n":51,"home":"real_machina","away":"frontier_deepseek","home_code":"RMA","away_code":"DSK","status":"scheduled","kickoff_utc":"2026-09-23T15:00:00Z"},
+          {"n":52,"home":"frontier_glm","away":"singularity_united","home_code":"GLM","away_code":"SGU","status":"scheduled","kickoff_utc":"2026-09-23T19:00:00Z"},
+          {"n":53,"home":"frontier_muse","away":"dynamo_datacenter","home_code":"MSP","away_code":"DYD","status":"skipped","skipped_reason":"not played: Muse Spark FC could not start the match","skipped_at":"2026-09-19T20:34:05Z"},
+          {"n":54,"home":"frontier_gemini","away":"synthetic_athletic","home_code":"GEM","away_code":"SYA","status":"scheduled","kickoff_utc":"2026-09-24T11:00:00Z"},
+          {"n":55,"home":"frontier_sol","away":"frontier_fable","home_code":"CDX","away_code":"FAB","status":"scheduled","kickoff_utc":"2026-09-24T15:00:00Z"},
+          {"n":56,"home":"frontier_glm","away":"real_machina","home_code":"GLM","away_code":"RMA","status":"scheduled","kickoff_utc":"2026-09-24T19:00:00Z"},
+          {"n":57,"home":"frontier_muse","away":"frontier_deepseek","home_code":"MSP","away_code":"DSK","status":"skipped","skipped_reason":"not played: Muse Spark FC could not start the match","skipped_at":"2026-09-20T16:00:19Z"},
+          {"n":58,"home":"frontier_gemini","away":"singularity_united","home_code":"GEM","away_code":"SGU","status":"scheduled"},
+          {"n":59,"home":"frontier_sol","away":"dynamo_datacenter","home_code":"CDX","away_code":"DYD","status":"scheduled"},
+          {"n":60,"home":"frontier_fable","away":"synthetic_athletic","home_code":"FAB","away_code":"SYA","status":"scheduled"},
+          {"n":61,"home":"real_machina","away":"frontier_muse","home_code":"RMA","away_code":"MSP","status":"scheduled"},
+          {"n":62,"home":"frontier_gemini","away":"frontier_glm","home_code":"GEM","away_code":"GLM","status":"scheduled"},
+          {"n":63,"home":"frontier_sol","away":"frontier_deepseek","home_code":"CDX","away_code":"DSK","status":"scheduled"},
+          {"n":64,"home":"frontier_fable","away":"singularity_united","home_code":"FAB","away_code":"SGU","status":"scheduled"},
+          {"n":65,"home":"synthetic_athletic","away":"dynamo_datacenter","home_code":"SYA","away_code":"DYD","status":"scheduled"},
+          {"n":66,"home":"frontier_gemini","away":"real_machina","home_code":"GEM","away_code":"RMA","status":"scheduled"},
+          {"n":67,"home":"frontier_sol","away":"frontier_muse","home_code":"CDX","away_code":"MSP","status":"scheduled"},
+          {"n":68,"home":"frontier_fable","away":"frontier_glm","home_code":"FAB","away_code":"GLM","status":"scheduled"},
+          {"n":69,"home":"synthetic_athletic","away":"frontier_deepseek","home_code":"SYA","away_code":"DSK","status":"scheduled"},
+          {"n":70,"home":"dynamo_datacenter","away":"singularity_united","home_code":"DYD","away_code":"SGU","status":"scheduled"},
+          {"n":71,"home":"real_machina","away":"frontier_sol","home_code":"RMA","away_code":"CDX","status":"scheduled"},
+          {"n":72,"home":"frontier_fable","away":"frontier_gemini","home_code":"FAB","away_code":"GEM","status":"scheduled"},
+          {"n":73,"home":"synthetic_athletic","away":"frontier_muse","home_code":"SYA","away_code":"MSP","status":"scheduled"},
+          {"n":74,"home":"dynamo_datacenter","away":"frontier_glm","home_code":"DYD","away_code":"GLM","status":"scheduled"},
+          {"n":75,"home":"singularity_united","away":"frontier_deepseek","home_code":"SGU","away_code":"DSK","status":"scheduled"},
+          {"n":76,"home":"frontier_fable","away":"real_machina","home_code":"FAB","away_code":"RMA","status":"scheduled"},
+          {"n":77,"home":"synthetic_athletic","away":"frontier_sol","home_code":"SYA","away_code":"CDX","status":"scheduled"},
+          {"n":78,"home":"dynamo_datacenter","away":"frontier_gemini","home_code":"DYD","away_code":"GEM","status":"scheduled"},
+          {"n":79,"home":"singularity_united","away":"frontier_muse","home_code":"SGU","away_code":"MSP","status":"scheduled"},
+          {"n":80,"home":"frontier_deepseek","away":"frontier_glm","home_code":"DSK","away_code":"GLM","status":"scheduled"},
+          {"n":81,"home":"real_machina","away":"synthetic_athletic","home_code":"RMA","away_code":"SYA","status":"scheduled"},
+          {"n":82,"home":"dynamo_datacenter","away":"frontier_fable","home_code":"DYD","away_code":"FAB","status":"scheduled"},
+          {"n":83,"home":"singularity_united","away":"frontier_sol","home_code":"SGU","away_code":"CDX","status":"scheduled"},
+          {"n":84,"home":"frontier_deepseek","away":"frontier_gemini","home_code":"DSK","away_code":"GEM","status":"scheduled"},
+          {"n":85,"home":"frontier_glm","away":"frontier_muse","home_code":"GLM","away_code":"MSP","status":"scheduled"},
+          {"n":86,"home":"dynamo_datacenter","away":"real_machina","home_code":"DYD","away_code":"RMA","status":"scheduled"},
+          {"n":87,"home":"singularity_united","away":"synthetic_athletic","home_code":"SGU","away_code":"SYA","status":"scheduled"},
+          {"n":88,"home":"frontier_deepseek","away":"frontier_fable","home_code":"DSK","away_code":"FAB","status":"scheduled"},
+          {"n":89,"home":"frontier_glm","away":"frontier_sol","home_code":"GLM","away_code":"CDX","status":"scheduled"},
+          {"n":90,"home":"frontier_muse","away":"frontier_gemini","home_code":"MSP","away_code":"GEM","status":"scheduled"}
+        ]
+      }
+    ]
+  },
+  "programme": {
+    "now": "2026-09-21T11:16:45.548Z",
+    "item": {
+      "bundleId": "s3-m42_synthetic_athletic_singularity_united",
+      "bundleUrl": "https://cdn.4dgsx.com/channels/rfl/bundles/s3-m42_synthetic_athletic_singularity_united-ea3ad4beed3fdae956e951a7",
+      "mode": "scheduled",
+      "state": "live",
+      "startsAt": "2026-09-21T11:01:42.000Z",
+      "endsAt": "2026-09-21T11:18:58.544Z",
+      "durationS": 1036.544,
+      "home": {
+        "code": "SYA",
+        "name": "Synthetic Athletic",
+        "color": [
+          0.8,
+          0.12,
+          0.18
+        ]
+      },
+      "away": {
+        "code": "SGU",
+        "name": "Singularity United",
+        "color": [
+          0.38,
+          0.68,
+          0.95
+        ]
+      }
+    }
+  },
+  "hud": {
+    "clock": {
+      "mode": "down",
+      "duration_s": 600,
+      "play_end_s": 622,
+      "halves": 2,
+      "half_breaks": [
+        300
+      ],
+      "buzzers": [
+        {"kind":"half","t":300,"play_end_t":305,"dead_s":5,"ended":"ball at rest","restart_t":317},
+        {"kind":"full","t":617,"play_end_t":622,"dead_s":5,"ended":"ball at rest","restart_t":null}
+      ]
+    },
+    "teams": [
+      {"id":"A","name":"Synthetic Athletic","code":"SYA","color":[0.8,0.12,0.18,1]},
+      {"id":"B","name":"Singularity United","code":"SGU","color":[0.38,0.68,0.95,1]}
+    ],
+    "score": [
+      {"t":0,"a":0,"b":0},
+      {"t":50.4,"a":0,"b":1},
+      {"t":184.5,"a":1,"b":1},
+      {"t":271.7,"a":1,"b":2},
+      {"t":331.5,"a":1,"b":3},
+      {"t":346.9,"a":1,"b":4},
+      {"t":445.5,"a":2,"b":4},
+      {"t":555.9,"a":2,"b":5},
+      {"t":580,"a":3,"b":5},
+      {"t":610.7,"a":3,"b":6}
+    ]
+  }
+}

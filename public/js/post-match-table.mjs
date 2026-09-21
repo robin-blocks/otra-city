@@ -60,7 +60,8 @@ export function createPostMatchTable({ fetcher = globalThis.fetch, url = LEAGUE_
       const publisherAtRest = Number.isFinite(full?.play_end_t) && bug.t >= full.play_end_t;
       const speedKnown = Number.isFinite(m.ball?.speed) && m.ball?.measured !== false;
       const invalidSpeed = m.ball != null && (!Number.isFinite(m.ball.speed) || m.ball.speed < 0);
-      const stopped = !invalidSpeed && (speedKnown ? m.ball.speed <= 0.6 : publisherAtRest);
+      const publisherStillPlaying = Number.isFinite(full?.play_end_t) && bug.t < full.play_end_t;
+      const stopped = !publisherStillPlaying && !invalidSpeed && (speedKnown ? m.ball.speed <= 0.6 : publisherAtRest);
       if (bug.inPlay !== false || settling || !stopped || bug.replay || m.headcam) {
         // If play resumes, never cover it, even during the exit animation.
         if (startedAt !== null) finished = true;
@@ -78,11 +79,21 @@ export function createPostMatchTable({ fetcher = globalThis.fetch, url = LEAGUE_
       }
       // Freeze a validated match-specific snapshot once it is on air. A later
       // feed update cannot reshuffle a table while the viewer is reading it.
-      if (!presentation) {
-        const signature = JSON.stringify([revision, id, bug.home?.code, bug.away?.code, bug.a, bug.b]);
+      if (startedAt === null) {
+        // Archive publication normally follows the entire stream. A genuinely
+        // scheduled occurrence can instead include this HUD result, but ONLY
+        // here, after the publisher's final play-end. A direct/replay mount
+        // cannot turn an unpublished future result into a league update.
+        const firstAir = m.source === 'schedule' && m.match.state === 'live' && publisherAtRest
+          ? { startsAt: m.match.startsAt, nowMs } : null;
+        const signature = JSON.stringify([revision, id, m.match.bundleUrl, bug.home?.code, bug.away?.code, bug.a, bug.b,
+          // Do not round the freshness clock: evidence can expire inside
+          // the 0.7-second cue delay. Validation stops once the snapshot airs.
+          firstAir?.startsAt, firstAir?.nowMs]);
         if (signature !== assessed) {
           assessed = signature;
-          assessment = doc ? buildMatchTable(doc, { matchId: id, bundleUrl: m.match.bundleUrl, home: bug.home, away: bug.away, score: [bug.a, bug.b] }) : null;
+          assessment = doc ? buildMatchTable(doc, { matchId: id, bundleUrl: m.match.bundleUrl,
+            home: bug.home, away: bug.away, score: [bug.a, bug.b], firstAir }) : null;
         }
         presentation = assessment?.table ?? null;
       }
@@ -93,7 +104,7 @@ export function createPostMatchTable({ fetcher = globalThis.fetch, url = LEAGUE_
       if (elapsed >= TABLE_DURATION_S) { finished = true; return hidden('complete'); }
       status = {
         visible: true, status: 'on-air', reason: null, matchId: presentation.matchId,
-        elapsed: +elapsed.toFixed(3), source: url, generatedAt: doc?.generated_at,
+        elapsed: +elapsed.toFixed(3), source: url, generatedAt: presentation.generatedAt, basis: presentation.basis,
         movements: presentation.rows.filter((r) => r.code === bug.home.code || r.code === bug.away.code)
           .map((r) => ({ code: r.code, from: r.previousPosition, to: r.position, change: r.previousPosition - r.position })),
       };

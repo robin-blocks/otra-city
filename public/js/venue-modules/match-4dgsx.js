@@ -1472,7 +1472,9 @@ export function create(ctx) {
     const url = item?.bundleUrl || bundleUrl || cfg.bundle || null;
     state.matchItem = item ? { home: item.home || null, away: item.away || null } : null;
     state.match = item
-      ? { id: item.bundleId, title: item.title, state: item.state, bundleUrl: url }
+      // Retain the original occurrence with its identity. state.live is the
+      // rolling feed and may already refer to the NEXT fixture at full time.
+      ? { id: item.bundleId, title: item.title, state: item.state, startsAt: item.startsAt ?? null, bundleUrl: url }
       : { id: bundleName(url), title: overrideDoc?.title || bundleName(url), bundleUrl: url };
     st.group.position.set(0, 0, 0);
     pitch.add(st.group);
