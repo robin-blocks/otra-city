@@ -17,6 +17,7 @@
 // bundle unless the city as a whole is showing it.
 import * as THREE from 'three';
 import { createPA, mapTime, unmapTime } from '/js/pa-system.js';
+import { matchPeriod, mmss, boardClock } from '/js/match-clock.mjs';
 
 // The publisher ships every dynamic body twice: as indexed mesh geometry in
 // `prims`/`draws`, and as a surface-sampled gaussian cloud in `points.bin`.
@@ -175,79 +176,11 @@ function countdown(ms) {
 function bundleName(url) {
   try { return new URL(url).pathname.split('/').filter(Boolean).pop() || String(url); } catch { return String(url || ''); }
 }
-const HALF_NAMES = ['First Half', 'Second Half', 'Third Period', 'Fourth Period'];
-
-/**
- * Where a match is in its own programme: which half, how long is left of it,
- * and whether the whistle has gone.
- *
- * The publisher's `hud.clock` block is the whole of it. From m27:
- *
- *   { mode:"down", duration_s:600, halves:2, half_breaks:[300],
- *     buzzers:[ {kind:"half", t:300, play_end_t:305, restart_t:317},
- *               {kind:"full", t:617, …} ] }
- *
- * Two things about it are easy to get wrong, and RFL warned about both.
- *
- * The stage's own `clock` counts down across the WHOLE match — `duration_s - t`,
- * which we read out of their SDK — while a scorebug counts down within the
- * current half. So the halves are derived here rather than taken from it.
- *
- * And the clock runs on PLAYING time: it stops at the buzzer and does not move
- * again until play restarts. The break is therefore a period of its own, from
- * `buzzers[i].t` to `restart_t`, during which the clock reads nothing left.
- */
-export function matchPeriod(hud, t) {
-  const p = periodOf(hud, t);
-  if (!p) return null;
-  // THE WHISTLE IS NOT THE END OF THE PLAY, and the publisher has already
-  // measured the difference. Each buzzer carries `play_end_t` with
-  // `"ended": "ball at rest"` beside it — on m28, five seconds after both the
-  // half-time and the full-time buzzer. The clock stops at the buzzer, which
-  // is what a clock does; the ball is still travelling, which is what the
-  // director needs to know before it cuts away from the wide.
-  const dead = (Array.isArray(hud?.clock?.buzzers) ? hud.clock.buzzers : [])
-    .some((b) => Number.isFinite(b?.t) && Number.isFinite(b?.play_end_t) && t >= b.t && t < b.play_end_t);
-  return { ...p, dead, inPlay: p.playing || dead };
-}
-
-/** Which period the clock is in, ignoring the dead ball after a buzzer. */
-function periodOf(hud, t) {
-  const c = hud?.clock;
-  if (!c || !Number.isFinite(t)) return null;
-  const halves = Math.max(1, c.halves || 1);
-  const halfLen = (c.duration_s || 0) / halves;
-  // Before kick-off the clock has not started. Without this the first half
-  // reads 8:00 at t = -180, because the arithmetic is happy to count a half
-  // that has not begun.
-  if (t < 0) return { tag: HALF_NAMES[0], remain: halfLen, half: 1, over: false, playing: false, preroll: true };
-  const buzzers = Array.isArray(c.buzzers) ? c.buzzers : [];
-  const breaks = buzzers.filter((b) => b.kind === 'half').sort((a, b) => a.t - b.t);
-  const full = buzzers.find((b) => b.kind === 'full');
-
-  if (full && t >= full.t) return { tag: 'Full Time', remain: 0, half: halves, over: true, playing: false };
-
-  for (let i = 0; i < halves; i += 1) {
-    const start = i === 0 ? 0 : (breaks[i - 1]?.restart_t ?? 0);
-    const end = breaks[i]?.t ?? (full?.t ?? Infinity);
-    if (t < end) {
-      return { tag: HALF_NAMES[i] || `Period ${i + 1}`, remain: Math.max(0, halfLen - (t - start)),
-               half: i + 1, over: false, playing: true };
-    }
-    // between the buzzer and the restart: the interval
-    const restart = breaks[i]?.restart_t;
-    if (restart !== undefined && t < restart) {
-      return { tag: 'Half Time', remain: 0, half: i + 1, over: false, playing: false };
-    }
-  }
-  return { tag: 'Full Time', remain: 0, half: halves, over: true, playing: false };
-}
-
-/** m:ss, the way a clock is read rather than the way a duration is written. */
-export function mmss(seconds) {
-  const s = Math.max(0, Math.round(seconds));
-  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-}
+// The clock — which half, what is left of it, and the board's reading of
+// it — lives in /js/match-clock.mjs, pure and `node --test`ed against the
+// publisher's real clock block. Re-exported so nothing that reached for it
+// here has to move.
+export { matchPeriod, mmss };
 
 /** A bundle URL from shared state is data we hand the SDK: https, or this origin. */
 const httpsOnly = (u) => { try { const x = new URL(u, location.href); return x.protocol === 'https:' || x.origin === location.origin ? x.href : null; } catch { return null; } };
@@ -422,7 +355,13 @@ export function create(ctx) {
     } else if (st && st.hud) {
       const [a, b] = st.hud.teams || [];
       const sc = heldScore(st) || { a: 0, b: 0 };
-      const clock = heldClockOf(st);
+      // The same clock the scorebug draws, from the same programme time —
+      // KICK-OFF IN through the build-up, the half's own clock in play. The
+      // stage's `clock` is only what is left when the hud carries no clock
+      // block at all (a v0.1 bundle), and then it is all anyone has.
+      const pt = programmeMatchT();
+      const line = boardClock(matchPeriod(st.hud, pt), pt);
+      const clock = line ? line.clock : heldClockOf(st);
       const live = st.state === 'live';
       g.textAlign = 'center';
       g.fillStyle = live ? '#ff3b30' : '#ffd479';
@@ -441,12 +380,19 @@ export function create(ctx) {
       g.fillStyle = '#e9edf6';
       g.font = '900 118px Menlo, monospace';
       g.fillText(`${sc.a} – ${sc.b}`, W / 2, 316);
+      if (line) {
+        // Named for what the number means: the build-up counts to KICK-OFF,
+        // HALF TIME and FULL TIME are not a clock reading 00:00 twice.
+        g.fillStyle = line.label === 'KICK-OFF IN' && live ? '#ff3b30' : '#b9bcd6';
+        g.font = '700 30px Menlo, monospace';
+        g.fillText(line.label, W / 2, 408);
+      }
       g.fillStyle = '#47f2ff';
       g.font = '700 64px Menlo, monospace';
       g.fillText(clock, W / 2, 460);
       g.fillStyle = '#8a86a0';
       fitText(state.match?.title || '', W / 2, 520, { size: 30, maxW: W - 88 });
-      text = `${a?.code || ''} ${sc.a}-${sc.b} ${b?.code || ''} ${clock}`;
+      text = `${a?.code || ''} ${sc.a}-${sc.b} ${b?.code || ''} ${line ? `${line.label} ` : ''}${clock}`;
     } else if (state.sdk === 'failed') {
       g.textAlign = 'center';
       g.fillStyle = '#8a86a0';
@@ -991,7 +937,10 @@ export function create(ctx) {
   /** Match time as the programme has it while we drive; the stage's own otherwise. */
   function programmeMatchT() {
     if (driving()) return unmapTime(programme.map, programmeT);
-    if (wallDrive) return programmeT - wallDrive.preS;   // the map has not landed yet
+    // onMount resets programmeT and the map may arrive late (or not at all).
+    // The wall clock already knows where the build-up is; never restart it
+    // at 03:00 while waiting for the map that drives the match itself.
+    if (wallDrive) return wallProgrammeT() - wallDrive.preS;
     return stage?.time ?? 0;
   }
   /**
@@ -1018,6 +967,15 @@ export function create(ctx) {
    */
   function stemSeconds() {
     if (driving()) return programmeT;
+    // A fixture we drive on the wall clock has its stem position before the
+    // bundle's map has been read: programme time IS stem time (the exporter
+    // hands one map to both), and the wall clock is where programme time
+    // comes from. Without this the page said nothing for the second or two
+    // between the mount and the map — and a supervisor that had already
+    // waited its grace out took that silence as "too old to answer" and
+    // started the premix from zero (m42, 2026-09-21 12:00: commentary 64 s
+    // late, the pre-roll's silence played over the first minute of play).
+    if (wallDrive) return wallProgrammeT();
     const t = programmeMatchT();
     return audioMap ? mapTime(audioMap, t) : t;
   }
@@ -1650,7 +1608,7 @@ export function create(ctx) {
       // `null` is a real answer and not a zero: it says this page does not yet
       // know where the tape should be, which is a thing an encoder syncing to
       // us has to be able to tell from "the very beginning".
-      audioOffset: (driving() || audioMap) ? +stemSeconds().toFixed(3) : null,
+      audioOffset: (driving() || audioMap || wallDrive) ? +stemSeconds().toFixed(3) : null,
       // where in the whole programme, and which of its three parts — only
       // meaningful while we drive; a live fixture is wherever its clock is
       programmeT: driving() ? +programmeT.toFixed(3) : null,

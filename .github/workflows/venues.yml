@@ -21,6 +21,7 @@ on:
       - 'public/broadcast/**'
       - 'scripts/venue-*.mjs'
       - 'scripts/broadcast-check.mjs'
+      - 'scripts/match-clock-check.mjs'
       - 'scripts/league-*.mjs'
       - 'scripts/fixtures/league-*.json'
       - 'scripts/build-venues.mjs'
@@ -41,6 +42,7 @@ on:
       - 'public/broadcast/**'
       - 'scripts/venue-*.mjs'
       - 'scripts/broadcast-check.mjs'
+      - 'scripts/match-clock-check.mjs'
       - 'scripts/league-*.mjs'
       - 'scripts/fixtures/league-*.json'
       - 'scripts/build-venues.mjs'
@@ -56,6 +58,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci
+      - run: npm run clock:check
       - run: npm run league:check
       - run: node scripts/build-venues.mjs --check --strict
       # --match mounts a real bundle through the publisher's SDK and asserts the
