@@ -75,16 +75,38 @@ try {
   assert.deepEqual(shown.leagueTable.movements, [{code:'SGU',from:6,to:3,change:3},{code:'SYA',from:4,to:5,change:-1}]);
   samples.push({phase:'first-air-table-on-heli',state:shown});
   writeFileSync(join(out, 'm42-first-air-table.png'), await chrome.screenshot());
-  const complete = await wait(s => s.leagueTable?.status === 'complete', 240);
+  // Catch both the old 18s expiry and the ambient heli's ordinary 45s cut.
+  // Check every sampled frame, not just a final 'complete' which might mean
+  // the controller aborted early when the camera switched away.
+  const cueStart = shown.t - shown.leagueTable.elapsed;
+  let extended = null, lastElapsed = shown.leagueTable.elapsed;
+  const complete = await wait(s => {
+    if (s.leagueTable?.visible) {
+      assert.equal(s.director.shot, 'heli', 'aerial continues through the full reading hold');
+      assert.deepEqual(s.leagueTable.movements, shown.leagueTable.movements);
+      lastElapsed = s.leagueTable.elapsed;
+      if (!extended && lastElapsed >= 50) extended = s;
+    } else if (s.leagueTable?.status !== 'complete') {
+      assert.fail(`table interrupted during hold: ${JSON.stringify(s.leagueTable)}`);
+    }
+    return s.leagueTable?.status === 'complete';
+  }, 240);
+  assert.ok(extended, 'table is still on air after both old duration and normal camera cut');
+  assert.ok(lastElapsed >= 53, `last visible sample at ${lastElapsed}s`);
+  assert.ok(complete.t - cueStart >= 53.95, 'not completed before 54 seconds');
   assert.equal(complete.leagueTable.visible, false);
-  samples.push({phase:'18-second-cue-complete',state:complete});
+  samples.push({phase:'extended-hold-past-50-seconds',state:extended});
+  samples.push({phase:'54-second-cue-complete',state:complete});
+  const resumed = await wait(s => s.director.shot === 'screen_main');
+  assert.equal(resumed.leagueTable.visible, false);
+  samples.push({phase:'ambient-cut-list-resumed',state:resumed});
   await chrome.evaluate('window.__leagueProgramme(300)');
   const back = await wait(s => s.scorebug?.inPlay && !s.scorebug.over);
   assert.equal(back.leagueTable.visible, false);
   samples.push({phase:'back-to-play',state:back});
   assert.deepEqual(errors, []);
   assert.ok(samples.every(x => !x.state.errors?.length && !x.state.match?.errors?.length));
-  console.log(`PASS real scheduled M42: unpublished archive, full-time dead-ball gate, settled heli, SGU 6→3 / SYA 4→5, 18-second exit, reset, zero errors; build ${shown.build}`);
+  console.log(`PASS real scheduled M42: unpublished archive, full-time dead-ball gate, settled heli, SGU 6→3 / SYA 4→5, 54-second hold/exit, ambient cut resumes, reset, zero errors; build ${shown.build}`);
 } finally {
   writeFileSync(join(out, 'm42-first-air-browser.json'), JSON.stringify({origin:origin || 'local',scope:'QA browser clock/feeds only; actual publisher M42 bundle and broadcast rendering',samples,errors}, null, 2));
   if (chrome) await chrome.close();

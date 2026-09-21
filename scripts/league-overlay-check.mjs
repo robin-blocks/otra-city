@@ -115,10 +115,16 @@ window.done=true;
       writeFileSync(join(shots, `league-${name}.png`), Buffer.from(uri.split(',')[1], 'base64'));
     }
   }
-  const fade = await draw(17.7);
+  for (const t of [18, 25.01, 45, 50, 53.399]) {
+    const extended = await draw(t);
+    assert.equal(extended.overlay.phase, 'held', `54-second table held at ${t}s`);
+    assert.equal(extended.hash, held.hash, 'extended hold keeps the approved frame');
+    assert.equal(extended.overlay.uploads, held.overlay.uploads, 'no extra uploads during extended hold');
+  }
+  const fade = await draw(53.7);
   assert.equal(fade.overlay.phase, 'leaving');
   assert.ok(fade.overlay.opacity > 0 && fade.overlay.opacity < 1);
-  assert.equal((await draw(18)).hash, base.hash, 'exit leaves no stale pixels');
+  assert.equal((await draw(54)).hash, base.hash, 'exit leaves no stale pixels');
   await draw(5);
   assert.equal((await draw(0, false)).hash, base.hash, 'null clears the graphic');
   assert.notEqual((await draw(0, false, false)).hash, base.hash, 'ordinary lower score bar returns');
