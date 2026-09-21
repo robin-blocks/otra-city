@@ -225,7 +225,7 @@ async function browserChecks(drawSource) {
     for (const bug of [baseBug, { ...baseBug, replay: true }, baseBug, null]) {
       currentBug = bug; programmeDraw();
     }
-    eq([canvasAllocations, sourceCopies, captures], [0, 0, 0], 'default draw has no clean canvas, LIVE layer, copies or streams');
+    eq([canvasAllocations, sourceCopies, captures], [0, 0, 0], 'default draw has no clean canvas, extra graphics, copies or streams');
     const staleFrame = pixels();
     handle = cleanOutput.start();
     eq(canvasAllocations, 1, 'start allocates only the detached clean canvas');
@@ -259,6 +259,12 @@ async function browserChecks(drawSource) {
       if (isLive) ok(differences > 100, `${name}: live badge actually present and excluded from clean`);
       compare(live, reference(bug), `${name}: optional output preserves ordinary live framebuffer`);
       compare(clean, reference(bug ? { ...bug, live: false } : null), `${name}: clean is the real background, not a patch`);
+      if (!bug && !cue) {
+        // Independent oracle: null must not replay an old scorebug texture.
+        // Linux's accelerated cleared-canvas upload retained old pixels here.
+        after.render();
+        compare(live, pixels(), `${name}: no bug means exactly the world framebuffer`);
+      }
       const status = handle.state();
       eq(status.frame, { serial: renderSerial, frame, t: simT, camera: 'heli', matchId: bug ? 'offline-match' : null,
         clock: bug?.clock ?? null, audioOffset: bug?.audioOffset ?? null }, `${name}: same draw metadata`);
@@ -273,7 +279,7 @@ async function browserChecks(drawSource) {
       }
     }
     eq(wrongSourceCopies, 0, 'no duplicate draw canvas or alternate source is copied');
-    eq(canvasAllocations, 2, 'only clean surface and lazy LIVE layer allocated');
+    eq(canvasAllocations, 1, 'only clean surface allocated; both scorebug passes share the original canvas');
     results.push('10 byte-exact WebGL cases: LIVE→REPLAY→LIVE→null, score/clock/banners, compact/league/fade, nonuniform background');
 
     // Keep the background and time fixed, so these changes cannot be attributed
@@ -324,13 +330,14 @@ async function browserChecks(drawSource) {
     const snapshot = handle.state(); snapshot.frame.serial = -100; snapshot.copies = -100;
     ok(handle.state().frame.serial !== -100 && handle.state().copies > 0, 'state returns defensive frame snapshots');
     const old = handle;
+    const texturesBeforeStop = renderer.info.memory.textures;
     old.stop(); old.stop();
+    eq(renderer.info.memory.textures, texturesBeforeStop, 'stop does not dispose the shared scorebug texture');
     eq([old.canvas.width, old.canvas.height, old.state().active, cleanOutput.enabled], [0, 0, false, false], 'stop is idempotent and releases backing store');
     for (const stream of streams) for (const track of stream.getTracks()) eq(track.readyState, 'ended', 'stop ends every native track');
     throws(() => old.captureStream(), /stopped/i, 'stopped output cannot capture');
-    const texturesBeforeRelease = renderer.info.memory.textures;
     programmeDraw();
-    eq(renderer.info.memory.textures, texturesBeforeRelease - 1, 'next ordinary draw frees optional LIVE texture');
+    eq(renderer.info.memory.textures, texturesBeforeStop, 'stop and ordinary draw retain the same scorebug texture');
     handle = cleanOutput.start();
     ok(handle !== old && handle.canvas !== old.canvas, 'restart creates a fresh handle and canvas');
     old.stop();
@@ -365,28 +372,73 @@ async function browserChecks(drawSource) {
     eq(failures.length, 3, 'one error report per failed output');
     eq(renderer.getContext().getError(), 0, 'copy failures do not poison WebGL');
 
-    // Force lazy badge allocation to fail after the output canvas exists.
-    // The REAL draw must restore ordinary LIVE and finish, not throw/blank it.
-    programmeDraw(); // disabled output releases any prior LIVE layer
-    handle = cleanOutput.start();
+    // A failed clean-canvas allocation throws before activation. It must not
+    // mutate the original combined scorebug or interrupt subsequent draws.
+    programmeDraw();
+    const beforeFailedStart = pixels(), stateBeforeFailedStart = cleanOutput.state();
     const nativeContext = HTMLCanvasElement.prototype.getContext;
     try {
       HTMLCanvasElement.prototype.getContext = function(type, ...args) {
-        if (type === '2d' && this !== handle.canvas) return null;
+        if (type === '2d') return null;
         return nativeContext.call(this, type, ...args);
       };
-      programmeDraw();
+      throws(() => cleanOutput.start(), /requires.*2D canvas context/i, 'failed clean allocation throws synchronously');
     } finally { HTMLCanvasElement.prototype.getContext = nativeContext; }
-    await reject(handle.ready, /LIVE layer requires/, 'badge allocation failure rejects clean readiness');
-    eq(handle.state().active, false, 'badge allocation failure closes optional output');
-    compare(pixels(), reference(currentBug), 'badge allocation failure preserves main LIVE framebuffer');
-    eq(failures.length, 4, 'badge failure recorded once');
+    eq(cleanOutput.enabled, false, 'failed clean allocation never activates output');
+    eq(cleanOutput.state(), stateBeforeFailedStart, 'failed clean allocation leaves output state unchanged');
+    compare(pixels(), beforeFailedStart, 'failed clean allocation leaves main framebuffer untouched');
+    programmeDraw();
+    compare(pixels(), reference(currentBug), 'failed clean allocation preserves ordinary LIVE on next draw');
+    eq(failures.length, 3, 'synchronous allocation failure does not report an active-output copy failure');
 
-    currentBug = baseBug; scorebug.draw(currentBug, { separateLive: true });
-    for (const autoClear of [true, false]) for (const method of ['render', 'renderLive']) {
-      const r = { autoClear, render() { throw new Error('injected render error'); } };
+    // Opting in/out only changes pass selection, not the combined canvas/key.
+    currentBug = baseBug; scorebug.draw(currentBug);
+    eq(scorebug.draw(currentBug, { separateLive: true }), false, 'separating LIVE does not repaint the original combined texture');
+    eq(scorebug.draw(currentBug), false, 'recombining LIVE does not repaint the original combined texture');
+    scorebug.draw(currentBug, { separateLive: true });
+    // Check successful real draws with both enabled and disabled preexisting
+    // scissors, including rectangles that partly intersect or exclude LIVE.
+    const scissorBoxes = [[7, 9, W - 14, H - 18], [W - 140, H - 60, 100, 50], [11, 12, 150, 100]];
+    for (const scissorTest of [false, true]) for (const box of scissorBoxes) {
+      renderer.setScissorTest(false); after.render();
+      renderer.setScissor(...box); renderer.setScissorTest(scissorTest);
+      for (const method of ['render', 'renderLive']) {
+        scorebug[method](renderer);
+        eq(renderer.getScissor(new THREE.Vector4()).toArray(), box, `${method}: real preexisting scissor box restored`);
+        eq(renderer.getScissorTest(), scissorTest, `${method}: real preexisting scissor enable restored`);
+        eq(renderer.autoClear, true, `${method}: real autoClear restored`);
+      }
+      const separated = pixels();
+      renderer.setScissorTest(false); after.render();
+      renderer.setScissor(...box); renderer.setScissorTest(scissorTest);
+      ordinary.draw(currentBug); ordinary.render(renderer);
+      compare(separated, pixels(), `preexisting scissor ${scissorTest}/${box}: byte-exact ordinary parity`);
+      eq(renderer.getContext().getError(), 0, 'preexisting scissor draws do not poison WebGL');
+    }
+    renderer.setScissorTest(false); renderer.setScissor(0, 0, W, H);
+
+    for (const autoClear of [true, false]) for (const scissorTest of [true, false]) for (const method of ['render', 'renderLive']) {
+      const initialScissor = new THREE.Vector4(3, 5, W - 6, H - 10);
+      const scissor = initialScissor.clone();
+      let enabled = scissorTest;
+      const r = {
+        autoClear,
+        getScissor(target) { return target.copy(scissor); },
+        getScissorTest() { return enabled; },
+        setScissor(x, y, width, height) {
+          if (x?.isVector4) scissor.copy(x); else scissor.set(x, y, width, height);
+        },
+        setScissorTest(value) { enabled = value; },
+        render() {
+          eq(this.autoClear, false, `${method}: does not clear before overlay`);
+          eq(enabled, true, `${method}: scissor active during overlay`);
+          throw new Error('injected render error');
+        },
+      };
       throws(() => scorebug[method](r), /injected render error/, `${method}: exception propagated`);
-      eq(r.autoClear, autoClear, `${method}: renderer flags restored on throw`);
+      eq(r.autoClear, autoClear, `${method}: renderer autoClear restored on throw`);
+      eq(scissor.toArray(), initialScissor.toArray(), `${method}: preexisting scissor box restored on throw`);
+      eq(enabled, scissorTest, `${method}: preexisting scissor enable restored on throw`);
     }
     leagueOverlay.draw(presentation, 5);
     for (const autoClear of [true, false]) {
@@ -394,19 +446,19 @@ async function browserChecks(drawSource) {
       throws(() => leagueOverlay.render(r), /injected league render/, 'league exception propagated');
       eq(r.autoClear, autoClear, 'league renderer flags restored on throw');
     }
-    // Observe real Three disposal, including the lazy LIVE texture/material and
-    // geometry shared by both passes, without replacing the renderer itself.
+    // Observe real Three disposal: both passes share the original texture,
+    // material and geometry, without replacing the renderer itself.
     const disposed = { textures: new Set(), materials: new Set(), geometries: new Set() };
     const prototypes = [[THREE.Texture.prototype, 'textures'], [THREE.Material.prototype, 'materials'], [THREE.BufferGeometry.prototype, 'geometries']];
     const originals = prototypes.map(([p]) => p.dispose);
     try {
       prototypes.forEach(([p, key], i) => { p.dispose = function () { disposed[key].add(this.uuid); return originals[i].call(this); }; });
       scorebug.dispose();
-      eq([disposed.textures.size, disposed.materials.size, disposed.geometries.size], [2, 2, 1], 'dispose releases both graphics and shared geometry');
+      eq([disposed.textures.size, disposed.materials.size, disposed.geometries.size], [1, 1, 1], 'dispose releases the single shared texture, material and geometry');
     } finally { prototypes.forEach(([p], i) => { p.dispose = originals[i]; }); }
     eq(scorebug.crests.manifest, 'off', 'scorebugs never fetch crests');
     eq(ordinary.crests.manifest, 'off', 'reference scorebug never fetches crests');
-    results.push('copy/resize failure closes output but preserves renderer; thrown render flags; Three resource disposal');
+    results.push('copy/resize/allocation failures preserve renderer; byte-exact preexisting scissor parity and thrown-state restoration; single-graphic disposal');
     return { results, width: W, height: H, toneMapping: 'ACESFilmic 1.15', cases: cases.length };
   } finally {
     failContext = null;

@@ -1018,18 +1018,9 @@ function draw() {
   const m = scorebug ? matchState() : null;
   const tableCue = postMatchTable?.update({ match: m, camera: c?.camera, settling: settleUntil > 0, time: simT });
   leagueAerial = tableCue && c?.camera === 'heli' ? { ...c, frame } : null;
-  let separateLive = cleanOutput.enabled;
+  const separateLive = cleanOutput.enabled;
   if (scorebug) {
-    try { scorebug.draw(m?.bug ?? null, { compactOnly: !!tableCue, separateLive }); }
-    catch (e) {
-      if (!separateLive) throw e;
-      // Optional LIVE-layer allocation must not take the main feed off air.
-      const message = e.message || String(e);
-      cleanOutput.stop(message);
-      separateLive = false;
-      fail('clean-output', message);
-      scorebug.draw(m?.bug ?? null, { compactOnly: !!tableCue });
-    }
+    scorebug.draw(m?.bug ?? null, { compactOnly: !!tableCue, separateLive });
     scorebug.render(renderer);
   }
   if (leagueOverlay) {

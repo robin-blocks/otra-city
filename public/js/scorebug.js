@@ -85,10 +85,18 @@ export function createScorebug({ width, height, crests = CRESTS_URL } = {}) {
   const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
   const geometry = new THREE.PlaneGeometry(2, 2);
   scene.add(new THREE.Mesh(geometry, mat));
-  // Allocated only when the optional clean output needs a separate LIVE layer.
-  // REPLAY always stays in the shared graphic. Material/colour handling matches
-  // the original scorebug so the live broadcast's pixels do not change.
-  let liveLayer = null;
+  // Defer LIVE by scissoring the SAME original scorebug texture. Painting it
+  // again on a separate canvas changes antialiased alpha bytes on Linux.
+  // No second texture/material; the four outer rectangles and inner badge
+  // partition the original draw without drawing any pixel twice.
+  let separateLive = false, visible = false;
+  const savedScissor = new THREE.Vector4();
+  const liveRect = {
+    x: Math.floor((LAYOUT_W - 12 - 66) * width / LAYOUT_W) - 2,
+    y: height - (Math.ceil(34 * width / LAYOUT_W) + 2),
+    right: Math.ceil((LAYOUT_W - 12) * width / LAYOUT_W) + 2,
+    top: height - (Math.floor(8 * width / LAYOUT_W) - 2),
+  };
   function paintTag(ctx, tag) {
     const x0 = LAYOUT_W - 12 - tag.w;
     ctx.fillStyle = PANEL;
@@ -103,35 +111,36 @@ export function createScorebug({ width, height, crests = CRESTS_URL } = {}) {
     ctx.textAlign = 'left';
     ctx.fillText(tag.text, px(x0 + 26), px(21));
   }
-  function prepareLive(visible) {
-    if (visible && !liveLayer) {
-      const c = document.createElement('canvas');
-      c.width = width; c.height = height;
-      const ctx = c.getContext('2d');
-      if (!ctx) throw new Error('Clean LIVE layer requires a 2D canvas context');
-      paintTag(ctx, { text: 'LIVE', colour: LIVE_RED, w: 66 });
-      const texture = new THREE.CanvasTexture(c);
-      texture.colorSpace = THREE.SRGBColorSpace;
-      texture.minFilter = THREE.LinearFilter;
-      texture.generateMipmaps = false;
-      const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false });
-      const layerScene = new THREE.Scene();
-      layerScene.add(new THREE.Mesh(geometry, material));
-      liveLayer = { scene: layerScene, texture, material, visible: false };
-    }
-    if (liveLayer) liveLayer.visible = visible;
-  }
-  function releaseLive() {
-    if (!liveLayer) return;
-    liveLayer.texture.dispose(); liveLayer.material.dispose();
-    liveLayer.texture.image.width = liveLayer.texture.image.height = 0;
-    liveLayer = null;
-  }
-  function renderLayer(renderer, layer) {
+  function renderLayer(renderer, part = null) {
     const wasAutoClear = renderer.autoClear;
+    if (!part) {
+      renderer.autoClear = false;
+      try { renderer.render(scene, cam); }
+      finally { renderer.autoClear = wasAutoClear; }
+      return;
+    }
+    renderer.getScissor(savedScissor);
+    const wasScissor = renderer.getScissorTest();
+    const { x, y, right, top } = liveRect;
+    const rectangles = part === 'live' ? [[x, y, right, top]]
+      : [[0, 0, width, y], [0, top, width, height], [0, y, x, top], [right, y, width, top]];
     renderer.autoClear = false;
-    try { renderer.render(layer, cam); }
-    finally { renderer.autoClear = wasAutoClear; }
+    try {
+      renderer.setScissorTest(true);
+      for (let [x0, y0, x1, y1] of rectangles) {
+        if (wasScissor) {
+          x0 = Math.max(x0, savedScissor.x); y0 = Math.max(y0, savedScissor.y);
+          x1 = Math.min(x1, savedScissor.x + savedScissor.z); y1 = Math.min(y1, savedScissor.y + savedScissor.w);
+        }
+        if (x1 <= x0 || y1 <= y0) continue;
+        renderer.setScissor(x0, y0, x1 - x0, y1 - y0);
+        renderer.render(scene, cam);
+      }
+    } finally {
+      renderer.setScissor(savedScissor);
+      renderer.setScissorTest(wasScissor);
+      renderer.autoClear = wasAutoClear;
+    }
   }
 
   const S = width / LAYOUT_W;          // one scale for both axes: the spec is 16:9
@@ -176,10 +185,10 @@ export function createScorebug({ width, height, crests = CRESTS_URL } = {}) {
   }
 
   /** Draw one state. Returns false when nothing changed and the canvas was left alone. */
-  function draw(bug, { compactOnly = false, separateLive = false } = {}) {
-    if (!separateLive) releaseLive();
-    prepareLive(!!(separateLive && bug?.live && !bug.replay));
-    const key = bug && JSON.stringify([bug, compactOnly, separateLive]);
+  function draw(bug, { compactOnly = false, separateLive: deferLive = false } = {}) {
+    visible = !!bug;
+    separateLive = !!(deferLive && bug?.live && !bug.replay);
+    const key = bug && JSON.stringify([bug, compactOnly]);
     if (key === painted) return false;
     painted = key;
     g.clearRect(0, 0, width, height);
@@ -219,7 +228,7 @@ export function createScorebug({ width, height, crests = CRESTS_URL } = {}) {
     // which outranks LIVE for those seconds: a live match's replay is still a
     // replay, and a viewer must never take a second look for the goal itself.
     const tag = bug.replay ? { text: 'REPLAY', colour: REPLAY_AMBER, w: 92 }
-              : bug.live && !separateLive ? { text: 'LIVE', colour: LIVE_RED, w: 66 } : null;
+              : bug.live ? { text: 'LIVE', colour: LIVE_RED, w: 66 } : null;
     if (tag) paintTag(g, tag);
 
     // The post-match table carries its own result strap; keep the compact
@@ -277,15 +286,14 @@ export function createScorebug({ width, height, crests = CRESTS_URL } = {}) {
   return {
     draw,
     /** Lay it over whatever is already in the buffer. */
-    render(renderer) { renderLayer(renderer, scene); },
+    render(renderer) { if (visible) renderLayer(renderer, separateLive ? 'shared' : null); },
     /** Only called after the clean copy. In ordinary mode LIVE is still in draw(). */
-    renderLive(renderer) { if (liveLayer?.visible) renderLayer(renderer, liveLayer.scene); },
+    renderLive(renderer) { if (separateLive) renderLayer(renderer, 'live'); },
     /** Whether the crests are there: the manifest, and how many images landed. */
     get crests() { return { ...crestStat }; },
     crestFor: (team) => crestUrlFor(team),
     dispose() {
       tex.dispose(); mat.dispose(); geometry.dispose();
-      releaseLive();
       for (const r of images.values()) r.img.src = '';
       images.clear();
     },

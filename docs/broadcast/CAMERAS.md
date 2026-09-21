@@ -80,8 +80,8 @@ top-right overlay.
   `?capture=1` / `?live=0` reject this API rather than silently changing modes.
 - Repeated starts return the **same active handle**. It is one shared output,
   not reference-counted: any handle's `stop()` ends all streams it created.
-  `stop()` is idempotent and releases the canvas backing store; the next
-  ordinary broadcast draw also frees the optional LIVE-layer texture/material.
+  `stop()` is idempotent and releases the canvas backing store. There is no
+  extra scorebug texture/material to release: both passes use the original.
   Start again for a new handle/canvas. A stale handle cannot stop the new output.
 - `clean.ready` rejects if stopped before its first frame. Wait for it before
   `captureStream(fps)`; fps must be finite, greater than zero and at most 60.
@@ -112,7 +112,15 @@ top-right overlay.
   from the new `rflBroadcast` after `ready`, as for any page-owned capture.
 
 Implementation: `public/js/broadcast-output.mjs`, `public/js/scorebug.js` and the
-single `draw()` in `public/broadcast.html`. Offline pixel/lifecycle/order gate:
+single `draw()` in `public/broadcast.html`. While capturing, WebGL scissors
+partition the **original combined scorebug texture** into shared pixels and
+LIVE; each pixel is drawn once, with renderer scissor/clear state restored.
+Do not independently repaint LIVE on another canvas: Linux canvas alpha
+rasterization produced a one-byte edge difference that the exact-pixel gate
+caught. The league slab and its shadow must stay below the LIVE region, as
+checked by the live-versus-ordinary framebuffer oracle. A null bug draws no
+quad (avoids stale cleared-canvas uploads on software renderers).
+Offline pixel/lifecycle/order gate:
 `npm run broadcast-output:check`. Real scheduled M42 rehearsal, using a
 browser-local saved archive/clock only:
 
