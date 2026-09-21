@@ -83,7 +83,56 @@ export function createScorebug({ width, height, crests = CRESTS_URL } = {}) {
   const scene = new THREE.Scene();
   const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
-  scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat));
+  const geometry = new THREE.PlaneGeometry(2, 2);
+  scene.add(new THREE.Mesh(geometry, mat));
+  // Allocated only when the optional clean output needs a separate LIVE layer.
+  // REPLAY always stays in the shared graphic. Material/colour handling matches
+  // the original scorebug so the live broadcast's pixels do not change.
+  let liveLayer = null;
+  function paintTag(ctx, tag) {
+    const x0 = LAYOUT_W - 12 - tag.w;
+    ctx.fillStyle = PANEL;
+    roundRect(ctx, px(x0), px(8), px(tag.w), px(26), px(7));
+    ctx.fillStyle = tag.colour;
+    ctx.beginPath();
+    ctx.arc(px(x0 + 15), px(21), px(5), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = font(700, 14);
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.fillText(tag.text, px(x0 + 26), px(21));
+  }
+  function prepareLive(visible) {
+    if (visible && !liveLayer) {
+      const c = document.createElement('canvas');
+      c.width = width; c.height = height;
+      const ctx = c.getContext('2d');
+      if (!ctx) throw new Error('Clean LIVE layer requires a 2D canvas context');
+      paintTag(ctx, { text: 'LIVE', colour: LIVE_RED, w: 66 });
+      const texture = new THREE.CanvasTexture(c);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.minFilter = THREE.LinearFilter;
+      texture.generateMipmaps = false;
+      const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false });
+      const layerScene = new THREE.Scene();
+      layerScene.add(new THREE.Mesh(geometry, material));
+      liveLayer = { scene: layerScene, texture, material, visible: false };
+    }
+    if (liveLayer) liveLayer.visible = visible;
+  }
+  function releaseLive() {
+    if (!liveLayer) return;
+    liveLayer.texture.dispose(); liveLayer.material.dispose();
+    liveLayer.texture.image.width = liveLayer.texture.image.height = 0;
+    liveLayer = null;
+  }
+  function renderLayer(renderer, layer) {
+    const wasAutoClear = renderer.autoClear;
+    renderer.autoClear = false;
+    try { renderer.render(layer, cam); }
+    finally { renderer.autoClear = wasAutoClear; }
+  }
 
   const S = width / LAYOUT_W;          // one scale for both axes: the spec is 16:9
   const px = (v) => v * S;
@@ -127,8 +176,10 @@ export function createScorebug({ width, height, crests = CRESTS_URL } = {}) {
   }
 
   /** Draw one state. Returns false when nothing changed and the canvas was left alone. */
-  function draw(bug, { compactOnly = false } = {}) {
-    const key = bug && JSON.stringify([bug, compactOnly]);
+  function draw(bug, { compactOnly = false, separateLive = false } = {}) {
+    if (!separateLive) releaseLive();
+    prepareLive(!!(separateLive && bug?.live && !bug.replay));
+    const key = bug && JSON.stringify([bug, compactOnly, separateLive]);
     if (key === painted) return false;
     painted = key;
     g.clearRect(0, 0, width, height);
@@ -168,20 +219,8 @@ export function createScorebug({ width, height, crests = CRESTS_URL } = {}) {
     // which outranks LIVE for those seconds: a live match's replay is still a
     // replay, and a viewer must never take a second look for the goal itself.
     const tag = bug.replay ? { text: 'REPLAY', colour: REPLAY_AMBER, w: 92 }
-              : bug.live ? { text: 'LIVE', colour: LIVE_RED, w: 66 } : null;
-    if (tag) {
-      const x0 = W - 12 - tag.w;
-      g.fillStyle = PANEL;
-      roundRect(g, px(x0), px(8), px(tag.w), px(26), px(7));
-      g.fillStyle = tag.colour;
-      g.beginPath();
-      g.arc(px(x0 + 15), px(21), px(5), 0, Math.PI * 2);
-      g.fill();
-      g.fillStyle = '#ffffff';
-      g.font = font(700, 14);
-      g.textAlign = 'left';
-      g.fillText(tag.text, px(x0 + 26), px(21));
-    }
+              : bug.live && !separateLive ? { text: 'LIVE', colour: LIVE_RED, w: 66 } : null;
+    if (tag) paintTag(g, tag);
 
     // The post-match table carries its own result strap; keep the compact
     // score/time identity but do not stack two full-width result graphics.
@@ -238,15 +277,17 @@ export function createScorebug({ width, height, crests = CRESTS_URL } = {}) {
   return {
     draw,
     /** Lay it over whatever is already in the buffer. */
-    render(renderer) {
-      const wasAutoClear = renderer.autoClear;
-      renderer.autoClear = false;
-      renderer.render(scene, cam);
-      renderer.autoClear = wasAutoClear;
-    },
+    render(renderer) { renderLayer(renderer, scene); },
+    /** Only called after the clean copy. In ordinary mode LIVE is still in draw(). */
+    renderLive(renderer) { if (liveLayer?.visible) renderLayer(renderer, liveLayer.scene); },
     /** Whether the crests are there: the manifest, and how many images landed. */
     get crests() { return { ...crestStat }; },
     crestFor: (team) => crestUrlFor(team),
-    dispose() { tex.dispose(); mat.dispose(); for (const r of images.values()) r.img.src = ''; images.clear(); },
+    dispose() {
+      tex.dispose(); mat.dispose(); geometry.dispose();
+      releaseLive();
+      for (const r of images.values()) r.img.src = '';
+      images.clear();
+    },
   };
 }

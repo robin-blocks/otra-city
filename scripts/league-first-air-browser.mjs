@@ -2,7 +2,7 @@
 // while site.json still says scheduled. Date.now and feed responses are replaced
 // inside this QA browser only; no public schedule or fixture is ever changed.
 // Requires the publisher's SDK/bundle. Offline accounting tests are separate.
-// node scripts/league-first-air-browser.mjs [--gpu] [--origin https://otra.city] [--out qa-out/league/first-air-fix]
+// node scripts/league-first-air-browser.mjs [--gpu] [--clean-output] [--origin https://otra.city] [--out qa-out/league/first-air-fix]
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -18,6 +18,8 @@ const archive = fixture.archive;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let chrome, server;
 const samples = [], errors = [];
+const cleanChecks = [];
+const checkClean = args.includes('--clean-output');
 const origin = option('origin');
 try {
   const hosted = origin ? { origin } : await serve(resolve('public'));
@@ -44,6 +46,40 @@ try {
   await chrome.goto(`${hosted.origin}/broadcast${origin ? '' : '.html'}`);
   for (let i = 0; i < 900 && !(await chrome.evaluate('!!window.rflBroadcast')); i++) await sleep(100);
   await chrome.evaluate('window.rflBroadcast.ready.then(()=>true)', { timeoutMs: 180000 });
+  if (checkClean) await chrome.evaluate(`(async () => {
+    window.__clean = rflBroadcast.cleanOutput(); await __clean.ready;
+    window.__cleanStream = __clean.captureStream(50);
+  })()`);
+  const compareClean = async (phase) => {
+    if (!checkClean) return;
+    const result = await chrome.evaluate(`(() => {
+      const b = rflBroadcast, s = b.state(), clean = __clean.state();
+      const w = b.width, h = b.height, live = b.pixels();
+      const pixels = __clean.canvas.getContext('2d').getImageData(0, 0, w, h).data;
+      let outside = 0, inside = 0;
+      // Conservative badge bounds, including antialias/filter edge.
+      const x0 = Math.floor((854 - 12 - 66) * w / 854) - 2;
+      const x1 = Math.ceil((854 - 12) * w / 854) + 2;
+      const y0 = Math.floor(8 * w / 854) - 2, y1 = Math.ceil(34 * w / 854) + 2;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const a = (y * w + x) * 4, z = ((h - 1 - y) * w + x) * 4;
+        if ([0,1,2,3].some(k => pixels[a+k] !== live[z+k])) {
+          if (x >= x0 && x < x1 && y >= y0 && y < y1) inside++; else outside++;
+        }
+      }
+      return {outside,inside,clean,serial:s.renderSerial,live:s.scorebug?.live,replay:s.scorebug?.replay,
+        matchId:s.match?.id,clock:s.scorebug?.clock,shot:s.director?.shot,feed:s.feed,errors:s.errors};
+    })()`);
+    assert.equal(result.outside, 0, `${phase}: same rendered pixels outside LIVE`);
+    if (result.live && !result.replay) assert.ok(result.inside > 0, `${phase}: LIVE omitted only from clean`);
+    else assert.equal(result.inside, 0, `${phase}: full frame identical without LIVE`);
+    assert.equal(result.clean.frame.serial, result.serial, `${phase}: same render serial`);
+    assert.equal(result.clean.frame.matchId, result.matchId, `${phase}: same fixture identity`);
+    assert.equal(result.clean.frame.clock, result.clock ?? null, `${phase}: same clock`);
+    assert.equal(result.clean.frame.camera, result.shot, `${phase}: same director`);
+    assert.deepEqual(result.errors, []);
+    cleanChecks.push({phase,...result});
+  };
   const state = () => chrome.evaluate('window.rflBroadcast.state()');
   const wait = async (predicate, seconds = 120) => {
     let s; const until = Date.now() + seconds * 1000;
@@ -57,6 +93,7 @@ try {
   assert.equal(playing.match.startsAt, item.startsAt);
   assert.equal(playing.leagueTable.visible, false);
   samples.push({phase:'scheduled-play',state:playing});
+  await compareClean('scheduled-play');
   // M42 scene.program.map: t=617 is programme 842; t=622 finishes
   // its final hold at programme 856.52. Start just past the full whistle.
   await chrome.evaluate('window.__leagueProgramme(842.2)');
@@ -64,6 +101,7 @@ try {
   assert.equal(dead.leagueTable.visible, false);
   assert.equal(dead.director.shot, 'gantry');
   samples.push({phase:'full-time-ball-still-live',state:dead});
+  await compareClean('full-time-ball-still-live');
   // Let the real scheduled clock cross rest and cue the real director.
   const shown = await wait(s => s.leagueTable?.visible && s.leagueTable.elapsed >= 3);
   assert.equal(shown.scorebug.inPlay, false);
@@ -74,7 +112,12 @@ try {
   assert.deepEqual([shown.scorebug.a,shown.scorebug.b], [3,6]);
   assert.deepEqual(shown.leagueTable.movements, [{code:'SGU',from:6,to:3,change:3},{code:'SYA',from:4,to:5,change:-1}]);
   samples.push({phase:'first-air-table-on-heli',state:shown});
+  await compareClean('first-air-table-on-heli');
   writeFileSync(join(out, 'm42-first-air-table.png'), await chrome.screenshot());
+  if (checkClean) {
+    const pair = await chrome.evaluate('({live:rflBroadcast.frame(),clean:__clean.canvas.toDataURL("image/png")})');
+    for (const [name, uri] of Object.entries(pair)) writeFileSync(join(out, `m42-${name}.png`), Buffer.from(uri.split(',')[1], 'base64'));
+  }
   // Catch both the old 18s expiry and the ambient heli's ordinary 45s cut.
   // Check every sampled frame, not just a final 'complete' which might mean
   // the controller aborted early when the camera switched away.
@@ -100,15 +143,23 @@ try {
   const resumed = await wait(s => s.director.shot === 'screen_main');
   assert.equal(resumed.leagueTable.visible, false);
   samples.push({phase:'ambient-cut-list-resumed',state:resumed});
+  await compareClean('ambient-cut-list-resumed');
   await chrome.evaluate('window.__leagueProgramme(300)');
   const back = await wait(s => s.scorebug?.inPlay && !s.scorebug.over);
   assert.equal(back.leagueTable.visible, false);
   samples.push({phase:'back-to-play',state:back});
+  await compareClean('back-to-play');
+  if (checkClean) {
+    const stopped = await chrome.evaluate(`(() => { __clean.stop(); return {state:__clean.state(),tracks:__cleanStream.getTracks().map(t=>t.readyState)}; })()`);
+    assert.equal(stopped.state.active, false);
+    assert.ok(stopped.tracks.every(s => s === 'ended'));
+    console.log(`PASS clean output: ${cleanChecks.length} real-programme same-render pixel/clock/camera comparisons; stream tracks ended on stop`);
+  }
   assert.deepEqual(errors, []);
   assert.ok(samples.every(x => !x.state.errors?.length && !x.state.match?.errors?.length));
   console.log(`PASS real scheduled M42: unpublished archive, full-time dead-ball gate, settled heli, SGU 6→3 / SYA 4→5, 54-second hold/exit, ambient cut resumes, reset, zero errors; build ${shown.build}`);
 } finally {
-  writeFileSync(join(out, 'm42-first-air-browser.json'), JSON.stringify({origin:origin || 'local',scope:'QA browser clock/feeds only; actual publisher M42 bundle and broadcast rendering',samples,errors}, null, 2));
+  writeFileSync(join(out, 'm42-first-air-browser.json'), JSON.stringify({origin:origin || 'local',scope:'QA browser clock/feeds only; actual publisher M42 bundle and broadcast rendering',samples,errors,cleanChecks}, null, 2));
   if (chrome) await chrome.close();
   if (server) await new Promise(r => server.close(r));
 }
