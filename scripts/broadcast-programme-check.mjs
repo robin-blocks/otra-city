@@ -5,6 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { PerspectiveCamera, Vector3 } from 'three';
+import { matchPeriod } from '../public/js/match-clock.mjs';
 import { goalReplayAt } from '../public/js/goal-celebration.mjs';
 import { createPostMatchTable } from '../public/js/post-match-table.mjs';
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
@@ -14,6 +15,7 @@ const { createTrack, CAMERAS } = await import(camerasURL);
 const { createBroadcastProgramme, PROGRAMME_TRACK_URLS } = await import(data(
   read('../public/js/broadcast-programme.js')
     .replace("'./broadcast-cameras.js'", JSON.stringify(camerasURL))
+    .replace("'./goal-celebration.mjs'", JSON.stringify(new URL('../public/js/goal-celebration.mjs', import.meta.url).href))
     .replace("'./post-match-table.mjs'", JSON.stringify(new URL('../public/js/post-match-table.mjs', import.meta.url).href))));
 const venue = { cameras: {
   gantry: [[0, 8.7, -10.6], [0, 0.6, 0]],
@@ -366,4 +368,35 @@ test('legacy goals keep immediate replay and the existing scoreboard fallback', 
     headcam: { pos: [1, 1, 1], lookAt: [7, 0.35, 0] }, bug: { replay: true } });
   assert.equal(p.evaluate({ match: m }).state.priority, 'headcam');
   assert.equal(p.evaluate({ match: { ...m, headcam: null } }).camera.camera, 'scoreboard');
+});
+
+test('rounded final celebration reaches postmatch immediately after replay, with the original table origin', async () => {
+  // Literal endpoints from the isolated delivered four-goal bundle. The last
+  // near-flat segment used to leave celebration/dead true for 4.77 seconds.
+  const g = { type: 'goal', t: 23.42, source_t: 18.62, replay_t: 25.020000000000003,
+    celebration_s: 1.6, replay_s: 5, team: 'A', player: 'r0' };
+  const prog = { map: [[-180, 0], [25.02, 208.34], [25.02, 213.34],
+    [25.02, 213.34], [25.020000000000003, 222.88], [205.02, 402.88]], duration_s: 402.88 };
+  const clock = { halves: 1, duration_s: 6,
+    buzzers: [{ kind: 'full', t: 23.11, play_end_t: g.replay_t }] };
+  const p = await director({ tableController: tableStub() });
+  for (const programmeT of [208.34, 213.339, 213.34, 213.36, 214, 218, 222.88]) {
+    const replay = goalReplayAt([g], prog.map, programmeT);
+    const t = 25.02; // the rounded held instant, including the entire postlude
+    const m = match(t, programmeT, { programme: prog, clockPlan: clock, goals: [g],
+      headcam: replay ? { pos: [1, 2, 3], lookAt: [3, 2, 1] } : null,
+      bug: { ...matchPeriod({ clock, events: [g] }, t), t, programmeT, replay: !!replay } });
+    for (const variant of [m, { ...m, ball: null },
+      { ...m, programme: { ...prog, map: prog.map.slice(1) } }]) {
+      const out = p.evaluate({ match: variant });
+      assert.equal(out.state.priority, replay ? 'headcam' : 'postmatch', `programme ${programmeT}`);
+      if (!replay) {
+        assert.equal(out.state.phase, 'postmatch');
+        assert.equal(out.camera.camera, 'heli');
+        near(out.state.phaseOrigin, 208.34); // existing FIRST edge of exact instant
+        assert.ok(out.tableCue, 'rest evidence is not rejected by binary rounding');
+        near(out.tableCue.elapsed, programmeT - 208.34 - 0.7);
+      }
+    }
+  }
 });

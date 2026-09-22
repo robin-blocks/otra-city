@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { goalReplayAt, goalHoldAt, celebrationPause } from '../public/js/goal-celebration.mjs';
+import { goalReplayAt, goalHoldAt, celebrationPause, beforeTime } from '../public/js/goal-celebration.mjs';
 import { matchPeriod, mmss } from '../public/js/match-clock.mjs';
 
 const first = { type: 'goal', t: 100, source_t: 100, replay_t: 104, celebration_s: 4, replay_s: 8, player: 'a', team: 0 };
@@ -137,4 +137,34 @@ test('real driveProgramme/buildBug: replay seeks match continuous playback and r
   assert.equal(celebrationPause([goal],0,2.4).celebrating,false);
   assert.equal(celebrationPause([goal],0,2.399).celebrating,true);
   near(celebrationPause([goal],0,2.4).elapsed,1.6);
+});
+
+// Real four-goal export: the map is decimal-rounded but the HUD end is a sum.
+test('rounded final hold ends celebration and dead ball, without swallowing the last real sample', () => {
+  const g = { type: 'goal', t: 23.42, source_t: 18.62, celebration_s: 1.6,
+    replay_t: 25.020000000000003, replay_s: 5, team: 'A', player: 'r0' };
+  const hud = { events: [g], clock: { halves: 1, duration_s: 6,
+    buzzers: [{ kind: 'full', t: 23.11, play_end_t: g.replay_t }] } };
+  for (const t of [25.02, g.replay_t, 25.020001]) {
+    assert.equal(celebrationPause([g], t, t).celebrating, false, `celebration at ${t}`);
+    const p = matchPeriod(hud, t);
+    assert.equal(p.celebrating, false);
+    assert.equal(p.dead, false);
+    assert.equal(p.inPlay, false);
+  }
+  for (const t of [23.42, 25, 25.019999]) {
+    const p = matchPeriod(hud, t);
+    assert.equal(p.celebrating, true, `last real celebration sample ${t}`);
+    assert.equal(p.dead, true);
+  }
+  near(celebrationPause([g], 0, 25.02).elapsed, 1.6);
+});
+
+
+test('endpoint equality is arithmetic noise only, not a sample or a millisecond tolerance', () => {
+  assert.equal(beforeTime(25.02, 25.020000000000003), false);
+  assert.equal(beforeTime(8.100, 8.104), true);
+  assert.equal(beforeTime(25.02 - 1e-6, 25.02), true);
+  assert.equal(beforeTime(600, 600 + 1e-6), true);
+  assert.equal(beforeTime(0, 0.000001), true);
 });

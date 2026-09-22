@@ -101,3 +101,30 @@ picture/premix path before a separate announced activation.
 No force reload during a scheduled programme or its pre-start hold; no changes
 to existing results. RFL retains detailed reproducible evidence privately under
 `work/evidence/2026-09-22-goal-acceptance/`.
+
+
+## Endpoint follow-up — build 2026-09-22c
+
+The real four-goal isolated host playback exposed a binary endpoint mismatch:
+`replay_t`/`play_end_t` was `25.020000000000003`, while the programme map held
+`25.02`. After the final replay the clock still marked celebration/dead ball
+for another 4.77 seconds. This follow-up treats only arithmetic-scale noise
+(eight scaled machine epsilons) as endpoint equality, shared by celebration,
+dead-ball and director rest checks. The director maps an equal end to its
+existing FIRST programme edge before interpolation. It does not collapse
+neighbouring published samples such as 8.100 and 8.104, alter a schedule, or
+shorten any visible celebration/replay.
+
+The two new endpoint/director regressions fail on the previous code. All
+42 goal, clock and director tests pass after the fix, including absent measured
+ball speed and a hold at the first map row. CI runs the goal suite explicitly;
+the director suite already runs through `stadium-screen:check`.
+
+A repeat of the actual isolated `/broadcast.html` clean-output playback with
+the unchanged four-goal bundle decoded 612 video frames. At programme 213.3613,
+the first observed frame after the 213.34 replay end, it has no celebration or
+dead-ball flag and cuts to the full-time aerial. The delivered contact sheet
+confirms that cut, with the 4–0 score intact. This is local Mac picture proof,
+not minipc frame-rate or production A/V acceptance. The native test WebM still
+has a terminal Opus warning; it is not claimed as a clean production master.
+No production browser was reloaded or sought. League generation remains off.

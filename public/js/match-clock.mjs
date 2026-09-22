@@ -5,7 +5,7 @@
 // `node --test` can hold it to the publisher's real clock block without a
 // three.js renderer in the room (scripts/match-clock-check.mjs).
 
-import { celebrationPause } from './goal-celebration.mjs';
+import { celebrationPause, beforeTime } from './goal-celebration.mjs';
 
 export const HALF_NAMES = ['First Half', 'Second Half', 'Third Period', 'Fourth Period'];
 
@@ -39,7 +39,7 @@ export function matchPeriod(hud, t) {
   // is what a clock does; the ball is still travelling, which is what the
   // director needs to know before it cuts away from the wide.
   const dead = (Array.isArray(hud?.clock?.buzzers) ? hud.clock.buzzers : [])
-    .some((b) => Number.isFinite(b?.t) && Number.isFinite(b?.play_end_t) && t >= b.t && t < b.play_end_t);
+    .some((b) => Number.isFinite(b?.t) && Number.isFinite(b?.play_end_t) && t >= b.t && beforeTime(t, b.play_end_t));
   return { ...p, celebrating: p.celebrating ?? celebrationPause(hud?.events, t, t).celebrating,
     dead, inPlay: p.playing || dead };
 }
