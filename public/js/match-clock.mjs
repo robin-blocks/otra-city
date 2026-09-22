@@ -5,6 +5,8 @@
 // `node --test` can hold it to the publisher's real clock block without a
 // three.js renderer in the room (scripts/match-clock-check.mjs).
 
+import { celebrationPause } from './goal-celebration.mjs';
+
 export const HALF_NAMES = ['First Half', 'Second Half', 'Third Period', 'Fourth Period'];
 
 /**
@@ -38,20 +40,23 @@ export function matchPeriod(hud, t) {
   // director needs to know before it cuts away from the wide.
   const dead = (Array.isArray(hud?.clock?.buzzers) ? hud.clock.buzzers : [])
     .some((b) => Number.isFinite(b?.t) && Number.isFinite(b?.play_end_t) && t >= b.t && t < b.play_end_t);
-  return { ...p, dead, inPlay: p.playing || dead };
+  return { ...p, celebrating: p.celebrating ?? celebrationPause(hud?.events, t, t).celebrating,
+    dead, inPlay: p.playing || dead };
 }
 
 /** Which period the clock is in, ignoring the dead ball after a buzzer. */
 export function periodOf(hud, t) {
   const c = hud?.clock;
   if (!c || !Number.isFinite(t)) return null;
-  const halves = Math.max(1, c.halves || 1);
-  const halfLen = (c.duration_s || 0) / halves;
+  const halves = Number.isInteger(c.halves) && c.halves > 0 ? c.halves : 1;
+  const halfLen = (Number.isFinite(c.duration_s) && c.duration_s >= 0 ? c.duration_s : 0) / halves;
   // Before kick-off the clock has not started. Without this the first half
   // reads 8:00 at t = -180, because the arithmetic is happy to count a half
   // that has not begun.
   if (t < 0) return { tag: HALF_NAMES[0], remain: halfLen, half: 1, over: false, playing: false, preroll: true };
-  const buzzers = Array.isArray(c.buzzers) ? c.buzzers : [];
+  const buzzers = (Array.isArray(c.buzzers) ? c.buzzers : []).filter((b) =>
+    Number.isFinite(b?.t) && b.t >= 0 && (b.kind === 'full' ||
+      (b.kind === 'half' && Number.isFinite(b.restart_t) && b.restart_t >= b.t)));
   const breaks = buzzers.filter((b) => b.kind === 'half').sort((a, b) => a.t - b.t);
   const full = buzzers.find((b) => b.kind === 'full');
 
@@ -61,8 +66,12 @@ export function periodOf(hud, t) {
     const start = i === 0 ? 0 : (breaks[i - 1]?.restart_t ?? 0);
     const end = breaks[i]?.t ?? (full?.t ?? Infinity);
     if (t < end) {
-      return { tag: HALF_NAMES[i] || `Period ${i + 1}`, remain: Math.max(0, halfLen - (t - start)),
-               half: i + 1, over: false, playing: true };
+      // Celebrations extend presentation time, not playing time. Keep playing
+      // true: false means HALF TIME to the board and the director.
+      const pause = celebrationPause(hud?.events, start, t);
+      const elapsed = Math.max(0, t - start - pause.elapsed);
+      return { tag: HALF_NAMES[i] || `Period ${i + 1}`, remain: Math.max(0, halfLen - elapsed),
+               half: i + 1, over: false, playing: true, celebrating: pause.celebrating };
     }
     // between the buzzer and the restart: the interval
     const restart = breaks[i]?.restart_t;

@@ -72,13 +72,19 @@ const server = createServer((req, res) => {
   if (path === '/raw-sdk.js' && source) return send('text/javascript', source);
   if (path === '/requests.json') return send('application/json', JSON.stringify(requests));
   if (path === '/api/v1/programme/test') return send('application/json', JSON.stringify({ schema: '4dgsx-programme/1', now: new Date().toISOString(), items: [{ bundleId: 'test', bundleUrl: `${origin}/bundle`, state: 'live', startsAt: new Date(Date.now()-1000).toISOString(), endsAt: new Date(Date.now()+60000).toISOString() }] }));
-  if (path.startsWith('/bundle/')) {
-    const file = path.slice('/bundle/'.length);
-    if (file === 'scene.json') return send('application/json', JSON.stringify(scene));
+  if (path.startsWith('/bundle/') || path.startsWith('/fx/')) {
+    const fx = path.startsWith('/fx/');
+    const file = path.slice(fx ? '/fx/'.length : '/bundle/'.length);
+    if (file === 'scene.json') return send('application/json', JSON.stringify(fx ? {...scene, meta:{...scene.meta, goal_celebration:{version:1}}} : scene));
     if (file === 'ui.json') return send('application/json', JSON.stringify(ui));
     if (file === 'hud.json') return send('application/json', JSON.stringify(hud));
     if (file === 'geometry.bin') return send('application/octet-stream', geo);
-    if (file === 'track.bin') return send('application/octet-stream', track);
+    if (file === 'track.bin') {
+      const bytes = Buffer.from(track);
+      if (fx) { const a = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.length/4);
+        a.set([0,0,-30],7); a.set([3,0,.35],21); a.set([0,0,-30],35); }
+      return send('application/octet-stream', bytes);
+    }
     if (file === 'points.bin') return send('application/octet-stream', Buffer.alloc(0));
     if (file.endsWith('.html')) return send('text/html', '<!doctype html><body>panel</body>');
     return res.writeHead(404).end();
@@ -133,6 +139,16 @@ try {
     assert(await countRequests() === beforeSamples, 'sampling no network');
     const detachedSampler = st.host.samplePlay;
     st.dispose(); assert(detachedSampler(0.5) === null, 'disposed sampler cannot retain/use workspace');
+    const fxStage = await sdk.mount({bundleUrl:location.origin+'/fx',autoplay:false});
+    const fxRoot = fxStage.group.getObjectByName('4dgsx-match-space'); fxRoot.updateMatrix();
+    for (const [t,want] of [[.5,[0,-30,0]],[1,[3,.35,0]],[1.5,[3,.35,0]],[2,[0,-30,0]],[.5,[0,-30,0]]]) {
+      const sample = fxStage.host.samplePlay(t).ball;
+      assert(sample.every((v,i)=>Math.abs(v-want[i])<1e-6),'metadata teleport hold '+t);
+      fxStage.seek(t);
+      const actual = new (await import('three')).Vector3().setFromMatrixPosition(fxRoot.children[2].matrix).applyMatrix4(fxRoot.matrix);
+      assert(actual.distanceTo(new (await import('three')).Vector3(...sample))<1e-6,'FX native/sampler agree '+t);
+    }
+    fxStage.dispose();
     // Default and legacy upstream config load the local pin, not remote code.
     const local = await createBroadcastSdk({ origin: location.origin, reservedDock: 'main' });
     const localStage = await local.mount({ bundleUrl: location.origin + '/bundle' });
