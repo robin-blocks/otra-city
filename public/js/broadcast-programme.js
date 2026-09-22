@@ -1,6 +1,7 @@
 // Shared automatic television direction. No renderer, scene, stage, audio or
 // page-arrival clock lives here. Explicit cameras/capture must bypass this API.
 import { CAMERAS, createTrack, framePlay, GANTRY_AIM_LAG_S, GANTRY_FOV_LAG_S } from './broadcast-cameras.js';
+import { beforeTime } from './goal-celebration.mjs';
 import { createPostMatchTable, TABLE_DURATION_S } from './post-match-table.mjs';
 
 export const PROGRAMME_IDLE_EPOCH_MS = 0;
@@ -24,10 +25,15 @@ const frameOf = (t, fps) => Math.floor(Math.max(0, t) * fps + 1e-7);
 // to play. Intervening goal holds are included when mapping later instants.
 function mapAt(map, t) {
   if (!map?.length) return t;
-  if (t <= map[0][0]) return map[0][1];
+  if (!beforeTime(map[0][0], t)) return map[0][1];
   for (let i = 1; i < map.length; i++) {
     const [m0, p0] = map[i - 1], [m1, p1] = map[i];
-    if (t <= m1) return m1 === m0 ? p1 : p0 + (t - m0) * (p1 - p0) / (m1 - m0);
+    if (!beforeTime(m1, t)) {
+      // Snap arithmetic-equivalent endpoints BEFORE interpolation. Otherwise
+      // a near-flat full-time dwell sends the table origin to its far edge.
+      if (!beforeTime(t, m1)) return p1;
+      return m1 === m0 ? p1 : p0 + (t - m0) * (p1 - p0) / (m1 - m0);
+    }
   }
   return map.at(-1)[1];
 }
@@ -67,10 +73,10 @@ function at(track, t) {
 }
 function stopped(m, full) {
   const ball = m?.ball;
-  const publisherAtRest = finite(full?.play_end_t) && m?.bug?.t >= full.play_end_t;
+  const publisherAtRest = finite(full?.play_end_t) && finite(m?.bug?.t) && !beforeTime(m.bug.t, full.play_end_t);
   const speedKnown = finite(ball?.speed) && ball?.measured !== false;
   const invalid = ball != null && (!finite(ball.speed) || ball.speed < 0);
-  return !(finite(full?.play_end_t) && m?.bug?.t < full.play_end_t) && !invalid &&
+  return !(finite(full?.play_end_t) && beforeTime(m?.bug?.t, full.play_end_t)) && !invalid &&
     (speedKnown ? ball.speed <= BALL_STILL_MS : publisherAtRest);
 }
 function ease(previous, target, dt) {

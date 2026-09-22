@@ -4,6 +4,15 @@
 const finiteTime = (t) => Number.isFinite(t) && t >= 0;
 const goalsOnly = (events) => (Array.isArray(events) ? events : []).filter((g) => g?.type === 'goal');
 
+// Treat only floating-point arithmetic noise as equality, not neighbouring
+// published samples (e.g. 8.100 and 8.104). A rounded programme hold can be
+// 25.02 while the HUD's sum is 25.020000000000003; an exact comparison keeps
+// a completed celebration alive throughout that hold. Shared by the clock
+// and director so dead-ball/table eligibility use the same endpoint.
+export function beforeTime(t, end) {
+  return t < end && end - t > 8 * Number.EPSILON * Math.max(1, Math.abs(t), Math.abs(end));
+}
+
 function celebrationEnd(goal) {
   if (!finiteTime(goal?.t) || !Number.isFinite(goal.celebration_s) || goal.celebration_s <= 0) return null;
   const sum = goal.t + goal.celebration_s;
@@ -25,7 +34,7 @@ export function celebrationPause(events, start, t) {
   for (const goal of goalsOnly(events)) {
     const end = celebrationEnd(goal);
     if (end === null) continue;
-    if (t >= goal.t && t < end) celebrating = true;
+    if (t >= goal.t && beforeTime(t, end)) celebrating = true;
     const lo = Math.max(start, goal.t), hi = Math.min(t, end);
     if (hi > lo) intervals.push([lo, hi]);
   }
