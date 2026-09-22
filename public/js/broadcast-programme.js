@@ -216,11 +216,25 @@ export async function createBroadcastProgramme({ venue, fetcher = globalThis.fet
     if (c?.camera === 'gantry' && tracking.pose) c = { ...c,
       lookAt: tracking.pose.aim.map((v) => +v.toFixed(3)), fov: +tracking.pose.fov.toFixed(3) };
     let priority = inPlay ? 'play' : phase;
-    if (onAir && m?.board === 'GOAL' && named('scoreboard')) {
-      c = { ...named('scoreboard'), segment: -1, camera: 'scoreboard' }; priority = 'goal';
-    }
     if (onAir && m?.headcam?.pos && m.headcam.lookAt) {
       c = { ...m.headcam, fov: m.headcam.fov || DEFAULT_FOV, segment: -1, camera: 'headcam' }; priority = 'headcam';
+    } else if (onAir && bug?.celebrating === true) {
+      // Keep the actual effect on the pitch, even after a buzzer. The body
+      // sampler parks the ball at y=-30 and exposes no explosion origin.
+      // Team A/0 scores at +7m, B/1 at -7m (including own goals). Use that
+      // known end, NOT the scorer's location or a lagged/hidden-ball target.
+      const goal = (m?.goals || []).filter((g) => finite(g?.t) && finite(g?.celebration_s) &&
+        g.celebration_s > 0 && clock.t >= g.t && clock.t < g.t + g.celebration_s)
+        .sort((a, b) => a.t - b.t).at(-1);
+      const end = goal?.team === 'A' || goal?.team === 0 ? 7
+        : goal?.team === 'B' || goal?.team === 1 ? -7 : null;
+      const wide = named('gantry') || CAMERAS.gantry(0, 0, {});
+      // A fixed cut from the existing gantry, no invented camera movement.
+      // Missing end metadata retains the authored full-pitch wide.
+      c = { ...wide, lookAt: end === null ? wide.lookAt : [end, 0.45, 0],
+        segment: -1, camera: 'gantry' }; priority = 'celebration';
+    } else if (onAir && m?.board === 'GOAL' && named('scoreboard')) {
+      c = { ...named('scoreboard'), segment: -1, camera: 'scoreboard' }; priority = 'goal';
     }
     c ??= { ...(named('gantry') || CAMERAS.gantry(0, 0, {})), camera: 'gantry', segment: -1 };
 
@@ -232,7 +246,7 @@ export async function createBroadcastProgramme({ venue, fetcher = globalThis.fet
     // This deliberately permits a late join / late archive within the fixed
     // slot to show its remaining time, not a new 54s show or local 25s window.
     let tableCue = null;
-    const safe = hasSlot && !inPlay && !bug?.preroll && !bug?.replay && !m?.headcam &&
+    const safe = hasSlot && !inPlay && !bug?.preroll && !bug?.replay && !bug?.celebrating && !m?.headcam &&
       bug?.inPlay === false && stopped(m, full) && priority !== 'goal';
     if (table) {
       // The wrapper, not the old page-local controller, owns interruption.

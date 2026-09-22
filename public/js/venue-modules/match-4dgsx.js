@@ -18,6 +18,7 @@
 import * as THREE from 'three';
 import { createPA, mapTime, unmapTime } from '/js/pa-system.js';
 import { matchPeriod, mmss, boardClock } from '/js/match-clock.mjs';
+import { goalReplayAt } from '/js/goal-celebration.mjs';
 import { createBroadcastSdk } from './broadcast-sdk.mjs';
 
 // The publisher ships every dynamic body twice: as indexed mesh geometry in
@@ -1221,14 +1222,6 @@ export function create(ctx) {
     for (const s of steps) { if (typeof s?.t === 'number' && s.t <= t + 1e-6) cur = s; else if (typeof s?.t === 'number') break; }
     return cur ? { t: cur.t, a: cur.a ?? 0, b: cur.b ?? 0 } : { t, a: 0, b: 0 };
   }
-  /** The programme-map hold that programme time pT is inside, or null: a span of programme time mapped to ONE match instant. */
-  function holdAt(map, pT) {
-    for (let i = 0; i < map.length - 1; i++) {
-      const [t0, p0] = map[i], [t1, p1] = map[i + 1];
-      if (pT >= p0 && pT < p1 && t0 === t1 && p1 > p0) return { t: t0, p0, p1 };
-    }
-    return null;
-  }
   /**
    * Where the head cam is this frame, in venue-local metres — the frame every
    * camera on /broadcast speaks. The scorer's anchor is head height on their
@@ -1490,8 +1483,10 @@ export function create(ctx) {
       : { id: bundleName(url), title: overrideDoc?.title || bundleName(url), bundleUrl: url };
     st.group.position.set(0, 0, 0);
     pitch.add(st.group);
-    goals = (st.hud?.events || []).filter((e) => e?.type === 'goal');
-    state.goals = goals.map((g) => ({ t: g.t, player: g.player ?? null, team: g.team ?? null, replay_s: g.replay_s ?? null }));
+    goals = (Array.isArray(st.hud?.events) ? st.hud.events : []).filter((e) => e?.type === 'goal');
+    state.goals = goals.map((g) => ({ t: g.t, player: g.player ?? null, team: g.team ?? null,
+      replay_s: g.replay_s ?? null, source_t: g.source_t ?? null, replay_t: g.replay_t ?? null,
+      celebration_s: g.celebration_s ?? null }));
     // The publisher's clock plan, said out loud. `play_end_t` is the one field
     // a director cannot do without and cannot derive — when the ball came to
     // rest after a buzzer — and reporting it is how anything outside this
@@ -1617,7 +1612,7 @@ export function create(ctx) {
       a: sc.a ?? 0, b: sc.b ?? 0,
       // Before kick-off the clock counts down to it; the tag says so.
       tag: period.preroll ? 'Kick-off' : period.tag, clock: mmss(period.preroll ? -t : period.remain),
-      half: period.half, playing: period.playing, over: period.over,
+      half: period.half, playing: period.playing, celebrating: period.celebrating === true, over: period.over,
       // The clock has stopped but the ball has not: true through the seconds
       // between a buzzer and the publisher's own "ball at rest". See
       // `matchPeriod`, and the director's hold in /broadcast.
@@ -1701,27 +1696,14 @@ export function create(ctx) {
       }
     }
     let want = unmapTime(programme.map, programmeT);
-    // THE GOAL REPLAY. A hold in the map is broadcast time inserted with the
-    // match clock stopped, and RFL's holds sit exactly on their goals, each
-    // exactly `replay_s` long (measured on m32: sixteen holds, fifteen goals,
-    // every delta 0.0). Their own render showed the goal again in that span;
-    // the stadium dwelled. When the broadcast page asks, the span is used for
-    // what it was cut for: the stage runs the last `replay_s` seconds up to
-    // the goal once more, while the programme clock — and so the scorebug's
-    // clock and score — stays put. Only where this module drives time: a
-    // live fixture's clock is the publisher's wall clock and cannot rewind.
-    let replay = null;
-    if (replayCam) {
-      const hold = holdAt(programme.map, programmeT);
-      const goal = hold && goals.find((g) => Math.abs(g.t - hold.t) < 0.05);
-      if (goal) {
-        const len = goal.replay_s || (hold.p1 - hold.p0);
-        const frac = Math.min(1, Math.max(0, (programmeT - hold.p0) / (hold.p1 - hold.p0)));
-        want = Math.max(stage.t0 ?? 0, hold.t - len + frac * len);
-        replay = { player: goal.player ?? null, team: goal.team ?? null, goalT: hold.t, t: +want.toFixed(2), progress: +frac.toFixed(3) };
-      }
-    }
-    state.replay = replay;
+    // A goal hold used to sit on the scoring frame. Celebration bundles
+    // hold at replay_t AFTER the explosion: reconstruct the original shot in
+    // source time and map it back to the stage, skipping earlier explosions.
+    // programmeMatchT() stays on the hold, so buildBug/heldScore retain the
+    // postgoal score while only the picture rewinds.
+    const replay = replayCam ? goalReplayAt(goals, programme.map, programmeT, stage.t0) : null;
+    if (replay) want = replay.t;
+    state.replay = replay ? { ...replay, t: +replay.t.toFixed(2), progress: +replay.progress.toFixed(3) } : null;
     try {
       if (typeof stage.seek === 'function') stage.seek(want); else stage.time = want;
     } catch (e) { state.errors.push(`programme: ${e.message || e}`); }

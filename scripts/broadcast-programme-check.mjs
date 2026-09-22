@@ -4,6 +4,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { PerspectiveCamera, Vector3 } from 'three';
+import { goalReplayAt } from '../public/js/goal-celebration.mjs';
 import { createPostMatchTable } from '../public/js/post-match-table.mjs';
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const data = (text) => `data:text/javascript;base64,${Buffer.from(text).toString('base64')}`;
@@ -235,4 +237,133 @@ test('an actual validated table rejoins global remaining time after a headcam in
   assert.equal(p.evaluate({ match: interrupted, nowMs }).tableCue, null);
   const restored = { ...m, programmeT: 840, bug: { ...m.bug, programmeT: 840 } };
   near(p.evaluate({ match: restored, nowMs }).tableCue.elapsed, 29.3);
+});
+
+// The host's public contract contains goal timing/team, but no explosion
+// origin. The sampler contains players/ball/anchors, with the ball parked at
+// y=-30 during the effect. Deliberately put all players at the WRONG end so
+// passing these tests requires framing the goal, not merely naming a gantry.
+const celebrationGoals = [
+  { t: 100, source_t: 100, team: 'A' },
+  { t: 104.6, source_t: 103, team: 'B' },
+  { t: 304.2, source_t: 301, team: 0 }, // after half-time buzzer
+  { t: 623.8, source_t: 619, team: 1 }, // after full-time buzzer
+].map((g) => ({ type: 'goal', ...g, player: `p${g.team}`, celebration_s: 1.6,
+  replay_t: +(g.t + 1.6).toFixed(8), replay_s: 5 }));
+const celebrationMap = [[-180, 0]];
+let replayHolds = 0;
+for (const g of celebrationGoals) {
+  const p = g.replay_t + 180 + replayHolds;
+  celebrationMap.push([g.replay_t, p], [g.replay_t, p + 5]); replayHolds += 5;
+}
+celebrationMap.push([640, 840], [640, 940]);
+function celebrating(g, elapsed = 0.8, changes = {}) {
+  const end = g.team === 'A' || g.team === 0 ? 7 : -7;
+  const p = g.t + elapsed + 180 + celebrationGoals.indexOf(g) * 5;
+  return match(g.t + elapsed, p, {
+    programme: { map: celebrationMap }, goals: celebrationGoals, board: 'GOAL',
+    play: { players: [[-end, 0.5, 2], [-end, 0.5, -2]], ball: [0, -30, 0] },
+    ...changes, bug: { celebrating: true, ...changes.bug },
+  });
+}
+function project(pose, point) {
+  const camera = new PerspectiveCamera(pose.fov, 16 / 9, 0.1, 1000);
+  camera.position.fromArray(pose.pos); camera.lookAt(new Vector3(...pose.lookAt)); camera.updateMatrixWorld();
+  return new Vector3(...point).project(camera).toArray();
+}
+function inFrame(pose, point) {
+  const [x, y, z] = project(pose, point);
+  assert.ok(Math.abs(x) < 0.95 && Math.abs(y) < 0.95 && z > -1 && z < 1,
+    `effect ${point} clips at NDC ${[x, y, z]}`);
+}
+
+test('celebration frames both actual goal ends, not scoreboard, hidden ball or opposite-end players', async () => {
+  // Calibrate the projection with the real stadium board: aim is centred,
+  // but both goals are outside its picture (the original failure).
+  const actualVenue = JSON.parse(read('../public/venues/stadium/venue.json'));
+  const board = { pos: actualVenue.cameras.scoreboard[0], lookAt: actualVenue.cameras.scoreboard[1], fov: 50 };
+  const centre = project(board, board.lookAt); near(centre[0], 0); near(centre[1], 0);
+  for (const x of [-7, 7]) assert.ok(Math.abs(project(board, [x, 0.35, 0])[1]) > 1);
+  const p = await director();
+  for (const g of celebrationGoals) {
+    const m = celebrating(g), snapshot = JSON.stringify(m);
+    const out = p.evaluate({ match: m, samplePlay: () => m.play });
+    const end = g.team === 'A' || g.team === 0 ? 7 : -7;
+    assert.equal(out.state.priority, 'celebration'); assert.equal(out.state.goalCut, false);
+    assert.equal(out.camera.camera, 'gantry'); assert.deepEqual(out.camera.pos, venue.cameras.gantry[0]);
+    assert.deepEqual(out.camera.lookAt, [end, 0.45, 0]); assert.equal(out.camera.fov, 50);
+    // Origin can be anywhere across the goal mouth; ring reaches 3m before
+    // disappearing. Include elevated flash/confetti, not just ground centre.
+    for (const z of [-1.5, 0, 1.5]) {
+      inFrame(out.camera, [end, 0.35, z]); inFrame(out.camera, [end, 2, z]);
+      for (let i = 0; i < 40; i++) {
+        const theta = i * Math.PI / 20;
+        inFrame(out.camera, [end + 3 * Math.cos(theta), 0.04, z + 3 * Math.sin(theta)]);
+      }
+    }
+    assert.equal(JSON.stringify(m), snapshot, 'direction never mutates stage/play');
+  }
+});
+
+test('celebration overrides interval/postmatch even outside inPlay or the four-second GOAL cue', async () => {
+  for (const g of celebrationGoals.slice(2)) {
+    const p = await director({ tableController: tableStub() });
+    for (const board of ['GOAL', 'FT', null]) {
+      const out = p.evaluate({ match: celebrating(g, 0.8, { board, bug: { inPlay: false } }) });
+      assert.equal(out.camera.camera, 'gantry'); assert.equal(out.state.priority, 'celebration');
+      assert.equal(out.tableCue, null);
+    }
+  }
+  // No goal metadata: still suppress an otherwise valid postmatch table and
+  // keep the authored full-pitch wide, rather than infer an end from players.
+  const p = await director({ tableController: tableStub() });
+  const out = p.evaluate({ match: match(622, 860, { bug: { celebrating: true } }) });
+  assert.equal(out.state.priority, 'celebration'); assert.equal(out.tableCue, null);
+  assert.deepEqual(out.camera.lookAt, venue.cameras.gantry[1]);
+  for (const x of [-7, 7]) inFrame(out.camera, [x, 0.35, 0]);
+});
+
+test('repeated goals, reverse seeks, fresh arrivals and render dt choose identical celebration poses', async () => {
+  const p = await director();
+  for (const i of [0, 1, 2, 3, 1, 0, 3, 2]) {
+    const g = celebrationGoals[i];
+    for (const elapsed of [0, 0.02, 0.8, 1.58]) {
+      const m = celebrating(g, elapsed);
+      const a = p.evaluate({ match: m, dt: 0.02, samplePlay: () => m.play });
+      const fresh = await director();
+      const b = fresh.evaluate({ match: m, dt: 10, samplePlay: () => m.play });
+      assert.deepEqual(a.camera, b.camera); assert.equal(a.state.priority, 'celebration');
+      fresh.dispose();
+    }
+  }
+});
+
+test('celebration yields immediately to scorer replay; headcam also wins overlapping flags', async () => {
+  const p = await director(), hc = { pos: [1, 1.5, 0], lookAt: [7, 0.35, 0], fov: 68 };
+  for (const g of celebrationGoals) {
+    const hold = celebrationMap.find(([t]) => t === g.replay_t)[1];
+    assert.equal(goalReplayAt(celebrationGoals, celebrationMap, hold - 0.02), null);
+    for (const elapsed of [0, 0.02, 2, 4.98]) {
+      const replay = goalReplayAt(celebrationGoals, celebrationMap, hold + elapsed);
+      assert.equal(replay.player, g.player);
+      const m = match(g.replay_t, hold + elapsed, { board: 'GOAL', headcam: hc,
+        bug: { replay: true, celebrating: elapsed === 0 } });
+      const out = p.evaluate({ match: m });
+      assert.equal(out.state.priority, 'headcam'); assert.deepEqual(out.camera.pos, hc.pos);
+    }
+    assert.equal(goalReplayAt(celebrationGoals, celebrationMap, hold + 5), null);
+    const out = p.evaluate({ match: match(g.replay_t, hold + 5, { bug: { inPlay: true, celebrating: false } }) });
+    assert.equal(out.state.priority, 'play'); assert.equal(out.camera.camera, 'gantry');
+  }
+});
+
+test('legacy goals keep immediate replay and the existing scoreboard fallback', async () => {
+  const legacy = [{ type: 'goal', t: 100, player: 'p0', team: 0, replay_s: 5 }];
+  const map = [[-180, 0], [100, 280], [100, 285], [640, 825]];
+  assert.equal(goalReplayAt(legacy, map, 280).player, 'p0');
+  const p = await director();
+  const m = match(100, 280, { goals: legacy, board: 'GOAL', programme: { map },
+    headcam: { pos: [1, 1, 1], lookAt: [7, 0.35, 0] }, bug: { replay: true } });
+  assert.equal(p.evaluate({ match: m }).state.priority, 'headcam');
+  assert.equal(p.evaluate({ match: { ...m, headcam: null } }).camera.camera, 'scoreboard');
 });
