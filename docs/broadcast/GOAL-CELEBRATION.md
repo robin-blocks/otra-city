@@ -1,10 +1,13 @@
-# RFL goal celebration compatibility — release held, 22 September 2026
+# RFL goal celebration compatibility — staged release, 22 September 2026
 
 RFL's approved goal effect inserts a 1.6-second physical celebration before
 the replay. This host patch is backward compatible and does not enable the
-effect or change the schedule. **PR119 remains draft: acceptance failed.**
-Robin explicitly authorized merge on September 22 if the final checks pass;
-that authority is not the blocker. The checks below are.
+effect or change the schedule. **Robin approved a host-only merge separately
+from station activation (22 September, 18:10 BST), once host checks pass.**
+The modest 502-vs-480 drawing-budget overage is accepted as follow-up, not a
+release veto. Station activation still requires the timing fix. The historical
+acceptance findings below are retained; they do not describe a host-only
+compatibility deployment as unsafe.
 
 ## Contract
 
@@ -84,9 +87,17 @@ premix; that gate remains open.
 
 ## Release posture
 
-Do not merge/enable yet. Remaining: realtime timing isolation, representative
-rendering budget/cadence, delivered host-picture/premix acceptance, then deployed
-byte adoption. RFL publisher remains fail-closed and match generation default-off.
+Host compatibility may merge once host checks pass, independently of station
+activation. The first venues CI attempt timed out awaiting a real-bundle
+remount after all preceding assertions passed; rerun it, do not bypass it.
+RFL has moved expensive celebration simulation/render/encoding after sporting
+play using saved integration state. Its calibrated timeout counterexample now
+passes exact on/off state/action/scheduling parity. Video inserts preserve
+original frame positions before replay. This change is not league activation.
+
+RFL publisher remains fail-closed and match generation default-off. Drawing
+cost is accepted follow-up work; verify deployed host adoption and the final
+picture/premix path before a separate announced activation.
 No force reload during a scheduled programme or its pre-start hold; no changes
 to existing results. RFL retains detailed reproducible evidence privately under
 `work/evidence/2026-09-22-goal-acceptance/`.
