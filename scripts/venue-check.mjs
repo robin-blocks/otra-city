@@ -23,7 +23,9 @@ const SCENE_TRIS = 300000;
 const SCENE_LIGHTS = 40;
 // With a match on the pitch the 4DGSX stage alone is ~390 draws (one per
 // draw record plus one per splat body — the SDK's design, not ours), so the
-// tier-2 ceiling sits above the 400 the empty city is held to.
+// tier-2 ceiling sits above the 400 the empty city is held to. This remains
+// a PER-VIEW ceiling. Stadium television intentionally renders the same scene
+// again: total cost is NOT 480, and the gate reports both views AND their sum.
 const MATCH_CALLS = 480;
 const DEFAULT_BUNDLE = 'https://cdn.4dgsx.com/channels/rfl/bundles/s3-m1_real_machina_singularity_united-a25b3e6dff2af7c1cff8ff48';
 const DOM_EXPR = `JSON.stringify({ iframes: document.querySelectorAll('iframe').length, videos: document.querySelectorAll('video').length, maps: Object.entries(window.__venue.venues.get(window.__venue.id)?.nodes || {}).filter(([n]) => /^(screen_|panel_)/.test(n)).map(([n, o]) => { let m = null; o.traverse((x) => { if (!m && x.isMesh) m = x; }); const map = m && m.material.map; return [n, map ? (map.isVideoTexture ? 'video' : map.isCanvasTexture ? 'canvas' : 'texture') + (map.flipY ? '/flipY' : '') : 'none']; }) })`;
@@ -194,13 +196,33 @@ for (const id of ids) {
           }
           check('match: SDK loaded and bundle mounted', ms?.phase === 'match' && ms?.sdk === 'ready', `phase ${ms?.phase}, sdk ${ms?.sdk}, ${((Date.now() - t0) / 1000).toFixed(0)} s, errors ${JSON.stringify(ms?.errors || [])}`);
           const want = Object.keys(mcfg.docks || {});
-          check('match: docks attached', want.every((d) => ms?.docks?.find((x) => x.slot === d)?.attached), JSON.stringify(ms?.docks || []));
+          const ownedMain = id === 'stadium' || mcfg.live_screen === 'main';
+          check('match: side docks attached; broadcast main reserved', want.every((d) => {
+            const dock = ms?.docks?.find((x) => x.slot === d);
+            return ownedMain && d === 'main' ? dock?.attached === false : dock?.attached === true;
+          }), JSON.stringify(ms?.docks || []));
+          let owned = (await mx.state()).venues.find((x) => x.id === id)?.broadcast;
+          const frames0 = owned?.frames ?? 0;
           await mx.step(120);
+          if (ownedMain) {
+            for (const until = Date.now() + 60000; Date.now() < until;) {
+              owned = (await mx.state()).venues.find((x) => x.id === id)?.broadcast;
+              if ((owned?.frames ?? 0) > frames0 || owned?.error) break;
+              await new Promise((r) => setTimeout(r, 250));
+              await mx.step(1);
+            }
+            check('match: the owned broadcast main stays attached and advances frames',
+              owned?.ready === true && owned?.attached === true && !owned?.error && owned.frames > frames0,
+              `frames ${frames0} -> ${owned?.frames}, attached ${owned?.attached}, error ${owned?.error ?? 'none'}`);
+          }
           const dom = JSON.parse(await mx.evaluate(DOM_EXPR));
           const maps = Object.fromEntries(dom.maps);
-          const mainOk = maps[mcfg.docks?.main] === 'video';
+          const mainOk = maps[mcfg.docks?.main] === (ownedMain ? 'texture' : 'video');
           const scoreOk = maps[mcfg.scoreboard] === 'canvas';
-          check('match: screens carry the SDK textures, glTF-oriented', mainOk && scoreOk && dom.maps.every(([, t]) => !t.endsWith('/flipY')), dom.maps.map((m) => m.join('=')).join(', '));
+          check('match: main carries the broadcast texture and scoreboard its canvas, glTF-oriented', mainOk && scoreOk && dom.maps.every(([, t]) => !t.endsWith('/flipY')), dom.maps.map((m) => m.join('=')).join(', '));
+          // The reserved main video must not be allocated/hidden in the DOM.
+          // Stadium side panels are canvases/iframes, not video decoders.
+          if (ownedMain) check('match: no main video DOM remains', dom.videos === 0, `${dom.videos} video elements`);
           const boardMatches = (s) => {
             const b = s?.bug;
             if (!b) return /[A-Z]{2,4} \d+-\d+ [A-Z]{2,4} \d+:\d\d/.test(s?.board || ''); // legacy, no clock block
@@ -239,8 +261,23 @@ for (const id of ids) {
           const msL = (await mx.state()).venues.find((x) => x.id === id).modules[0]?.state;
           check('match: the publisher re-allocates a shout whose canvas changed size', glErr === 0 && (msL?.labels?.resizes ?? 0) > 0,
             `${msL?.labels?.sprites ?? 0} label sprites, ${msL?.labels?.resizes ?? 0} canvas resizes in 40 s from kick-off, GL error ${glErr}`);
-          const sm = await mx.stats();
-          check('match: draw calls with a match on', sm.calls <= MATCH_CALLS, `${sm.calls} (max ${MATCH_CALLS}), ${sm.tris} tris`);
+          // One atomic read keeps all three costs on the SAME rendered frame.
+          // renderer.info includes both real scene draws; subtract only the
+          // measured broadcast pass, never hide it from the reported total.
+          const cost = JSON.parse(await mx.evaluate(`JSON.stringify({ stats: window.__venue.stats(), broadcast: window.__venue.state().venues.find(v => v.id === ${JSON.stringify(id)})?.broadcast ?? null })`));
+          const sm = cost.stats;
+          if (ownedMain) {
+            const extra = cost.broadcast?.calls;
+            const main = sm.calls - extra;
+            check('match: total draw calls (two real views)', Number.isFinite(sm.calls) && sm.calls > 0 && sm.calls <= 2 * MATCH_CALLS,
+              `total ${sm.calls} (max 2 × ${MATCH_CALLS} = ${2 * MATCH_CALLS}), ${sm.tris} tris; includes the extra broadcast scene render`);
+            check('match: main-view draw calls (total minus broadcast)', Number.isFinite(main) && main > 0 && main <= MATCH_CALLS,
+              `main ${main} = total ${sm.calls} - broadcast ${extra} (per-view max ${MATCH_CALLS})`);
+            check('match: extra broadcast-view draw calls', Number.isFinite(extra) && extra > 0 && extra <= MATCH_CALLS,
+              `broadcast ${extra} (per-view max ${MATCH_CALLS}); additional work, not a free framebuffer copy`);
+          } else {
+            check('match: draw calls with a match on', sm.calls <= MATCH_CALLS, `${sm.calls} (max ${MATCH_CALLS}), ${sm.tris} tris`);
+          }
           // A distributed PA is only a PA if the arrival delay follows the
           // visitor. Standing at the centre of a symmetric bowl every horn is
           // equidistant (spread ~0); in a corner one is close and one is far.

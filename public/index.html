@@ -671,6 +671,7 @@ window.__step = (frames = 60, dt = 1 / 60) => {
   presence.update(1 / 60, simTime);
   media.update(player.pos, frames * dt);
   renderer.info.reset();
+  venues.renderBroadcasts();
   after.render(venues.afterToneMap());
   return JSON.stringify({
     pos: player.pos.toArray().map((v) => +v.toFixed(2)),
@@ -708,6 +709,7 @@ function frame() {
   player.updateCamera(dt);
   introApply(dt);
   renderer.info.reset();
+  venues.renderBroadcasts();
   after.render(venues.afterToneMap());
   perf.tick(performance.now());
   const i = renderer.info.render;

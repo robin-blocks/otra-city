@@ -1,8 +1,21 @@
 # /broadcast — cameras, crowd, and the camera track file
 
 Reference for anyone pointing a capture harness at `otra.city/broadcast`.
-Implementation: `public/js/broadcast-cameras.js`, `public/js/crowd.js`.
+Implementation: `public/js/broadcast-cameras.js`, `public/js/crowd.js`,
+`public/js/broadcast-programme.js`, `public/js/broadcast-screen.js`.
 Gate: `scripts/broadcast-check.mjs`.
+
+**Source update, 22 September 2026 — build `2026-09-22a`.**
+The stadium's main screen is now always the internal
+broadcast feed on `/index`, `/venue` and live `/broadcast`: idle, build-up,
+play, replay and post-roll. Other panels keep their usual programme/SDK
+content. This supersedes earlier descriptions of a coming-up/countdown card
+on `screen_main`; those are historical, not the current ownership rule.
+See [Stadium screen implementation](STADIUM-SCREEN.md) for the shared director,
+clock and late-join limits, pinned SDK adapter, rendering cost and lifecycle.
+Local release evidence is recorded in [STADIUM-SCREEN.md](STADIUM-SCREEN.md#evidence-and-verification-status).
+Older test counts below are historical evidence; check exact-commit CI and the
+running page for release status.
 
 ## Coordinates
 
@@ -192,8 +205,8 @@ blanking the stadium for a missing HTTP response.
 it a replay runs once and the stage holds on the last frame, which is right for
 a fixture that is meant to end and wrong for the stadium — it stops being a
 broadcast and becomes a photograph of one. Looping seeks the stage back rather
-than re-mounting, so it costs nothing: the bundle is already in memory and
-nobody downloads 320 MB again. `state().match.loops` counts the times round.
+than re-mounting: the bundle is already in memory and nobody downloads 320 MB
+again. Normal rendering/decoding work still costs time. `state().match.loops` counts the times round.
 
 The flag is read from the poll rather than from the document captured at mount,
 so it can be turned on for something already playing.
@@ -326,8 +339,9 @@ line at the bottom of the page) is the date the page's behaviour last
 changed. A harness that pins a copy of the page, or a proxy that holds one,
 will report an older date than `https://otra.city/broadcast` does — so a
 "the deployed page still says X" conversation is settled by reading it. The
-build in this source is **2026-09-21c** (opt-in clean recording output).
-Before it: 2026-09-21b extended the post-match table to 54 seconds;
+build in this source is **2026-09-22a** (always-on internal stadium television
+and shared automatic direction). Before it: 2026-09-21c added opt-in clean recording output;
+2026-09-21b extended the post-match table to 54 seconds;
 2026-09-21a added verified first-air standings. The source build is not proof
 of deployment: read the running page for that. Bump the constant at the top
 of `public/broadcast.html` whenever the page's behaviour changes.
@@ -399,7 +413,13 @@ Every other name in `venue.json` (`approach`, `concourse`, `aerial`,
 ## The director
 
 With no `camera` and no `camtrack`, the live feed directs itself, and what it
-does depends on whether a match is on the pitch.
+does depends on whether a match is on the pitch. The automatic visitor-screen
+and `/broadcast` paths now use the same `createBroadcastProgramme` evaluator.
+Idle cuts use a fixed Unix epoch (`idleEpochMs = 0`), **not time since page
+arrival**. Match phases use programme time and publisher play-end/restart
+anchors, including inserted goal holds. A late join evaluates the current shot
+and its elapsed time, rather than restarting the list on arrival. Explicit
+`camera`, `camtrack` and deterministic capture retain their own paths.
 
 **Between matches — `/broadcast/live-cutlist.json`.** A wide orbit of the bowl,
 two pushes into the stands where the visitors actually are, a pitch-level shot,
@@ -410,8 +430,10 @@ few seconds is exhausting rather than alive. Nothing is at stake in an empty
 bowl, so the camera is allowed to move.
 
 `SCREEN_MAIN` frames the big screen **and both side panels at once**, so one
-shot shows the coming-up card, the fixture list and the results; `SCOREBOARD`
-frames the countdown. Both are held long enough to read — 12 s and 10 s.
+shot shows the television feed, the fixture list and the results; `SCOREBOARD`
+frames the countdown. The main feed can see its own previous frame, so a screen
+shot includes natural nested television rather than switching to a card. Both
+are held long enough to read — 12 s and 10 s.
 
 **A stand shot is a glance, not a dwell — six seconds.** It used to be
 twenty-five, which on a terrace nobody had walked into was twenty-five seconds
@@ -425,9 +447,9 @@ on the day.
 
 **During a fixture's build-up — `/broadcast/preroll-cutlist.json`.** RFL run
 three minutes of programme before kick-off with the bodies holding the
-kick-off pose, and through it the venue's own screens are back on the docks
-carrying a countdown. In the build-up "when does this start" *is* the picture,
-so **four fifths of this list is those screens** — `SCREEN_MAIN` and
+kick-off pose. The main screen remains television; the scoreboard carries
+the countdown and side panels return to their ordinary programme content.
+The authored list is unchanged: **four fifths is screen shots** — `SCREEN_MAIN` and
 `SCOREBOARD` — with the remaining fifth on the bowl filling up: an aerial,
 both terraces, a pitchside. It loops every 120 s, so it does not have to be
 exactly as long as the pre-roll; it has to read right wherever inside it a
@@ -436,8 +458,8 @@ fixture is picked up. The share is checked in CI against the file.
 A **replay the city puts on** has a build-up too, and gets the same treatment:
 its programme has the same three segments and a build-up is a build-up whether
 the match is happening now or happened yesterday. During it the big screen
-belongs to the module, not to the broadcast feed — the countdown is the point,
-and painting the feed over it would show a picture of the stadium instead.
+still belongs to the internal broadcast feed. The former rule yielding it to
+the module's coming-up card is superseded in build `2026-09-22a`.
 
 ## The scorebug
 
@@ -485,57 +507,57 @@ Two things about it are easy to get wrong, and both are handled by
 Tags are `First Half`, `Second Half`, `Half Time`, `Full Time`, and
 `state().scorebug` reports exactly what is being drawn.
 
-## What the screens show when there is no match
+## What the screens show, with or without a match
 
-For roughly twenty-two hours a day the pitch is empty, and for all of them the
-big screen and the two side panels used to show the plates they were painted
-with in Blender. They now carry the programme instead, from the same feed the
-scoreboard reads:
+The following is the `2026-09-22a` rule on `/index`, `/venue` and live
+`/broadcast`. Main never yields to a coming-up card or bundle video.
 
 | surface | between matches, and through any build-up or outro | while the match is on |
 |---|---|---|
-| `screen_main` | coming up: the fixture, a live countdown, the London time | the broadcast feed |
-| `panel_left` | FIXTURES — the next four, with times | the SDK's line-up panel |
-| `panel_right` | RESULTS — the last four, with scores | the SDK's stats panel |
-| `screen_score` | NEXT MATCH and the countdown | the live score and clock |
+| `screen_main` | internal broadcast feed | internal broadcast feed |
+| side panels (`panel_left`, `panel_right`) | ordinary FIXTURES / MATCH DAYS and RESULTS | SDK panels, unchanged |
+| `screen_score` | NEXT MATCH / NEXT SLOT and countdown | live score and clock, including GOAL |
 
-**When the feed lists no fixture at all**, which is most of any day — RFL
-publish one close to its kick-off, so `/api/v1/programme/rfl` spends hours
-carrying sixty replays and nothing upcoming — the screens fall back to the
-channel's own timetable rather than saying NO MATCH SCHEDULED. `channel.slots`
-and `channel.timezone` give the next slot; the countdown runs to that, labelled
-**NEXT SLOT** and not *next kick-off*, with "the fixture is announced nearer
-the time" under it. The FIXTURES panel becomes MATCH DAYS and lists the slots.
-If the channel declares no slots either, the big screen says what the stadium
-*is* showing instead of what it is not. The gate asserts the card is never a
-bare negative while there is anything true to put on it.
+Slot names are venue docks; screen-shot left/right is not necessarily the
+same as the authored node name. No fixtures/results, line-up or stats panel
+is replaced by another television surface.
 
-Repainted once a second while the pitch is empty, so the countdown ticks. The
-SDK takes the docks over when a match mounts and hands back the *authored*
-plate when it unmounts, not ours — so the paint re-applies its own texture
-every tick rather than assuming it is still there. `state().match.screens`
-says what each one is showing.
+**When the feed lists no fixture**, the ordinary panels and scoreboard still
+use `channel.slots` and `channel.timezone`, with NEXT SLOT distinguished from
+an announced kick-off. Their countdowns, one-second idle repaint and SDK dock
+handover are unchanged. The main screen is excluded from both idle repaint
+and SDK dock ownership. `state().match.screens` reports that reservation as
+`parent broadcast`; screen/render diagnostics report the actual attachment.
 
-**The venue's idle screens still do not carry a league table.** The programme
-feed has no standings, and its rolling results window is not a whole season.
-The **broadcast's post-match overlay** now uses RFL's separate complete-season
-archive instead; it does not change the venue's fixtures/results panels.
+The side panels still do **not** invent a league table from the programme
+feed's rolling results. The main screen can show the validated post-match
+overlay because that is part of the broadcast, using the separate complete-
+season archive below, not a replacement for fixtures/results.
 
 ### Post-match league table — 19 September, first-air fix 21 September 2026
 
-On the automatic live `/broadcast` programme, full time does **not** immediately
-cue the table. The scorebug must report `over: true`, `inPlay: false`, the
+On the shared automatic live programme (`/broadcast` and the visitor's main
+screen), full time does **not** immediately cue the table. The scorebug must
+report `over: true`, `inPlay: false`, the
 director's ball-settling hold must have ended, and the actual shot must be
 `heli`. A measured ball must be at or below 0.6 m/s; without a measurement we
 require the publisher's full-time `play_end_t`. Half time, pre-roll, goal
 replays, explicit cameras/tracks and deterministic capture never show it.
 
-After a 0.7-second settling beat: a title-safe navy panel enters over 0.55 s,
+The shared director reserves a **fixed 54-second slot**, from +0.7 s inclusive
+to +54.7 s exclusive after the publisher's full play-end mapped into programme
+time. These are global programme offsets, not a fresh timer for each page.
+All safety/evidence gates still apply: a join at +50 s can show only the
+remaining 4.7 s (animation elapsed 49.3), and a join at +54.7 s shows no table.
+Missing or late evidence cannot extend that slot.
+
+Within the slot: a title-safe navy panel enters over 0.55 s,
 shows the **before-match** table until 1.8 s, animates the rows into their new
 positions by 3 s, holds, and fades out between 53.4 and 54 s. Robin requested
 **three times the original 18-second duration** on 21 September: only the reading
 hold grows; entrance, row movement and 0.6-second fade keep their speed. The
-controller and renderer share `js/league-timing.mjs`. The 54-second change passed
+controller and renderer share `js/league-timing.mjs`. Historically, the
+21 September 54-second change passed
 267 offline tests plus the WebGL gate (including pixel/cache stability at 50 s
 and fade at 53.7 s), and an actual M42 browser rehearsal through the extended
 heli, completion and resumed cut-list. All clubs remain
@@ -547,10 +569,12 @@ full-time result strap, temporarily replacing the bottom score bar; the compact
 top-left scorebug remains. Everything is composited into the WebGL frame before
 `frame()`, `pixels()` and the stadium screen copy, not into a DOM-only overlay.
 
-The ambient list's first heli normally ends after 45 seconds. While the table
-is on air, only that pending ambient cut is deferred: the orbit continues until
-the table clears, then the next shot resumes. No change to the idle/half-time
-cut-list or public schedule. Live play, goal/headcam and explicit-camera paths
+The ambient list's first heli normally ends after 45 seconds. The shared
+director reserves its extension through +54.7 s even when archive evidence is
+unavailable, so network arrival cannot decide the cut. The orbit keeps moving;
+then `SCREEN_MAIN` resumes at its beginning. No change to the authored
+idle/half-time cut-list or public schedule. Live play, goal/headcam and
+explicit-camera paths
 retain priority; the controller still suppresses the table on any unsafe state.
 
 **Data and honesty.** `js/league-table-data.mjs` reads the public
@@ -605,24 +629,34 @@ or incompletely published season remains unsupported rather than guessed.
 The first-air graphic is labelled **“RFL · Including this result”**, with
 `basis: first-air-hud` in diagnostics. Published results use
 `basis: published-result`. If publication arrives before the cue, that result
-is validated normally rather than applied twice. Once on air, the table and
-its archive timestamp/provenance are frozen even if the archive refreshes.
+is validated normally rather than applied twice. During an uninterrupted
+on-air cue, the table and its archive timestamp/provenance are frozen even if the archive refreshes. A protected interruption
+clears the local cue; rejoining the remaining global slot may validate a newer
+snapshot. Independent clients can differ in graphic availability or revision
+when archive evidence arrives at different times; this is not a promise of
+identical graphics despite missing or changed evidence.
 `aired_at` orders league results; it is **not a playback-completion clock**:
 our full-time and settled-ball gates remain independently necessary. When
 `play_end_t` is present, a small measured speed cannot bypass it.
 
-The archive is fetched only on the automatic live page while a match is
-mounted, at most once per minute with a ten-second timeout. Missing prior
+The archive is fetched by the automatic live programme on either output path
+while a match is mounted, at most once per minute with a ten-second timeout.
+Missing prior
 results, ambiguous chronology, unsupported table sizes or failed reconciliation
 retain the ordinary full-time scoreboard. An unpublished result on a direct or
 replay mount also stays withheld; first-air permission is not a general score
-override. If data is not ready within 25 seconds of the safe post-match cue,
-the graphic is skipped for that play. Seasons 1–2 currently lack complete aired
-timestamps and deliberately do not qualify.
+override. The shared wrapper supersedes the old local 25-second readiness
+window: newly validated evidence can use only the remainder of the fixed slot,
+and nothing appears after expiry. It passes the actual match and actual wall
+time to the existing validator; no evidence timestamps or future results are
+fabricated. Seasons 1–2 currently lack complete aired timestamps and
+deliberately do not qualify.
 
-`js/post-match-table.mjs` owns cue/reset/polling; `js/league-overlay.js` owns the
-canvas texture and explicit-time animation. A loop, replacement match or
-backward seek resets the cue; a camera cut or return to play clears it.
+`js/post-match-table.mjs` retains evidence validation, snapshotting and polling;
+`js/broadcast-programme.js` owns shared slot elapsed/expiry and interruption;
+`js/league-overlay.js` owns the canvas texture and explicit-time animation.
+A loop, replacement match or backward seek resets local cue state; camera
+priority and return to play suppress the table without restarting its slot.
 `state().leagueTable` reports status, withheld reason, source and both clubs'
 from/to/change. `npm run league:check` exercises accounting, cueing and actual
 browser/WebGL compositing without an external data dependency. For the real
@@ -691,7 +725,11 @@ and a recording does not carry; every player is used here, which is their own
 fallback for the case where all of them are down. And their lags are per frame
 at a guaranteed 50 fps; this page paces itself from the wall clock — their own
 capture machine has been measured painting at a sixth of real time — so the
-constants are applied in seconds.
+constants are applied in seconds. The shared director reconstructs those lags
+on a fixed 50 Hz grid over the preceding four programme seconds when a verified
+loaded-track sampler is available (at most 202 samples/evaluation). This is a
+bounded reconstruction, not exact infinite filter history. Without verified
+history it reports `local-lag-fallback`, not cross-client pixel identity.
 
 The tracking needs the bundle's bodies to be reachable by name, which the
 module verifies before it uses them. When they are not, the shot is the locked
@@ -715,8 +753,9 @@ does not carry it there is a fallback of our own — hold while the ball is stil
 moving faster than 0.6 m/s, capped at six seconds. `state().scorebug.inPlay` is
 the flag; `state().director.settling` says the fallback is what is holding it.
 
-The change of list is itself a cut: each list restarts on its own first shot
-rather than joining wherever its loop happened to be.
+A phase boundary starts that phase's list at its shared origin. A late client
+joins the elapsed position within that phase, not the first shot of a fresh
+page-relative list. Idle uses the fixed epoch rather than any page's arrival.
 
 `state().director` reports which list is in force, which shot is on, and
 whether a goal has the picture. Naming a `camera` or a `camtrack` turns the
@@ -823,23 +862,32 @@ whole match, which sent RFL's premix out from 0.00 s.
 
 So the module adopts a live fixture and drives it itself. The SDK's stage is
 kept and never posed or shown (the schedule tears it down when the fixture
-ends); our own unlocked copy is mounted from the same URL — the bundle's files
-are immutable and cached, so that costs no download — and placed every frame at
-`unmapTime(program.map, (now − startsAt))`, `now` corrected by the feed's own
-clock, so every client agrees the way the lock made them agree. On air:
+ends); the existing adoption path mounts an unlocked copy from the same URL,
+using the bundle cache. This pre-existing schedule/adoption mechanism is not
+a new mount for the television screen: both views reuse the one visible stage.
+It is placed every frame at `unmapTime(program.map, (now − startsAt))`, with
+`now` from the machine's wall clock, **not** corrected by the cached programme
+feed's generation timestamp. Agreement needs suitably aligned client clocks. On air:
 
 - **the pre-roll**: the players held at the kick-off pose, the venue's own
-  screens up (the big screen counting down to *this* kick-off), the scorebug
-  reading `Kick-off 2:31` and LIVE, the director on the ambient list;
-- **kick-off at `startsAt` + 180 s**: the publisher's panels take the screens,
+  side panels up and scoreboard counting down to *this* kick-off, the scorebug
+  reading `Kick-off 2:31` and LIVE, the director on the preroll list; the main
+  screen remains the feed;
+- **kick-off at `startsAt` + 180 s**: the publisher's panels take the side docks,
   the gantry, `audioOffset` = programme time, so a premix started there has its
   commentary begin with the match;
-- **the holds**: on `/broadcast`, the replays from the scorer's head;
-- **the post-roll**: Full Time, the screens back to the venue's own, the
-  ambient list, until the schedule takes the fixture down.
+- **the holds**: the scorer's headcam replay, also posed in the visitor's same
+  scene rather than in a private television-only match;
+- **the post-roll**: Full Time, the side panels back to the venue's own, the
+  ambient list and eligible table slot, until the schedule takes the fixture
+  down. Main remains television throughout.
 
 `state().match.drive` says `wall` for this, `dt` for a replay the city put on,
-`null` for a stage on the publisher's own clock. `"live_programme": false` in
+`null` for a stage on the publisher's own clock. Sharing the director alone
+cannot synchronize a replay still advancing by local `dt`: cross-client
+replay agreement also needs shared programme time and loop identity from the
+match owner. See the [clock contract](STADIUM-SCREEN.md#shared-direction-and-late-joins).
+`"live_programme": false` in
 the module config restores the SDK's clock. A harness can rehearse the whole
 path from any bundle with `rflBroadcast.rehearseLive({ bundleUrl, startsAt })`
 and take it down with `rehearseLive(null)` — the gate does, at 60 s (pre-roll),
@@ -850,7 +898,8 @@ and take it down with `rehearseLive(null)` — the gate does, at 60 s (pre-roll)
 RFL's programme holds the match clock for `replay_s` seconds at every goal
 (measured on m32: sixteen holds, fifteen goals, each exactly on the goal and
 exactly 5.0 s). Their render showed the goal again in that span; the stadium
-dwelled. On `/broadcast` the hold is now the replay: the stage runs the last
+dwelled. On live `/broadcast` and the visitor-screen path the hold is now the
+replay: the existing visible stage runs the last
 `replay_s` seconds up to the goal once more, from the scorer's head, while the
 programme clock — and so the scorebug's clock and score — stays where the
 hold is. The bug wears REPLAY; the director cuts to `headcam`, which outranks
@@ -868,9 +917,13 @@ the scoreboard hold, and hands back to the cut-list when the hold ends.
   no agreed forward axis; the look target is smoothed (τ = 0.12 s). FOV 68°.
 - **Live fixtures too.** A scheduled fixture is driven through its programme
   on the wall clock (below), so its holds are replays here as well.
-- Visitors' clients keep the dwell: `replayCam(true)` is asked for by the
-  broadcast page, not set in the venue config. A capture (`?capture=1`) never
-  arms it.
+- The visitor path now also arms `replayCam(true)` on its existing match
+  module. Pitch and television therefore share the replay pose in one scene;
+  there is no private stage mounted for the headcam. Its aim uses a bounded
+  ~0.72-second, 60 Hz history from loaded tracks rather than arrival-dependent
+  previous-frame smoothing. Automatic `/broadcast` consumes the same pose.
+  Explicit broadcast cameras/tracks keep their opt-out, and deterministic
+  capture (`?capture=1`) never arms it.
 
 `rflBroadcast.seekMatch(t)` onto a goal's own time is a replay on demand,
 which is how the gate proves it without waiting for one.

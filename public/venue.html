@@ -43,7 +43,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { createAfterToneMap } from '/js/after-tonemap.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
@@ -68,7 +68,7 @@ const params = new URLSearchParams(location.search);
 const status = document.getElementById('status');
 
 // ---- identical pipeline to index.html ----
-const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -87,7 +87,8 @@ ground.rotation.x = -Math.PI / 2;
 ground.position.y = -0.01;
 scene.add(ground);
 scene.add(new THREE.HemisphereLight(0x8899ff, 0x080610, 0.25));
-const composer = new EffectComposer(renderer);
+const after = createAfterToneMap({ renderer, camera });
+const composer = after.composer;
 composer.addPass(new RenderPass(scene, camera));
 composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.12, 0.3, 1.0));
 composer.addPass(new OutputPass());
@@ -168,7 +169,8 @@ function step(frames = 30, dt = 1 / 60) {
   media.update(probe.pos, frames * dt);
   controls.update();
   renderer.info.reset();
-  composer.render();
+  venues.renderBroadcasts();
+  after.render(venues.afterToneMap());
   return stats();
 }
 function countTree(root) {
@@ -415,7 +417,8 @@ renderer.setAnimationLoop(() => {
   media.update(probe.pos, dt);
   controls.update();
   renderer.info.reset();
-  composer.render();
+  venues.renderBroadcasts();
+  after.render(venues.afterToneMap());
   const s = stats();
   status.textContent = `${def ? def.name : '—'} · tier ${s.tier} (want ${s.want}) · ${s.calls} calls · ${s.tris} tris · ${s.lights} lights · ${s.colliders} venue colliders${s.errors.length ? ` · ${s.errors.length} error(s)` : ''}`;
 });

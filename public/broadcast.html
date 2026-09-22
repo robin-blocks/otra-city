@@ -80,6 +80,8 @@ import { createScorebug } from '/js/scorebug.js';
 import { createLeagueOverlay } from '/js/league-overlay.js';
 import { createPostMatchTable } from '/js/post-match-table.mjs';
 import { createCleanOutput } from '/js/broadcast-output.mjs';
+import { createBroadcastProgramme } from '/js/broadcast-programme.js';
+import { createBroadcastSurface } from '/js/broadcast-screen.js';
 
 const FPS = 50;                 // the brief's timebase; one step is 20 ms
 const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
@@ -87,7 +89,7 @@ const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
 // page's behaviour changes. It is reported in `state().build` and on the note
 // line, so "the deployed page still says X" is settled by reading the page,
 // not by comparing memories of deploys.
-const BUILD = '2026-09-21c';
+const BUILD = '2026-09-22a';
 
 // Errors are evidence: a silent failure films a black hour, so every one is
 // kept for `state()`, echoed to the console the harness reads, and shown.
@@ -272,13 +274,18 @@ let livePaceFrom = null;
 // it started. See `watchForNewBuild()`.
 const updater = { armed: false, etag: null, changed: false, checks: 0, reloading: false, heldSince: null, holding: null };
 // The big screen's texture: a copy of the frame this page just drew.
-let feedTex = null, feedMesh = null;
+let feedTex = null, feedMesh = null, feedSurface = null;
+let sharedProgramme = null, programmeFrame = null;
 // The broadcast graphics. Live only: a deterministic capture would have to
 // reproduce the clock exactly, and the clock comes off the publisher's stage.
 const scorebug = live ? createScorebug({ width: W, height: H }) : null;
 // Only the automatic live programme owns the post-match cue. Explicit cameras
 // and deterministic capture remain untouched, including their network budget.
-const postMatchTable = autoDirect ? createPostMatchTable() : null;
+// Shared programme owns the table's validation/timing for both output routes.
+const postMatchTable = autoDirect ? {
+  update: () => programmeFrame?.tableCue ?? null,
+  state: () => sharedProgramme?.state()?.table ?? { visible: false, status: 'loading' },
+} : null;
 const leagueOverlay = autoDirect ? createLeagueOverlay({ width: W, height: H, crestFor: (team) => scorebug.crestFor(team) }) : null;
 const feedStat = { wanted: false, mesh: null, slot: null, attached: false, yielded: false, copies: 0, error: null };
 
@@ -332,7 +339,7 @@ async function boot() {
     return true;
   });
 
-  venues = createVenues(scene, world, { loader, player: viewer, doors, anims, media, camera, renderer });
+  venues = createVenues(scene, world, { loader, player: viewer, doors, anims, media, camera, renderer, broadcastCapture: true });
   V = venues.get(wantVenue);
 
   // Park the viewer at the venue's centre so the streamer resolves Tier 2,
@@ -356,6 +363,8 @@ async function boot() {
     try { matchCut = await loadTrack(MATCH_CUTLIST); } catch (e) { fail('cutlist', e); }
     try { prerollCut = await loadTrack(PREROLL_CUTLIST); } catch (e) { fail('cutlist', e); }
     cutNow = ambientCut;
+    sharedProgramme = await createBroadcastProgramme({ venue: def,
+      tracks: { ambient: ambientCut, match: matchCut, preroll: prerollCut } });
   }
 
   if (crowdDensity > 0) {
@@ -553,26 +562,8 @@ function ensureFeed() {
   feedMesh = findMeshIn(V?.nodes?.[nodeName]);
   feedStat.mesh = feedMesh ? (feedMesh.name || '(unnamed)') : null;
   if (!feedMesh) { feedStat.error = `no mesh under "${nodeName}"`; return; }
-  // FramebufferTexture, not Texture: three has a separate upload path for a
-  // texture that is filled by a copy rather than from an image, and a plain
-  // Texture with a made-up `image` hits the wrong one.
-  feedTex = new THREE.FramebufferTexture(W, H);
-  // NOT SRGBColorSpace, however much the pixels deserve it. Marking it sRGB
-  // makes three allocate an SRGB8_ALPHA8 texture, and copyTexSubImage2D from
-  // the default framebuffer into one of those is INVALID_OPERATION — which it
-  // reports by setting an error flag rather than throwing, so every counter
-  // reads healthy and the screen is simply black. Measured: gl error 0x502 on
-  // every copy. Left linear, the already-encoded bytes pass through and get
-  // encoded once more by the output pass, which lifts the screen slightly.
-  // A stadium screen being a little hot is a fair price for one that works.
-  feedTex.minFilter = THREE.LinearFilter;
-  feedTex.magFilter = THREE.LinearFilter;
-  feedTex.generateMipmaps = false;
-  // A framebuffer is written bottom-up; every media surface in this city
-  // carries glTF UVs, which are not.
-  feedTex.flipY = false;
-  feedTex.repeat.set(1, -1);
-  feedTex.offset.set(0, 1);
+  feedSurface = createBroadcastSurface(feedMesh, W, H);
+  feedTex = feedSurface.texture;
 }
 
 /** Hand the screen the feed while a match is on, and the plate back when it is not. */
@@ -580,20 +571,11 @@ function updateFeedScreen() {
   if (!live) return;
   ensureFeed();
   if (!feedMesh || !feedTex) return;
-  const m = matchState();
-  const onAir = m?.phase === 'match';
-  // THE BUILD-UP AND THE OUTRO BELONG TO THE MODULE, not to the feed. Through
-  // those the module has the venue's own card on this screen — who is playing
-  // and how long until the whistle — and the director spends four fifths of
-  // the pre-roll framing it. Painting the broadcast over it would put a
-  // picture of the stadium where the countdown should be, and the two would
-  // fight for the material four times a second.
-  const own = m?.bug?.preroll === true || (m?.bug?.over === true && m?.bug?.inPlay === false);
-  const want = onAir && !own ? feedTex : null;
-  // Between matches the module paints its own card here; leave it alone.
-  if (want && feedMesh.material.map !== feedTex) { feedMesh.material.map = feedTex; feedMesh.material.needsUpdate = true; }
-  feedStat.attached = feedMesh.material.map === feedTex;
-  feedStat.yielded = !!own;
+  // Always television: idle, build-up and post-roll no longer hand the
+  // main screen back to the match package's card/video. Side panels stay put.
+  feedSurface.attach();
+  feedStat.attached = feedMesh.material === feedSurface.material;
+  feedStat.yielded = false;
 }
 
 /**
@@ -821,6 +803,17 @@ function direct(dt = 0) {
     if (mod?.replayCam) { mod.replayCam(true); replayArmed = true; }
   }
   const m = matchState();
+  if (sharedProgramme) {
+    const mod = venues?.module?.(wantVenue, 'match-4dgsx');
+    programmeFrame = sharedProgramme.evaluate({ match: m, nowMs: Date.now(), dt, samplePlay: mod?.samplePlay });
+    const d = sharedProgramme.state();
+    goalCut = d.goalCut === true;
+    settleUntil = d.settling ? simT + 1 : 0;
+    cutNow = d.phase === 'play' ? matchCut : d.phase === 'preroll' ? prerollCut : ambientCut;
+    gantryAim = programmeFrame.camera?.camera === 'gantry' ? programmeFrame.camera.lookAt : null;
+    gantryFov = gantryAim ? programmeFrame.camera.fov : null;
+    return;
+  }
   const onAir = m?.phase === 'match';
   // RFL's §4: during play, the gantry essentially throughout — two-a-side robot
   // football is small in frame and every cut away costs the viewer the thread.
@@ -887,6 +880,10 @@ function applySound() {
 }
 
 function cameraAt(name, frameNo) {
+  if (typeof programmeFrame !== 'undefined' && programmeFrame?.camera && autoDirect) {
+    lastTrackCam = programmeFrame.camera;
+    return lastTrackCam;
+  }
   const key = String(name).toLowerCase();
   const t = frameNo / FPS;
   // THE HEAD CAM. While the module is running a goal again it says where the
@@ -1009,7 +1006,7 @@ function draw() {
   renderer.info.reset();
   // The city through the composer, then the match on top of it, with the
   // scene's depth — a player behind the near stand stays behind it.
-  after.render(venues?.afterToneMap() ?? []);
+  after.render([...(venues?.afterToneMap() ?? []), ...(typeof feedSurface !== 'undefined' && feedSurface ? [feedSurface.mesh] : [])]);
   // The graphics go on before the screen takes its copy, so the big screen
   // carries the broadcast as broadcast — scorebug and all — which is what a
   // ground's screen actually shows. It nests, because the feed camera can see
@@ -1252,6 +1249,7 @@ window.rflBroadcast = {
       // nothing to show
       scorebug: live ? (matchState()?.bug ?? null) : null,
       leagueTable: postMatchTable?.state() ?? null,
+      programme: sharedProgramme?.state() ?? null,
       // the crests behind the scorebug: the manifest, and how many images landed
       crests: live && scorebug?.crests ? scorebug.crests : null,
       calls: r.calls, tris: r.triangles,

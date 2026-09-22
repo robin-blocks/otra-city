@@ -102,6 +102,24 @@ async function openBroadcast({ width = 1280, height = 720, liveMode = false } = 
   const chrome = await launchChrome({ width, height, gpu: flag('gpu') });
   const problems = [];
   chrome.onConsole((type, text) => { if (type === 'error') problems.push(text); });
+  // Install before SDK initialization: the isolated adapter captures fetch once.
+  // Inert until the map-less rehearsal selects one manifest, then reset in its
+  // finally block. This changes QA responses only, never the public bundle.
+  if (liveMode) await chrome.send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
+    const original = window.fetch.bind(window);
+    window.__clockMaplessUrl = null;
+    window.__clockMaplessReads = 0;
+    window.fetch = async function(input, init) {
+      const response = await original(input, init);
+      const url = new URL(typeof input === 'string' ? input : input.url || String(input), location.href);
+      if (url.href !== window.__clockMaplessUrl || !response.ok) return response;
+      const scene = await response.json();
+      delete scene.program;
+      if (scene.audio) delete scene.audio.map;
+      window.__clockMaplessReads++;
+      return new Response(JSON.stringify(scene), { status: response.status, headers: { 'Content-Type': 'application/json' } });
+    };
+  })()` });
   // `capture=1` is not optional here: /broadcast is a live feed by default,
   // and a harness that omits it gets live visitors and a wall clock. That is
   // exactly the mistake this flag is meant to make loud, so the gate proves it
@@ -545,21 +563,23 @@ try {
       long.length ? `over ${MAX_STAND_S}s: ${long.join(', ')}`
                   : `${seen.length} stand shot(s), longest ${Math.max(...seen.map((x) => parseFloat(x.split(' ')[1])))}s — ${seen.join(', ')}`);
   }
-  // "NO MATCH SCHEDULED" is a true sentence and a dead screen, and for most of
-  // any day it was the only thing the big screen had to say: RFL publish a
-  // fixture close to its kick-off, so the feed spends hours carrying sixty
-  // replays and nothing upcoming. The channel does declare when it plays, and
-  // that is a real answer to the question the card exists to answer.
+  // The main screen belongs to the parent broadcast in every programme
+  // phase. Schedule/countdown cards stay on the side panels and scoreboard;
+  // an idle or pre-roll main must not silently revert to the old card/video.
   {
-    let sP = sL;
-    for (const until = Date.now() + 60000; Date.now() < until && !sP.match?.channel;) { await sleep(1000); sP = await lv.state(); }
-    const ch = sP.match?.channel;
-    const main = sP.match?.screens?.main || '';
-    const canSay = !!(ch?.slots || []).length || !!sP.match?.next;
-    check('the big screen says when the next match is, not that there is not one',
-      !canSay || /coming up|next slot/i.test(main),
-      ch ? `screen reads "${main}" — ${sP.match?.next ? `fixture ${sP.match.next.id}` : `no fixture listed, channel plays at ${(ch.slots || []).join(', ') || '(no slots declared)'}`}`
-         : 'the programme did not arrive within 60 s, so the card could not be judged');
+    let sP = await lv.state();
+    const copies0 = sP.feed?.copies ?? 0;
+    for (const until = Date.now() + 30000; Date.now() < until && (sP.feed?.copies ?? 0) <= copies0;) {
+      await sleep(250); sP = await lv.state();
+    }
+    check('the big screen carries the parent broadcast, including between matches',
+      sP.match?.screens?.main === 'parent broadcast' && sP.feed?.attached === true
+        && sP.feed?.yielded === false && !sP.feed?.error && sP.feed.copies > copies0,
+      `screen "${sP.match?.screens?.main}", feed ${JSON.stringify(sP.feed)}, copies ${copies0} -> ${sP.feed?.copies}`);
+    const roots = sP.match?.phase === 'match' ? 2 : 1;
+    check('the live picture composites the broadcast screen after tone mapping',
+      sP.afterToneMap?.roots === roots && !sP.afterToneMap?.error,
+      `${sP.afterToneMap?.roots} roots (expected ${roots}: screen${roots === 2 ? ' + match' : ', no match'}), error ${sP.afterToneMap?.error ?? 'none'}`);
   }
 
   // A capture that reloads itself mid-run is a determinism bug; a live feed
@@ -678,6 +698,9 @@ try {
       }
       return { materials, still: [...new Set(still)], where, pass: window.rflBroadcast.state?.().afterToneMap ?? null };
     })()`);
+    check('the live match and broadcast screen are both drawn after tone mapping',
+      !tm.error && drewAFrame && tm.pass?.roots === 2 && !tm.pass?.error,
+      `pass ${JSON.stringify(tm.pass)}, frame drawn ${drewAFrame}`);
     check('nothing drawn after the tone mapping is tone mapped again', !tm.error && drewAFrame && tm.still.length === 0,
       tm.error || (!drewAFrame ? 'the pass drew no frame within 30 s of the mount, so nothing was judged'
         : `${tm.materials} materials in the stage, ${tm.still.length ? `still tone mapped: ${tm.still.join(', ')} — at ${(tm.where || []).join(' | ')}; pass ${JSON.stringify(tm.pass)}` : 'none tone mapped'}`));
@@ -842,24 +865,12 @@ try {
         } while (Date.now() < deadline);
         return { ok: false, x };
       };
-      // A mounted stage can precede the venue's programme-map read. Exercise
-      // that state with map-less scene responses in THIS browser only; the
+      // Programme metadata now comes from the same loaded manifest as the
+      // stage. Exercise a missing map through the preinstalled QA fetch shim;
       // actual HUD, tracks and stage still come from the publisher's bundle.
-      // This also catches a failed map read, not only a fast cache hit.
       await lv.evaluate(`(() => {
-        const original = window.fetch;
-        window.__restoreClockFetch = () => { window.fetch = original; delete window.__restoreClockFetch; };
         window.__clockMaplessReads = 0;
-        window.fetch = async function(input, init) {
-          const response = await original.call(this, input, init);
-          const url = new URL(typeof input === 'string' ? input : input.url || String(input), location.href);
-          if (url.href !== ${JSON.stringify(`${bundleUrl.replace(/\/+$/, '')}/scene.json`)} || !response.ok) return response;
-          const scene = await response.json();
-          delete scene.program;
-          if (scene.audio) delete scene.audio.map;
-          window.__clockMaplessReads++;
-          return new Response(JSON.stringify(scene), { status: response.status, headers: { 'Content-Type': 'application/json' } });
-        };
+        window.__clockMaplessUrl = ${JSON.stringify(`${bundleUrl.replace(/\/+$/, '')}/scene.json`)};
         return true;
       })()`);
       try {
@@ -873,13 +884,15 @@ try {
             && Math.abs(b.audioOffset - (180 + b.t)) < 0.1,
           `map-less reads ${maplessReads}, board "${read.x?.match?.board}", match t ${b?.t}, audioOffset ${b?.audioOffset}`);
       } finally {
-        await lv.evaluate('window.__restoreClockFetch?.()');
+        await lv.evaluate('window.__clockMaplessUrl = null');
       }
       const pre = await rehearse(60);
       check('a live fixture 60 s into its programme is in the pre-roll, on the venue\'s own screens',
         pre.ok === true && pre.x.match?.drive === 'wall' && pre.x.scorebug?.tag === 'Kick-off' && pre.x.scorebug?.live === true
-          && pre.x.director?.list === 'preroll' && !(pre.x.match?.docks || []).some((d) => d.attached) && /coming up/i.test(pre.x.match?.screens?.main || ''),
-        `drive ${pre.x?.match?.drive}, tag ${pre.x?.scorebug?.tag} ${pre.x?.scorebug?.clock}, live ${pre.x?.scorebug?.live}, list ${pre.x?.director?.list}, docks ${JSON.stringify((pre.x?.match?.docks || []).map((d) => d.attached))}, screen "${pre.x?.match?.screens?.main}"`);
+          && pre.x.director?.list === 'preroll' && !(pre.x.match?.docks || []).some((d) => d.attached)
+          && pre.x.match?.screens?.main === 'parent broadcast' && pre.x.feed?.attached === true
+          && pre.x.feed?.yielded === false && pre.x.feed?.copies > 0 && !pre.x.feed?.error,
+        `drive ${pre.x?.match?.drive}, tag ${pre.x?.scorebug?.tag} ${pre.x?.scorebug?.clock}, live ${pre.x?.scorebug?.live}, list ${pre.x?.director?.list}, docks ${JSON.stringify((pre.x?.match?.docks || []).map((d) => d.attached))}, screen "${pre.x?.match?.screens?.main}", feed ${JSON.stringify(pre.x?.feed)}`);
       const preBoard = await boardReading('KICK-OFF IN');
       check('the mounted scoreboard counts down to kick-off with the scorebug, not the SDK clock',
         preBoard.ok && preBoard.x.scorebug?.preroll === true,

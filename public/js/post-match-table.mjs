@@ -11,27 +11,29 @@ const REFRESH_MS = 60000;
 
 export function createPostMatchTable({ fetcher = globalThis.fetch, url = LEAGUE_DATA_URL } = {}) {
   let doc = null, pending = false, attemptedAt = -Infinity, revision = 0;
+  let disposed = false, requestAbort = null;
   let networkError = null;
   let key = null, previousT = null, safeSince = null, startedAt = null;
   let finished = false, presentation = null, assessed = null, assessment = null;
   let status = { visible: false, status: 'idle', reason: null, matchId: null };
 
   async function refresh(nowMs) {
-    if (pending || nowMs - attemptedAt < REFRESH_MS) return;
+    if (disposed || pending || nowMs - attemptedAt < REFRESH_MS) return;
     pending = true;
     attemptedAt = nowMs;
-    const abort = new AbortController();
+    const abort = new AbortController(); requestAbort = abort;
     const timer = setTimeout(() => abort.abort(), 10000);
     try {
       const r = await fetcher(url, { credentials: 'omit', cache: 'no-cache', signal: abort.signal });
       if (!r.ok) throw new Error(`league data HTTP ${r.status}`);
       const next = await r.json();
+      if (disposed) return;
       if (!Array.isArray(next?.seasons)) throw new Error('league data has no seasons');
       doc = next;
       revision += 1;
       networkError = null;
     } catch (e) { networkError = e?.message || String(e); }
-    finally { clearTimeout(timer); pending = false; }
+    finally { clearTimeout(timer); pending = false; requestAbort = null; }
   }
 
   function reset(nextKey) {
@@ -42,6 +44,7 @@ export function createPostMatchTable({ fetcher = globalThis.fetch, url = LEAGUE_
   return {
     /** m is the match module's state, not the public diagnostics subset. */
     update({ match: m, camera, settling = false, time, nowMs = Date.now() }) {
+      if (disposed) return null;
       const bug = m?.bug;
       const id = m?.match?.id;
       const nextKey = m?.phase === 'match' && id ? `${id}:${m.loops ?? 0}` : null;
@@ -112,5 +115,6 @@ export function createPostMatchTable({ fetcher = globalThis.fetch, url = LEAGUE_
       return { presentation, elapsed };
     },
     state() { return { ...status }; },
+    dispose() { disposed = true; requestAbort?.abort(); doc = null; presentation = null; status = { visible: false, status: 'disposed' }; },
   };
 }
