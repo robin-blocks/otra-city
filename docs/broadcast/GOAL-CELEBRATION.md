@@ -1,8 +1,10 @@
-# RFL goal celebration compatibility — release candidate, 22 September 2026
+# RFL goal celebration compatibility — release held, 22 September 2026
 
 RFL's approved goal effect inserts a 1.6-second physical celebration before
-the replay. The original gameplay recording is unchanged. This host patch is
-backward compatible and does not enable the effect or change the schedule.
+the replay. This host patch is backward compatible and does not enable the
+effect or change the schedule. **PR119 remains draft: acceptance failed.**
+Robin explicitly authorized merge on September 22 if the final checks pass;
+that authority is not the blocker. The checks below are.
 
 ## Contract
 
@@ -20,36 +22,71 @@ backward compatible and does not enable the effect or change the schedule.
   rule; legacy interpolation is unchanged. New tracks reach the exact last
   sample rather than stopping at nframes-1.001.
 - RFL makes the flash opaque so the host's glass-panel filter leaves it alone.
+- Automatic priority is headcam → celebration → scoreboard. During a
+  celebration the existing gantry aims at the scoring end (RFL A/0 attacks
+  +x, B/1 attacks −x); missing end metadata keeps the full-pitch wide. Do not
+  follow the parked ball. This also overrides interval/postmatch direction
+  and suppresses the table until the celebration has ended.
+- Candidate broadcast build is `2026-09-22b`. Changing the document lets the
+  existing ETag updater detect these imported-module changes; existing live
+  programme and 15-minute pre-start reload guards remain untouched.
 
 ## Verification
 
-16 Node tests pass (goal-celebration-check + match-clock-check), including
-legacy, multiple goals, own source mapping, both buzzer kinds, overlapping
-pauses, malformed optional data, seek, and decimal-rounded replay boundary.
-The SDK browser check passes, including native stage / pure sampler agreement,
-FX teleport forward/backward and final endpoint, scheduled mount/disposal,
-legacy interpolation and original panel/audio requests.
+39 director/goal-clock/replay Node tests pass, including both ends, multiple
+goals, buzzer goals, wrong-end players, projection calibration, reverse seek,
+fresh arrival and legacy behavior. The pinned-SDK browser check passes with
+byte-exact regeneration from the audited upstream source, including native
+stage / pure sampler agreement, FX teleport forward/backward/final endpoint,
+scheduled mount/disposal and unchanged audio/panel requests.
 
-The exact audited upstream source SHA remains in sdk-provenance.json. The
-factory was regenerated with sdkFactorySource and reproduced byte-for-byte;
-there is no runtime source rewriting and no upstream repo edit.
+The exact audited upstream source SHA remains in sdk-provenance.json. There
+is no runtime source rewriting, upstream repo edit or licensing change.
 
-## Not yet release acceptance
+## Final acceptance findings
 
-An isolated second Chrome on the real streaming GPU displayed the exported
-synthetic goal in /broadcast, with the clock held and replay delayed. Its
-six-second test counted 121 actual draw serial advances (~20.17 fps), both
-with and without FX. Calls increased 401 → 474. The existing production
-browser/encoder remained running throughout: this is a concurrent-load
-measurement, NOT evidence that the effect alone causes 20 fps, and NOT a
-50-fps production acceptance. The visitor /venue path costs multiple passes
-and also needs a budget decision; its full-scene count is not interchangeable
-with the broadcast count.
+**Automatic director bug fixed:** the original candidate cut to the scoreboard
+for the entire explosion. An isolated hardware screenshot confirmed it. The
+new celebration priority shows the ring, confetti and reacting robot on pitch,
+then hands over to the scorer replay. This was checked in the actual /broadcast
+renderer, not just the director's camera name. Existing public schedules and
+the production browser were not modified.
 
-Remaining: representative real-club geometry/draw headroom, target broadcast
-cadence under representative load, complete premix/picture sync, automatic
-director goal shot, and deployed-byte adoption. No force reload mid-programme.
-The RFL publisher remains fail-closed and match generation default-off.
+**Representative draw budget FAIL:** a scratch-only bundle combines the known
+synthetic celebration track with actual Gemini/Sol club geometry. Source
+recording/bundle bytes are unchanged; this is NOT league footage or a result.
+On the Iris Plus 655, automatic mode used a maximum **429 calls without the
+73 effect draws, 502 with them**, beyond the existing 480 per-view ceiling.
+Both original-director arms ran ~19.83fps with another production browser
+competing. The corrected pitch-shot arm delivered 108 draw advances/~6s
+(~17.85fps), still 502 calls. These are concurrent-load measurements, NOT
+attribution of production slowdown to FX, and NOT 50fps acceptance. The pinned
+SDK sets meshes frustumCulled=false, so parking effects does not remove their
+draw submissions. Do not quietly raise the budget to pass this release.
 
-Per docs/stadium/PROJECT.md, Robin owns the merge to main. This branch is a
-review handoff, not permission to auto-merge or deploy an unverified release.
+**RFL realtime neutrality FAIL:** a calibrated fake-clock run of the actual
+MuJoCo match loop found that added celebration wall work can move the 10s
+asynchronous decision watchdog. A replacement request and its next request
+then occur earlier in simulation time, despite honest-latency delivery.
+Pre-goal poses were identical; subsequent playing poses diverged. This is a
+controlled possible timing schedule, not evidence that a shipped result was
+changed. Physical clone isolation alone is insufficient. Keep generation and
+publication guarded until presentation work is isolated from club timing.
+
+**Offline full-programme A/V PASS, bounded:** actual four-goal MuJoCo video,
+real mixer/commentary placement/AAC and 180s pre/post concatenation were checked,
+including consecutive and both buzzer goals. Cheer onset was 30–50ms after
+actual video PTS, consistent with intentional +50ms plus 25fps quantization;
+a deliberate 400ms encoded delay measured 400ms. No accumulating celebration
+drift. Premix/stem priming differs by ~23ms, mostly cancelled by video PTS for
+the dock video. This does NOT verify delivered host 3D picture plus Pulse/Twitch
+premix; that gate remains open.
+
+## Release posture
+
+Do not merge/enable yet. Remaining: realtime timing isolation, representative
+rendering budget/cadence, delivered host-picture/premix acceptance, then deployed
+byte adoption. RFL publisher remains fail-closed and match generation default-off.
+No force reload during a scheduled programme or its pre-start hold; no changes
+to existing results. RFL retains detailed reproducible evidence privately under
+`work/evidence/2026-09-22-goal-acceptance/`.
