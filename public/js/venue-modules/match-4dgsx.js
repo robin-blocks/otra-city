@@ -18,6 +18,7 @@
 import * as THREE from 'three';
 import { createPA, mapTime, unmapTime } from '/js/pa-system.js';
 import { matchPeriod, mmss, boardClock } from '/js/match-clock.mjs';
+import { createBroadcastSdk } from './broadcast-sdk.mjs';
 
 // The publisher ships every dynamic body twice: as indexed mesh geometry in
 // `prims`/`draws`, and as a surface-sampled gaussian cloud in `points.bin`.
@@ -92,10 +93,13 @@ const BALL_MAX_MS = 25;
 // preferred once it has been read; this is for the second before it has.
 const PRE_ROLL_S = 180;
 const BOARD_H = 576;
-let sdkPromise = null;
-// A rejected import must not be cached: the module retries the SDK on the
-// next activation, which it cannot do if the failure is remembered forever.
-const loadSdk = (url) => (sdkPromise ??= import(url).catch((e) => { sdkPromise = null; throw e; }));
+
+// JSON programme metadata is shared read-only with directors, never stage internals.
+function freezeProgramme(value) {
+  if (!value || typeof value !== 'object') return value;
+  for (const child of Object.values(value)) freezeProgramme(child);
+  return Object.freeze(value);
+}
 
 function findMesh(node) {
   if (!node) return null;
@@ -228,7 +232,7 @@ export function create(ctx) {
     play: null, ball: null,
     // the arena boards we dressed, whether the bundle's bodies are reachable,
     // the goals in this match, and the replay + head cam when one is running
-    boards: null, bodies: null, goals: [], replay: null, headcam: null, replayCam: false,
+    boards: null, bodies: null, goals: [], goal: null, replay: null, headcam: null, replayCam: false,
     // when the screens say the ball is kicked, and the stream start it came from
     kickOff: null,
     // the publisher's clock plan for the mounted match: halves, and every
@@ -237,7 +241,9 @@ export function create(ctx) {
     // how the mounted match's clock is driven: 'wall' (a live fixture, through
     // its programme on the wall clock), 'dt' (a replay, on our frame time),
     // or null (the publisher's own clock)
-    drive: null, programmeT: null,
+    drive: null, programmeT: null, programme: null,
+    // Reserved video is removed before allocation by the pinned local SDK adapter.
+    reservedVideo: cfg.live_screen ? 'pending' : 'not reserved',
     // HOW A SCHEDULED FIXTURE GOT ON THE PITCH, in milliseconds.
     //
     // RFL timed the m35 mount from outside on 2026-09-15 — 100 s between
@@ -269,7 +275,10 @@ export function create(ctx) {
   // reachable only through that material, and the venue's disposal walks the
   // scene graph — so a dropped material is a texture nobody ever frees.
   const swapped = [];
-  for (const mesh of [scoreMesh, ...Object.values(dockMeshes)]) {
+  // A reserved dock belongs to the parent for its ENTIRE lifetime: do not
+  // replace its material on create/dispose, paint idle cards, or flip its map.
+  const ownedDocks = Object.fromEntries(Object.entries(dockMeshes).filter(([slot]) => slot !== cfg.live_screen));
+  for (const mesh of [scoreMesh, ...Object.values(ownedDocks)]) {
     if (!mesh) continue;
     const original = mesh.material;
     const mat = new THREE.MeshBasicMaterial({ map: original.map || original.emissiveMap || null });
@@ -286,9 +295,7 @@ export function create(ctx) {
   boardTex.colorSpace = THREE.SRGBColorSpace;
   boardTex.flipY = false;   // glTF UV convention, like every media node in the city
   boardTex.anisotropy = 4;
-  let goalUntil = -1;
   let boardTimer = 0;
-  let simTime = 0;
   // How old the last programme document was when it arrived, in ms. NOT a
   // clock correction, which is what it used to be: the feed's `now` is the
   // moment a cached response was generated, and that cache serves stale —
@@ -342,7 +349,7 @@ export function create(ctx) {
     g.fillRect(44, 84, W - 88, 3);
     let text = '';
     const st = stage;
-    if (goalUntil > simTime) {
+    if (programmeGoal()) {
       g.textAlign = 'center';
       g.fillStyle = '#ff2d95';
       g.font = '900 190px Menlo, monospace';
@@ -478,7 +485,7 @@ export function create(ctx) {
   // unmount, not ours — so re-applying is part of the paint, not a one-off.
   const IDLE_SIZE = { main: [1024, 576], left: [696, 1024], right: [696, 1024] };
   const idleScreens = {};
-  for (const slot of Object.keys(dockMeshes)) {
+  for (const slot of Object.keys(ownedDocks)) {
     const [w, h] = IDLE_SIZE[slot] || [1024, 576];
     const c = document.createElement('canvas');
     c.width = w;
@@ -610,7 +617,8 @@ export function create(ctx) {
   function paintIdleScreens(force = false) {
     if ((stage && !force) || !Object.keys(idleScreens).length) return;
     const screens = {};
-    screens.main = paintComingUp();
+    if (cfg.live_screen) screens[cfg.live_screen] = 'parent broadcast';
+    if (cfg.live_screen !== 'main') screens.main = paintComingUp();
     // The slot named `right` is the one that reads on the LEFT of the
     // `screen_main` shot — the camera looks up the +z axis, which puts +x to
     // port. Checked against a render, not reasoned about: fixtures come before
@@ -628,17 +636,17 @@ export function create(ctx) {
       a: `${i.home?.code || '?'}  v  ${i.away?.code || '?'}`,
       b: londonTime(kickOffIso(i.startsAt)),
     }));
-    screens.right = fixtures.length
+    if (cfg.live_screen !== 'right') screens.right = fixtures.length
       ? paintList('right', 'FIXTURES', fixtures)
       : paintList('right', 'MATCH DAYS', (state.channel?.slots || []).slice(0, 4).map((x) => ({
         a: String(x), b: `every day · ${state.channel?.timezone || 'Europe/London'}`,
       })));
-    screens.left = paintList('left', 'RESULTS', (state.recent || []).slice(0, 4).map((i) => ({
+    if (cfg.live_screen !== 'left') screens.left = paintList('left', 'RESULTS', (state.recent || []).slice(0, 4).map((i) => ({
       a: `${i.home?.code || '?'} ${i.score?.[0] ?? '–'} – ${i.score?.[1] ?? '–'} ${i.away?.code || '?'}`,
       b: londonTime(i.startsAt),
       tone: '#8a86a0',
     })));
-    for (const [slot, mesh] of Object.entries(dockMeshes)) {
+    for (const [slot, mesh] of Object.entries(ownedDocks)) {
       const s = idleScreens[slot];
       if (s && mesh.material.map !== s.tex) { mesh.material.map = s.tex; mesh.material.needsUpdate = true; }
     }
@@ -674,13 +682,12 @@ export function create(ctx) {
   let sceneBodies = null;
   let bodyOk = false;
   let goals = [];
-  // Whether goal holds are run again from the scorer's head (the broadcast
-  // page asks for it; a visitor's client keeps the publisher's dwell).
+  // Whether goal holds are run again from the scorer's head. The parent asks
+  // for this on both the broadcast page and the visitor's internal broadcast.
   let replayCam = false;
   let boardMesh = null;
   let boardsLoad = null;
   let boardsTex = null;
-  let lookSmooth = null;
   const _hv = new THREE.Vector3(), _bv = new THREE.Vector3(), _fv = new THREE.Vector3();
   // A scheduled fixture driven by us through its programme: when its
   // programme started on the wall clock, and how long its pre-roll is. The
@@ -912,7 +919,7 @@ export function create(ctx) {
       if (node && node.children.some((c) => c.isSprite && near(c.position.x, off[0]) && near(c.position.y, off[1]) && near(c.position.z, off[2]))) agreed += 1;
     }
     bodyOk = checked > 0 && agreed === checked && root.children.length >= sceneBodies.length + 1;
-    state.bodies = { checked, agreed, ok: bodyOk, ball: sceneBodies.includes('ball') };
+    state.bodies = { checked, agreed, ok: bodyOk, ball: sceneBodies.includes('ball'), sampling: st.host?.samplePlay ? 'loaded-track' : null };
   }
   /** The group that carries a body's transform, by the bundle's own name for it. Null unless verified. */
   function bodyNode(name) {
@@ -1052,8 +1059,8 @@ export function create(ctx) {
     for (const [slotName, mesh] of Object.entries(dockMeshes)) {
       // One slot can be reserved for the venue's own live feed — the big
       // screen showing the broadcast rather than a recording of it. The
-      // publisher's dock is not attached there, so nothing decodes a video
-      // into a texture that would immediately be painted over.
+      // publisher's dock is not attached there. Allocation is prevented
+      // separately by the per-mount adapter, BEFORE makeMediaDock runs.
       if (slotName === cfg.live_screen) { state.docks.push({ slot: slotName, attached: false, reason: 'live screen' }); continue; }
       let ok = false;
       try { ok = st.docks.attach(slotName, mesh); } catch (e) { state.errors.push(`dock ${slotName}: ${e.message}`); }
@@ -1229,34 +1236,65 @@ export function create(ctx) {
    * the ball is the story and a pelvis has no agreed forward axis. The look
    * target is smoothed a little so a bouncing ball does not shake the frame.
    */
-  function poseHeadcam(dt) {
-    const r = state.replay;
-    if (!r || !bodyOk || !stage) { state.headcam = null; lookSmooth = null; return; }
-    const p = (stage.hud?.players || []).find((x) => x.id === r.player);
-    const node = p?.anchor?.body ? bodyNode(p.anchor.body) : null;
-    if (!node) { state.headcam = null; return; }
-    const off = p.anchor.offset || [0, 0, 0.6];
-    node.updateWorldMatrix(true, false);
-    _hv.set(off[0], off[1], off[2]).applyMatrix4(node.matrixWorld);
-    const ball = bodyNode('ball');
-    if (ball) { ball.updateWorldMatrix(true, false); _bv.setFromMatrixPosition(ball.matrixWorld); }
-    else { pitch.updateWorldMatrix(true, false); _bv.setFromMatrixPosition(pitch.matrixWorld); }
+  // The SDK sampler returns stage-local Y-up positions from its own Poser.
+  // Convert copies to venue-local coordinates; no seeks, body pose writes or
+  // fetches. Reuses current mount only; after unmount/dispose it returns null.
+  const _sampleMatrix = new THREE.Matrix4(), _sampleInverse = new THREE.Matrix4();
+  function samplePlay(t) {
+    if (disposed || !stage?.host?.samplePlay || !Number.isFinite(t)) return null;
+    const play = stage.host.samplePlay(t);
+    if (!play) return null;
     root.updateWorldMatrix(true, false);
-    root.worldToLocal(_hv);
-    root.worldToLocal(_bv);
-    if (!lookSmooth) lookSmooth = _bv.clone();
-    else lookSmooth.lerp(_bv, 1 - Math.exp(-Math.max(0, dt) / 0.12));
-    // In front of the face, not inside the head: the anchor is the centre of
-    // the head, and a camera there films the inside of it and the shoulders
-    // below. Step out along the horizontal look direction, a little above.
-    _fv.subVectors(lookSmooth, _hv); _fv.y = 0;
+    stage.group.updateWorldMatrix(true, false);
+    _sampleMatrix.multiplyMatrices(_sampleInverse.copy(root.matrixWorld).invert(), stage.group.matrixWorld);
+    const local = (p) => p ? new THREE.Vector3(...p).applyMatrix4(_sampleMatrix).toArray() : null;
+    return { players: play.players.map(local), ball: local(play.ball),
+      anchors: play.anchors.map((p) => ({ id: p.id, pos: local(p.pos) })) };
+  }
+
+  function poseHeadcam() {
+    const r = state.replay;
+    if (!r || !stage) { state.headcam = null; return; }
+    // Use the exact posed time, not replay.t (rounded for diagnostics). A
+    // finite 0.72s / 60Hz exponential history is reconstructed every time.
+    // It has NO arrival, previous frame, render dt or previous replay seed.
+    const t = stage.time, play = samplePlay(t);
+    const head = play?.anchors.find((p) => p.id === r.player)?.pos;
+    if (!head || !play.ball) { state.headcam = null; return; }
+    _hv.fromArray(head);
+    let look = null;
+    const step = 1 / 60, count = 43, alpha = 1 - Math.exp(-step / 0.12);
+    for (let i = count; i >= 0; i--) {
+      const ball = (i === 0 ? play : samplePlay(t - i * step))?.ball;
+      if (!ball) { state.headcam = null; return; }
+      _bv.fromArray(ball);
+      if (!look) look = _bv.clone(); else look.lerp(_bv, alpha);
+    }
+    _fv.subVectors(look, _hv); _fv.y = 0;
     if (_fv.lengthSq() > 1e-6) { _fv.normalize(); _hv.addScaledVector(_fv, HEADCAM_FORWARD); }
     _hv.y += HEADCAM_UP;
     state.headcam = {
-      pos: [+_hv.x.toFixed(3), +_hv.y.toFixed(3), +_hv.z.toFixed(3)],
-      lookAt: [+lookSmooth.x.toFixed(3), +lookSmooth.y.toFixed(3), +lookSmooth.z.toFixed(3)],
-      fov: HEADCAM_FOV, player: r.player,
+      pos: _hv.toArray().map((v) => +v.toFixed(3)),
+      lookAt: look.toArray().map((v) => +v.toFixed(3)),
+      fov: HEADCAM_FOV, player: r.player, sampling: 'bounded-track-60hz',
     };
+  }
+
+  // GOAL is a four-second programme cue, NOT a local crossed-event timer.
+  // The first occurrence of goal match-time in the map is its scoring frame
+  // (the near edge of any replay hold). Late joins, jumps and loops agree.
+  function programmeGoal() {
+    if (!stage) { state.goal = null; return null; }
+    const t = programmeMatchT(), p = driving() ? programmeT : t;
+    let current = null;
+    for (const goal of goals) {
+      const start = driving() ? mapTime(programme.map, goal.t) : goal.t;
+      if (Number.isFinite(start) && p >= start && p < start + 4) {
+        current = { t: goal.t, programmeT: start, elapsed: p - start };
+      }
+    }
+    state.goal = current;
+    return current;
   }
 
   /**
@@ -1287,6 +1325,22 @@ export function create(ctx) {
   let ballPrevOk = false;
   let ballSpeed = 0;
   function trackPlay(dt) {
+    const sampled = samplePlay(stage?.time);
+    if (sampled) {
+      state.play = { players: sampled.players, ball: sampled.ball };
+      // Fixed 0.2s path-length window: speed, too, must not depend on render
+      // fps/arrival or make the director choose a different settling shot.
+      let distance = 0, prev = samplePlay(stage.time - 0.2)?.ball;
+      for (let i = 1; i <= 12 && prev; i++) {
+        const next = (i === 12 ? sampled : samplePlay(stage.time - 0.2 + i / 60))?.ball;
+        if (!next) { prev = null; break; }
+        distance += Math.hypot(...next.map((v, j) => v - prev[j])); prev = next;
+      }
+      const speed = distance / 0.2;
+      state.ball = sampled.ball ? { pos: sampled.ball, speed: prev && speed <= BALL_MAX_MS ? +speed.toFixed(3) : 0,
+        measured: !!prev && speed <= BALL_MAX_MS, sampling: 'bounded-track-60hz' } : null;
+      return;
+    }
     if (!bodyOk || !stage) { state.play = null; state.ball = null; ballPrevOk = false; ballSpeed = 0; return; }
     root.updateWorldMatrix(true, false);
     const local = (node) => {
@@ -1409,9 +1463,9 @@ export function create(ctx) {
   }
 
   function onMount(st, item, source = 'schedule', bundleUrl = null) {
-    // The scheduled path mounts inside `sdk.schedule()`, which takes no mount
-    // options, so a stage that arrived that way is told here instead. Same
-    // switch either way — `setSplats` is public on the stage.
+    // The scheduled path mounts inside `sdk.schedule()`. Keep the host's
+    // geometry policy explicit on every stage, whichever path produced it —
+    // `setSplats` is public and does not affect video allocation.
     try { st.setSplats?.(useSplats); } catch (e) { state.errors.push(`splats: ${e.message}`); }
     // A live fixture always wins the pitch: if the stadium was showing a
     // replay when kick-off came round, the replay comes down first, so the
@@ -1496,31 +1550,17 @@ export function create(ctx) {
         audioPolicy();
       });
     }
-    // The map lives in the bundle's scene.json, which the SDK has already
-    // fetched, so this is a cache hit rather than a download. Failure is not
-    // worth an error: it costs `audioOffset` and nothing else.
-    audioMap = null;
-    programme = null;
+    // Read metadata from the same mounted manifest, not another fetch/cache
+    // hit. It is immutable and contains no buffers or live stage internals.
+    const metadata = st.host?.metadata;
+    audioMap = metadata?.audio?.map || null;
+    programme = metadata?.program || null;
+    state.programme = programme ? freezeProgramme(JSON.parse(JSON.stringify(programme))) : null;
     programmeT = 0;
-    sceneBodies = null;
+    sceneBodies = metadata?.bodies ? [...metadata.bodies] : null;
     bodyOk = false;
     state.bodies = null;
-    if (url) {
-      fetch(`${String(url).replace(/\/+$/, '')}/scene.json`, { credentials: 'omit' })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((scene) => {
-          if (disposed || stage !== st) return;
-          audioMap = scene?.audio?.map || null;
-          programme = scene?.program || null;
-          // The body list is what makes a body reachable by name; checked
-          // against the stage before anything trusts it.
-          sceneBodies = Array.isArray(scene?.bodies) ? scene.bodies.slice() : null;
-          verifyBodies(st);
-        })
-        .catch(() => { /* no map, no offset, no harm */ });
-    }
-    // A goal the replay runs across again is the same goal: no second flash.
-    st.on('event', (e) => { if (e.type === 'goal' && !state.replay) { goalUntil = simTime + 4; paintBoard(); } });
+    verifyBodies(st);
     // A fixture we drive is LIVE by the feed's word, whatever its unlocked stage says.
     st.on('statechange', (s) => { state.stage = wallDrive ? 'live' : s; paintBoard(); });
     state.stage = wallDrive ? 'live' : st.state;
@@ -1657,7 +1697,7 @@ export function create(ctx) {
       programmeT += dt;
       if (total > 0 && programmeT >= total) {
         if (!state.now?.loop) { programmeT = total; }
-        else { programmeT = 0; state.loops += 1; goalUntil = -1; }
+        else { programmeT = 0; state.loops += 1; }
       }
     }
     let want = unmapTime(programme.map, programmeT);
@@ -1706,7 +1746,6 @@ export function create(ctx) {
       if (typeof stage.seek === 'function') stage.seek(back); else stage.time = back;
       stage.play?.();
       state.loops += 1;
-      goalUntil = -1;                 // a goal from the last time round is not news
       paintBoard();
     } catch (e) { state.errors.push(`loop: ${e.message || e}`); }
   }
@@ -1736,8 +1775,8 @@ export function create(ctx) {
    * used to dispose here has gone.
    *
    * What is left is the witness, and it is worth its nine iterations a frame:
-   * `/sdk/v1/` is unpinned, so we take their regressions as readily as their
-   * fixes, and `resizes` is the only evidence from inside that shouts are still
+   * The host now pins the audited SDK; explicit upgrades still need checks.
+   * `resizes` is the evidence from inside that shouts are still
    * changing size at all. Paired with a GL error count of zero in the check, it
    * says their fix is present and working; on its own it says nothing, which is
    * why the gate asserts both.
@@ -1762,10 +1801,13 @@ export function create(ctx) {
     docksOn = false;
     state.drive = null;
     state.programmeT = null;
+    state.programme = null;
+    programme = null;
     if (stage) pitch.remove(stage.group);
     stage = null;
     goals = [];
     state.goals = [];
+    state.goal = null;
     state.clockPlan = null;
     state.replay = null;
     state.headcam = null;
@@ -1796,13 +1838,15 @@ export function create(ctx) {
     state.sdk = 'loading';
     paintBoard();
     try {
-      const mod = await loadSdk(cfg.sdk || SDK_URL);
+      const sdk = await createBroadcastSdk({ sdkUrl: cfg.sdk || SDK_URL, origin: cfg.origin, reservedDock: cfg.live_screen });
       if (disposed) return null;
-      gsx = new mod.FourDGSX(cfg.origin ? { origin: cfg.origin } : {});
+      gsx = sdk;
+      if (cfg.live_screen) state.reservedVideo = 'filtered before allocation';
       state.sdk = 'ready';
       return gsx;
     } catch (e) {
       state.sdk = 'failed';
+      if (cfg.live_screen) state.reservedVideo = 'adapter unavailable; no mount';
       state.errors.push(`sdk: ${e.message || e}`);
       log.warn('match-4dgsx: the SDK did not load; the pitch stays empty', e);
       paintBoard();
@@ -1982,13 +2026,14 @@ export function create(ctx) {
       audioPolicy();   // silent from outside the bowl; the match stays mounted
     },
     update(dt, playerPos, time) {
-      simTime = time ?? simTime + dt;
       if (!state.active) return;
       state.updates += 1;
+      const hadGoal = !!state.goal;
       if (stage) {
         stage.update(dt, camera, renderer.domElement.clientHeight || 720);
         driveProgramme(dt);
-        poseHeadcam(dt);
+        poseHeadcam();
+        programmeGoal();
         trackPlay(dt);
         // Read AFTER the programme has placed the stage, and held through a
         // replay: RFL's supervisor reads these, and a score that dips for five
@@ -2003,7 +2048,7 @@ export function create(ctx) {
         watchLabels();
         // The SDK paints textures with three's default orientation; our screens
         // carry glTF UVs (v = 0 at the top), so its maps must not flip.
-        for (const mesh of Object.values(dockMeshes)) {
+        for (const mesh of Object.values(ownedDocks)) {
           const map = mesh.material.map;
           if (map && map.flipY !== false) { map.flipY = false; map.needsUpdate = true; }
         }
@@ -2027,7 +2072,7 @@ export function create(ctx) {
         }
       }
       boardTimer -= dt;
-      if (boardTimer <= 0 || (goalUntil > 0 && goalUntil <= simTime && goalUntil > simTime - dt)) {
+      if (boardTimer <= 0 || hadGoal !== !!state.goal) {
         boardTimer = stage ? 0.25 : 1.0;
         paintBoard();
         // Once a second while the pitch is empty — or the screens are ours
@@ -2106,6 +2151,8 @@ export function create(ctx) {
      * it (js/after-tonemap.js). Null while nothing is mounted.
      */
     afterToneMap() { return stage?.group ?? null; },
+    /** Pure current-track sampling in venue-local metres; no network or seeks. */
+    samplePlay,
     /**
      * Put the mounted match at `t`, in match seconds. Returns where it landed.
      *
@@ -2116,9 +2163,9 @@ export function create(ctx) {
      * reach of any test that could run in CI.
      */
     /**
-     * Run goal holds again from the scorer's head. Off by default: a visitor
-     * in the bowl sees the players wait, as the publisher's programme has it;
-     * the broadcast page turns this on, because on air the hold IS the replay.
+     * Run goal holds again from the scorer's head. The parent enables this
+     * for both visitor and broadcast clients so the pitch and screen agree.
+     * Off only when the embedding host has not requested replay presentation.
      */
     replayCam(on) {
       replayCam = on !== false;

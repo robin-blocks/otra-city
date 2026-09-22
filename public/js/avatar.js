@@ -81,6 +81,8 @@ export function createAvatar(accent = null) {
   return {
     group,
     update,
+    // The broadcast sees the complete citizen even when their own eyes do not.
+    firstPersonParts: [head, visor, antenna],
     // First person puts the camera where the visor is, so the head has to go
     // — otherwise the visitor is inside their own skull looking at the back
     // of it. The body stays: glancing down at your own torso and boots is

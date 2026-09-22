@@ -43,7 +43,7 @@ function checkDrawOrdering() {
       getContext: () => ({ getError: () => 0, finish() { event('finish'); } }),
     },
     venues: { afterToneMap() { event('match-stage'); return ['match']; } },
-    after: { render(items) { event('scene'); assert.deepEqual(items, ['match']); } },
+    after: { render(items) { event('scene'); assert.deepEqual(Array.from(items), ['match']); } },
     matchState() { event('match'); return current; },
     postMatchTable: { update(args) { event('table'); assert.equal(args.match, current); assert.equal(args.time, 5.42); return cue; } },
     scorebug: {

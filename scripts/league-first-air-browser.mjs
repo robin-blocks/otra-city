@@ -121,7 +121,9 @@ try {
   // Catch both the old 18s expiry and the ambient heli's ordinary 45s cut.
   // Check every sampled frame, not just a final 'complete' which might mean
   // the controller aborted early when the camera switched away.
-  const cueStart = shown.t - shown.leagueTable.elapsed;
+  // The shared director now anchors the slot to programme time, not the
+  // page's clamped simulation clock (which can lag under rendering load).
+  const cueStart = shown.programme.programmeT - shown.leagueTable.elapsed;
   let extended = null, lastElapsed = shown.leagueTable.elapsed;
   const complete = await wait(s => {
     if (s.leagueTable?.visible) {
@@ -136,7 +138,7 @@ try {
   }, 240);
   assert.ok(extended, 'table is still on air after both old duration and normal camera cut');
   assert.ok(lastElapsed >= 53, `last visible sample at ${lastElapsed}s`);
-  assert.ok(complete.t - cueStart >= 53.95, 'not completed before 54 seconds');
+  assert.ok(complete.programme.programmeT - cueStart >= 53.95, 'not completed before 54 programme seconds');
   assert.equal(complete.leagueTable.visible, false);
   samples.push({phase:'extended-hold-past-50-seconds',state:extended});
   samples.push({phase:'54-second-cue-complete',state:complete});

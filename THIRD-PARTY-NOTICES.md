@@ -87,3 +87,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## 4DGSX SDK (pinned at `public/vendor/4dgsx/broadcast-factory.js`)
+
+Source: https://4dgsx.com/sdk/v1/three.js — 4DGSX SDK v1.
+The copied upstream code retains its attribution and is **not relicensed under
+this repository's MIT licence**. Its upstream rights remain unchanged.
+`scripts/fixtures/sdk-provenance.json` records the audited source digest and the
+host adaptations: per-mount fetch injection, reserved main-video filtering and
+read-only sampling of already-loaded track data. No match media is vendored.
+The local pin means an upstream SDK update cannot unexpectedly take the live
+stadium down; updates require explicit review and the SDK/browser gates.

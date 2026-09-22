@@ -7,6 +7,7 @@
 // gone. Contract and numbers: docs/venues/ARCHITECTURE.md.
 import * as THREE from 'three';
 import { distanceToBox, insideBox } from '/js/world.js';
+import { createStadiumBroadcast, screenMesh } from './broadcast-screen.js';
 
 const LIGHT_SCALE = 0.0055;   // the same glTF -> client light normalisation plots get
 const EMISSIVE_PEAK = 1.2;    // and the same bloom ceiling
@@ -36,7 +37,7 @@ export function disposeTree(root) {
 }
 
 export function createVenues(scene, world, deps) {
-  const { loader, player, doors, anims, media, camera, renderer, log = console } = deps;
+  const { loader, player, doors, anims, media, camera, renderer, broadcastCapture = false, log = console } = deps;
   const list = [];
   const byId = new Map();
   const listeners = new Set();
@@ -90,7 +91,7 @@ export function createVenues(scene, world, deps) {
     const V = {
       def, root, tier: 0, want: 0, force: null, far: null, near: null, nodes: {},
       colliders: [], gateIds: [], modules: [], loading: null, error: null, quiet: false,
-      lightCount: 0, grace: def.tiers.unload_after_s, stats: { loads: 0, unloads: 0, lastDispose: null },
+      broadcast: null, lastDt: 0, lightCount: 0, grace: def.tiers.unload_after_s, stats: { loads: 0, unloads: 0, lastDispose: null },
     };
     loadFar(V);
     return V;
@@ -225,6 +226,11 @@ export function createVenues(scene, world, deps) {
     try {
       const mod = await factory();
       if (!V.near || !V.modules.includes(entry)) return;   // unloaded meanwhile
+      // A stadium main screen belongs to the city, not a bundle dock. The
+      // capture page supplies its own finished frame; visitors draw one view
+      // of this same scene. No new match module or schedule is created.
+      if (V.def.id === 'stadium' && cfg.type === 'match-4dgsx' && !broadcastCapture) cfg = { ...cfg, live_screen: 'main' };
+      entry.cfg = cfg;
       entry.inst = mod.create({ venue: V.def, cfg, root: V.root, nodes: V.nodes, scene, camera, renderer, media, world, log });
       if (V.tier === 2) activateModule(V, entry);
     } catch (e) {
@@ -234,7 +240,8 @@ export function createVenues(scene, world, deps) {
   }
   function activateModule(V, entry) {
     if (!entry.inst || entry.active || entry.failed) return;
-    try { entry.inst.activate(); entry.active = true; } catch (e) {
+    try { entry.inst.activate(); entry.active = true;
+      if (!broadcastCapture && entry.cfg.live_screen) entry.inst.replayCam?.(true); } catch (e) {
       entry.failed = true;
       log.warn(`venue ${V.def.id}: module ${entry.cfg.type} failed to activate`, e);
     }
@@ -268,6 +275,7 @@ export function createVenues(scene, world, deps) {
     for (const m of V.modules) {
       if (m.inst) { try { m.inst.dispose(); } catch (e) { log.warn(`venue ${V.def.id}: module ${m.cfg.type} failed to dispose`, e); } }
     }
+    V.broadcast?.dispose(); V.broadcast = null;
     V.modules = [];
     if (V.near) {
       if (anims.detach) anims.detach(V.root);
@@ -287,6 +295,7 @@ export function createVenues(scene, world, deps) {
 
   function update(dt, p, time = 0) {
     for (const V of list) {
+      V.lastDt = dt;
       const want = wantTier(V, p);
       V.want = want;
       if (want >= 1 && !V.near) ensureNear(V);
@@ -313,8 +322,43 @@ export function createVenues(scene, world, deps) {
     }
   }
 
+  function displayRoots() {
+    const out = [];
+    for (const V of list) {
+      for (const m of V.modules) {
+        const o = m.inst?.afterToneMap?.();
+        if (o) out.push(o);
+      }
+      if (V.broadcast) out.push(V.broadcast.surface.mesh);
+    }
+    return out;
+  }
+
   return {
     update,
+    // Called AFTER world updates and BEFORE the walking view. No internal
+    // rAF/timer: one scene update, one programme evaluation, one extra view.
+    renderBroadcasts(nowMs = Date.now()) {
+      if (broadcastCapture) return;
+      for (const V of list) {
+        if (V.tier !== 2 || !V.near) continue;
+        const entry = V.modules.find(m => m.active && m.cfg.live_screen && m.inst);
+        if (!entry) continue;
+        const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+        const old = V.broadcast?.state();
+        const scale = Math.min(1, size.x / 1280, size.y / 720);
+        if (old && (old.width !== Math.max(1, Math.floor(1280 * scale)) || old.height !== Math.max(1, Math.floor(720 * scale)))) {
+          V.broadcast.dispose(); V.broadcast = null;
+        }
+        if (!V.broadcast) {
+          const mesh = screenMesh(V.nodes[entry.cfg.docks?.[entry.cfg.live_screen]]);
+          if (!mesh) continue;
+          V.broadcast = createStadiumBroadcast({ renderer, scene, venue: V.def, root: V.root,
+            mesh, module: () => entry.inst, roots: displayRoots, player, log });
+        }
+        V.broadcast.render(V.lastDt, nowMs);
+      }
+    },
     on(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     get(id) { return byId.get(id) || null; },
     forceTier(id, tier) { const V = byId.get(id); if (V) V.force = tier; },
@@ -339,16 +383,7 @@ export function createVenues(scene, world, deps) {
      * to `after-tonemap.js`; the fixture, which renders straight to the canvas,
      * never needs it. Cheap to call every frame: a handful of modules.
      */
-    afterToneMap() {
-      const out = [];
-      for (const V of list) {
-        for (const m of V.modules) {
-          const o = m.inst?.afterToneMap?.();
-          if (o) out.push(o);
-        }
-      }
-      return out;
-    },
+    afterToneMap: displayRoots,
     async whenLoaded(id) { const V = byId.get(id); if (!V) return false; if (V.near) return true; if (V.loading) return V.loading; return false; },
     hudText() {
       let best = null;
@@ -358,6 +393,7 @@ export function createVenues(scene, world, deps) {
     state() {
       return list.map((V) => ({
         id: V.def.id, tier: V.tier, want: V.want, forced: V.force, loaded: !!V.near, loading: !!V.loading,
+        broadcast: V.broadcast?.state() ?? null,
         error: V.error, colliders: V.colliders.length, lights: V.lightCount, gates: V.gateIds.length,
         modules: V.modules.map((m) => ({ type: m.cfg.type, ready: !!m.inst, active: m.active, failed: m.failed, state: m.inst?.state ?? null })),
         stats: V.stats,
