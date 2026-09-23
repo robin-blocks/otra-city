@@ -3,6 +3,7 @@
 import { CAMERAS, createTrack, framePlay, GANTRY_AIM_LAG_S, GANTRY_FOV_LAG_S } from './broadcast-cameras.js';
 import { beforeTime } from './goal-celebration.mjs';
 import { createPostMatchTable, TABLE_DURATION_S } from './post-match-table.mjs';
+import { PREROLL_TABLE_DURATION_S } from './league-timing.mjs';
 
 export const PROGRAMME_IDLE_EPOCH_MS = 0;
 export const PROGRAMME_TRACK_URLS = Object.freeze({
@@ -19,6 +20,10 @@ const CUE_DELAY_S = 0.7;
 // other authored shot. With today's 136s list: 54 / 281.7 = 19.2% airtime.
 export const IDLE_TABLE_EVERY_LAPS = 2;
 export const IDLE_TABLE_LEAD_IN_S = 60;
+// Absolute pre-roll offsets, not recurring laps or per-browser timers. The
+// first starts on the authored aerial; a second read leaves the whistle clear.
+export const PREROLL_TABLE_STARTS_S = Object.freeze([22, 112]);
+export const PREROLL_TABLE_LEAD_IN_S = 30;
 const HISTORY_S = 4;
 const HISTORY_FPS = 50;
 const finite = Number.isFinite;
@@ -223,8 +228,36 @@ export async function createBroadcastProgramme({ venue, fetcher = globalThis.fet
         held = true;
       } else c = at(cut, postElapsed >= slotEnd ? postElapsed - extension : postElapsed);
     }
-    // Idle is the only other standings context. Never mistake a bundle that
-    // is loading, or a live programme awaiting its stage, for between games.
+    // Pre-match snapshots have their own fixed slots and never use the final
+    // score/HUD to build standings. A missing archive still reserves the SAME
+    // moving aerial, so download/arrival timing cannot change the director.
+    // A supplied map that was rejected, or lacks a usable programme clock,
+    // is NOT evidence for the default 180s layout. Only genuinely unmapped
+    // legacy match-time playback may use the configured pre-roll duration.
+    const preDuration = clock.map
+      ? (clock.map[0][0] < 0 && clock.map.at(-1)[0] >= 0 ? mapAt(clock.map, 0) - origin : null)
+      : (programme?.map == null && clock.t !== null && finite(preRollSeconds) && preRollSeconds > 0 ? preRollSeconds : null);
+    const preReady = phase === 'preroll' && bug?.inPlay === false && clock.t !== null && clock.t < 0 &&
+      !bug?.over && !bug?.replay && !bug?.celebrating && !m?.headcam && m?.board !== 'GOAL';
+    const preLayout = !!table?.updatePreroll && first?.camera === 'heli' && first.from === 0;
+    let prerollSlot = null, prerollSegment = null;
+    if (preLayout && preReady && finite(preDuration)) {
+      for (const [index, start] of PREROLL_TABLE_STARTS_S.entries()) {
+        const end = start + CUE_DELAY_S + PREROLL_TABLE_DURATION_S;
+        // Skip the whole appearance if a shorter programme cannot fit the
+        // read plus a clean final 30s. Never clamp/extend over kickoff.
+        if (beforeTime(preDuration, end + PREROLL_TABLE_LEAD_IN_S) || beforeTime(elapsed, start) || !beforeTime(elapsed, end)) continue;
+        const t = frameOf(elapsed - start, cuts.ambient.fps || 50) / (cuts.ambient.fps || 50);
+        c = { ...CAMERAS.heli(t, first.seed, first.params), camera: 'heli', segment: first.index ?? 0,
+          seed: first.seed, params: first.params, t };
+        prerollSegment = index;
+        if (!beforeTime(elapsed, start + CUE_DELAY_S)) prerollSlot = {
+          key: `preroll:${key}:${index}`, elapsed: Math.max(0, elapsed - (start + CUE_DELAY_S)),
+        };
+      }
+    }
+    // Never mistake a loading bundle or a live programme awaiting its stage
+    // for between games.
     const idleReady = phase === 'idle' && ['idle', 'countdown'].includes(m?.phase) && !m?.live;
     const idleLayout = !!table?.updateIdle && phase === 'idle' && cuts.ambient?.loop &&
       first?.camera === 'heli' && first.from === 0 && cuts.ambient.lastFrame > 0;
@@ -297,7 +330,11 @@ export async function createBroadcastProgramme({ venue, fetcher = globalThis.fet
     }
     const safe = hasSlot && !inPlay && !bug?.preroll && !bug?.replay && !bug?.celebrating && !m?.headcam &&
       bug?.inPlay === false && stopped(m, full) && priority !== 'goal';
-    if (table && onAir) {
+    if (table && preroll && table.updatePreroll) {
+      table.update({ match: null, time: 0, nowMs });
+      tableCue = table.updatePreroll({ match: m, slot: prerollSlot, warm: true, nowMs });
+    }
+    if (table && onAir && !(preroll && table.updatePreroll)) {
       // The wrapper, not the old page-local controller, owns interruption.
       // Clear its finished/safe timer after a protected cut so clients that
       // witnessed a headcam/goal can rejoin the same remaining global slot
@@ -318,8 +355,9 @@ export async function createBroadcastProgramme({ venue, fetcher = globalThis.fet
       gantry: tracking.mode, gantryHistorySeconds: tracking.mode === 'bounded-history' ? HISTORY_S : null,
       table: { ...(table?.state?.() || { status: 'disabled' }), visible: !!tableCue,
         elapsed: tableCue?.elapsed ?? null, slotElapsed: hasSlot ? postElapsed : null,
-        duration: TABLE_DURATION_S, held, expired: hasSlot && postElapsed >= slotEnd,
+        duration: preroll ? PREROLL_TABLE_DURATION_S : TABLE_DURATION_S, held, expired: hasSlot && postElapsed >= slotEnd,
         idlePeriod, idleSlotElapsed, idleBlocked,
+        prerollSegment, prerollDuration: preroll ? preDuration : null,
         status: !table ? 'disabled' : hasSlot && postElapsed >= slotEnd ? 'complete'
           : tableCue ? 'on-air' : table?.state?.().status || 'idle' },
     };

@@ -453,7 +453,9 @@ The authored list is unchanged: **four fifths is screen shots** — `SCREEN_MAIN
 `SCOREBOARD` — with the remaining fifth on the bowl filling up: an aerial,
 both terraces, a pitchside. It loops every 120 s, so it does not have to be
 exactly as long as the pre-roll; it has to read right wherever inside it a
-fixture is picked up. The share is checked in CI against the file.
+fixture is picked up. The share is checked in CI against the file. The two
+fixed pre-match standings windows below override this list with the moving
+ambient aerial; between and after those windows the authored shots remain.
 
 A **replay the city puts on** has a build-up too, and gets the same treatment:
 its programme has the same three segments and a build-up is a build-up whether
@@ -531,8 +533,9 @@ and SDK dock ownership. `state().match.screens` reports that reservation as
 
 The side panels still do **not** invent a league table from the programme
 feed's rolling results. The main screen can show the validated post-match
-overlay because that is part of the broadcast, using the separate complete-
-season archive below, not a replacement for fixtures/results.
+overlay, and the validated idle/pre-match variants, because those are part of
+the broadcast, using the separate complete-season archive below, not a
+replacement for fixtures/results.
 
 ### Between-match current standings
 
@@ -551,6 +554,56 @@ shares the existing bounded archive cache. Unavailable evidence leaves the
 aerial clear. No new media, match mounts or external feed are required.
 See [the full cadence, data and lifecycle contract](STADIUM-SCREEN.md#occasional-standings-between-matches).
 The post-match graphic below is a separate context and remains unchanged.
+
+### Pre-match standings — two short reads
+
+**Source contract, 23 September 2026; not a deployment claim.** Automatic
+broadcast and stadium television reserve two fixed pre-roll windows:
+
+| pre-roll elapsed | camera | graphic |
+|---|---|---|
+| 22–46.7 s | moving aerial | 22.7–46.7 s |
+| 112–136.7 s | moving aerial | 112.7–136.7 s |
+
+Each aerial uses the **same camera, seed and parameters as the ambient list's
+first segment**, not a frozen frame or a different orbit. The graphic follows
+0.7 seconds of settling and lasts **24 seconds** (end exclusive). The remaining
+pre-roll shots are retained between windows. Standard 180-second build-up
+leaves **43.3 seconds clear before kickoff**. Skip a whole window unless its
+end is at least **30 seconds before kickoff**; do not shorten or move the table
+to squeeze it into a shorter build-up.
+
+Both outputs use the same absolute programme time, occurrence and slot index:
+a late join or seek joins the remaining read, never starts another 24 seconds.
+Invalid/missing times, live play, goal/replay/headcam presentation and other
+protected shots suppress the cue. Explicit cameras/tracks and deterministic
+capture retain their bypass. Missing evidence leaves the reserved aerial
+clear; network arrival does not decide the cut.
+
+The static graphic says **LEAGUE TABLE / BEFORE THE MATCH**, highlights exactly
+the two fixture clubs, and gives each a pre-match **position/points** card.
+It contains no FT tag, score, last result, movement arrows or row reorder.
+Entrance stays 0.55 s; the unchanged 0.6-second fade is at 23.4–24 s. Only this
+`mode: preroll` graphic uses `PREROLL_TABLE_DURATION_S = 24`; idle and post-match
+remain 54 seconds with their original appearance and animation timing.
+
+`buildPreMatchTable` validates the complete published season before selecting
+rows. `basis: published-pre-match` means the reconciled rows **before** the
+identified aired fixture, excluding that fixture and every later result.
+`basis: scheduled-pre-match` means validated published rows before the exact
+scheduled fixture, with the schedule occurrence, first-pending boundary and
+freshness checks—not a projected or HUD-derived score. Home/away identity is
+required for highlights; the presentation has no score field. Future results,
+ambiguous identity/chronology or failed reconciliation withhold the graphic.
+All three modes share the existing bounded archive request/cache; each cue
+freezes its validated snapshot, with late evidence limited to the remaining
+window. No new feed, match mount or media download is added.
+
+See [the shared pre-match contract](STADIUM-SCREEN.md#pre-match-standings-windows).
+The local renderer gate is `node scripts/league-overlay-check.mjs`; `--shots`
+saves pre-match entry/hold/exit frames as well as the existing idle/post-match
+previews. It checks strict provenance/static rows, highlighted clubs, no result
+copy, 24-second expiry, invalid clearing and pixel-identical mode restoration.
 
 ### Post-match league table — 19 September, first-air fix 21 September 2026
 

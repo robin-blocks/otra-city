@@ -137,7 +137,7 @@ season only when the newer season validates and has no aired results. A bad
 current ledger is not an excuse to fall back. Future seasons, scheduled and
 skipped results do not contribute. With no confirmed standings it hides.
 
-Idle and post-match share one bounded archive request/cache (at most one
+Idle, pre-match and post-match share one bounded archive request/cache (at most one
 request per minute, ten-second abort, disposed with the output). Each displayed
 idle segment freezes its validated snapshot; late evidence or a late join gets
 only the remaining slot. Different archive revisions/network arrival can still
@@ -150,6 +150,77 @@ cueing and its 54-second result animation are unchanged.
 Tests: `npm run league:check`, `npm run stadium-screen:check`, and
 `node scripts/league-idle-browser.mjs` (browser-local fixture/time overrides,
 actual broadcast and visitor render paths; never changes public feeds).
+
+### Pre-match standings windows
+
+**23 September source addition; no live/deployed status is implied.** The same
+shared automatic evaluator reserves two aerial reads during fixture build-up,
+measured from pre-roll start, not from page arrival:
+
+- Aerial starts **22 s**, graphic **[22.7, 46.7) s**.
+- Aerial starts **112 s**, graphic **[112.7, 136.7) s**.
+
+Each is the ambient list's first moving helicopter segment (same seed and
+parameters), with 0.7 seconds to settle before a **24-second** graphic. The
+other authored pre-roll shots remain between/after these reservations. Camera
+windows are fixed even if evidence is unavailable; there is no frozen aerial,
+network-triggered cut or additional render/match mount. With 180 seconds of
+pre-roll the second read ends **43.3 seconds before kickoff**. A reservation
+is skipped in full unless its end leaves **at least 30 seconds clear**; shorter
+build-ups do not truncate/restart the graphic or push it toward kickoff.
+
+Shared programme time and occurrence/slot identity make late joins and seeks
+join the appropriate remaining window on `/broadcast` and stadium television.
+Missing, non-finite or invalid times fail closed. Live play, replay/headcam,
+goal and protected camera states suppress the graphic immediately; explicit
+camera/track and fixed-step capture bypasses are unchanged. A late archive
+response can use only the current slot's remainder, never extend it. As with
+other graphics, different archive arrival/revisions can affect availability;
+this is deterministic timing, not a whole-frame cross-client pixel promise.
+
+The renderer accepts only `mode: preroll` with explicit validated provenance:
+
+- **`published-pre-match`**: reconcile the whole published season, then rank
+  only results preceding the exact aired fixture. Neither its own result nor
+  any later result appears in its table, including during a historical build-up.
+- **`scheduled-pre-match`**: use validated published rows before the exact
+  scheduled fixture. The scheduled occurrence and strict first-pending/freshness
+  boundary must validate; direct/unpublished replay sources do not qualify.
+
+The evidence controller supplies season/label, rows, archive generation time,
+source label and validated home/away identity (optional renderer match ID).
+There is **no score field**. Static rows must have equal current/previous
+positions, played, goal difference and points; invalid provenance or incomplete
+rows hide rather than fall back to a post-match result. Future scores are never
+projected from HUD, the programme's rolling results or a later archive row.
+The existing bounded shared archive cache still permits at most one request
+per minute, uses a ten-second abort and is disposed with the output. Each
+uninterrupted cue freezes its validated snapshot; interruption/replacement/seek
+can revalidate without restarting the shared slot.
+
+The graphic reads **LEAGUE TABLE / BEFORE THE MATCH**, highlights the two
+fixture clubs and shows their pre-match position/points in the side cards.
+No FT, score, last-result strap, row movement or no-change arrows are painted.
+It uses `PREROLL_TABLE_DURATION_S = 24` from `league-timing.mjs`, with the
+original 0.55-second entrance and 0.6-second fade at 23.4–24 s; animations are
+not stretched. Idle/post-match remain 54 seconds and preserve their appearance.
+`node scripts/league-overlay-check.mjs --shots /tmp/preroll-standings` captures
+entry/hold/fade/expiry and checks static rows/cards, labels/highlights, strict
+invalid rejection, frame caching and exact restoration of the other modes.
+This is a local renderer check, not evidence of a public broadcast or deployment.
+
+`node scripts/league-preroll-browser.mjs` is the required software-browser gate:
+21 paired visitor/broadcast samples of the real saved M42, including both cue
+boundaries, fade/expiry, a fresh-document late join and kickoff. The browser-only
+archive/clock overrides leave publisher bundle bytes untouched. It verifies
+all pre-M42 rows/highlights, retained main-screen output, zero video/writes and
+same-frame clean pixels outside the existing LIVE badge. `--gpu` is an optional
+local run, not a substitute for the default gate. Evidence is written under
+`qa-out/league-preroll/integration/`; no public feed is changed.
+
+A supplied map that is malformed or lacks a usable programme clock cannot fall
+back to the default 180-second table layout. That fallback is only for genuinely
+unmapped legacy match-time playback; otherwise the pre-match cue fails closed.
 
 ## Pinned SDK adapter: prevent allocation, not just attachment
 

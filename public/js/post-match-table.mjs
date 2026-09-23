@@ -1,11 +1,11 @@
-// Live-broadcast standings evidence and cueing. Idle and post-match modes
+// Live-broadcast standings evidence and cueing. Pre-match, idle and post-match modes
 // share one bounded archive fetch/cache. The renderer never chooses when football ends.
 // No timer renders frames: time is supplied by /broadcast, and capture mode
 // never creates this controller (or fetches the league archive).
-import { buildMatchTable, buildIdleTable, LEAGUE_DATA_URL } from './league-table-data.mjs';
+import { buildMatchTable, buildIdleTable, buildPreMatchTable, LEAGUE_DATA_URL } from './league-table-data.mjs';
 
-import { TABLE_DURATION_S } from './league-timing.mjs';
-export { TABLE_DURATION_S } from './league-timing.mjs';
+import { TABLE_DURATION_S, PREROLL_TABLE_DURATION_S } from './league-timing.mjs';
+export { TABLE_DURATION_S, PREROLL_TABLE_DURATION_S } from './league-timing.mjs';
 const CUE_DELAY_S = 0.7;
 const CUE_WINDOW_S = 25;
 const REFRESH_MS = 60000;
@@ -18,6 +18,14 @@ export function createPostMatchTable({ fetcher = globalThis.fetch, url = LEAGUE_
   let finished = false, presentation = null, assessed = null, assessment = null;
   let status = { visible: false, status: 'idle', reason: null, matchId: null };
   let idleKey = null, idlePresentation = null, idleAssessment = null, idleAssessed = null, idleElapsed = null;
+
+  let prerollKey = null, prerollSlot = null, prerollPresentation = null;
+  let prerollAssessment = null, prerollAssessed = null, prerollElapsed = null, prerollT = null;
+
+  function resetPreroll() {
+    prerollKey = null; prerollSlot = null; prerollPresentation = null;
+    prerollAssessment = null; prerollAssessed = null; prerollElapsed = null; prerollT = null;
+  }
 
   async function refresh(nowMs) {
     if (disposed || pending || nowMs - attemptedAt < REFRESH_MS) return;
@@ -44,11 +52,56 @@ export function createPostMatchTable({ fetcher = globalThis.fetch, url = LEAGUE_
   }
 
   return {
+    /** Programme owns the fixed 24s slot and its elapsed; never start an
+     * arrival timer. Warm outside the slot, sharing the existing archive cache.
+     * Neutral update({match:null}) clears post-match state, NOT this snapshot. */
+    updatePreroll({ match: m, slot = null, warm = false, nowMs = Date.now() } = {}) {
+      if (disposed) return null;
+      const bug = m?.bug, fixture = m?.match;
+      const valid = m?.phase === 'match' && bug?.preroll === true && bug.inPlay === false && !bug.over;
+      const hidden = (state, reason = null) => {
+        status = { visible: false, mode: 'preroll', status: state, reason, matchId: fixture?.id ?? null,
+          dataLoading: pending, dataError: networkError };
+        return null;
+      };
+      if (!valid || !Number.isFinite(nowMs)) { resetPreroll(); return hidden('idle'); }
+      if (warm) void refresh(nowMs);
+      const nextKey = JSON.stringify([fixture?.id, fixture?.bundleUrl, fixture?.startsAt, m.loops ?? 0,
+        m.source, fixture?.state, bug.home?.code, bug.away?.code]);
+      const nextSlot = slot?.key ?? null;
+      const t = Number.isFinite(bug.programmeT) ? bug.programmeT
+        : Number.isFinite(m.programmeT) ? m.programmeT : bug.t;
+      if (nextKey !== prerollKey || nextSlot !== prerollSlot ||
+        (prerollElapsed !== null && slot?.elapsed < prerollElapsed) ||
+        (Number.isFinite(t) && prerollT !== null && t < prerollT)) resetPreroll();
+      prerollKey = nextKey; prerollSlot = nextSlot;
+      prerollElapsed = slot?.elapsed ?? null; prerollT = Number.isFinite(t) ? t : null;
+      idleKey = null; idlePresentation = null; idleAssessment = null; idleAssessed = null; idleElapsed = null;
+      if (!slot || nextSlot === null || !Number.isFinite(slot.elapsed) || slot.elapsed < 0 || slot.elapsed >= PREROLL_TABLE_DURATION_S)
+        return hidden('idle');
+      const signature = `${revision}:${Math.floor(nowMs / 1000)}`;
+      if (!prerollPresentation && signature !== prerollAssessed) {
+        prerollAssessed = signature;
+        // A direct mount/replay cannot authorize a scheduled first air. Scores
+        // are intentionally absent from both evidence and validation signature.
+        const source = m.source === 'schedule' && fixture?.state === 'live' ? 'schedule' : 'replay';
+        prerollAssessment = doc ? buildPreMatchTable(doc, { matchId: fixture?.id, bundleUrl: fixture?.bundleUrl,
+          home: bug.home, away: bug.away, startsAt: fixture?.startsAt, nowMs, source }) : null;
+        prerollPresentation = prerollAssessment?.table ?? null;
+      }
+      if (!prerollPresentation)
+        return hidden('waiting-for-table', prerollAssessment?.reason || networkError || 'loading league archive');
+      status = { visible: true, mode: 'preroll', status: 'on-air', reason: null, matchId: prerollPresentation.matchId,
+        elapsed: slot.elapsed, source: url, generatedAt: prerollPresentation.generatedAt,
+        basis: prerollPresentation.basis, season: prerollPresentation.season, movements: [] };
+      return { presentation: prerollPresentation, elapsed: slot.elapsed };
+    },
     /** Programme supplies a fixed slot and elapsed, never an arrival timer.
      * No HUD result is authorized here: idle uses published current standings.
      * Freeze once visible; a refresh cannot shuffle rows during the read. */
     updateIdle({ slot = null, warm = false, nowMs = Date.now() } = {}) {
       if (disposed) return null;
+      resetPreroll();
       if (warm) void refresh(nowMs);
       const next = slot?.key ?? null;
       if (next !== idleKey || (idleElapsed !== null && slot?.elapsed < idleElapsed)) {
@@ -78,6 +131,7 @@ export function createPostMatchTable({ fetcher = globalThis.fetch, url = LEAGUE_
     update({ match: m, camera, settling = false, time, nowMs = Date.now() }) {
       if (disposed) return null;
       const bug = m?.bug;
+      if (m && !(m.phase === 'match' && bug?.preroll === true)) resetPreroll();
       const id = m?.match?.id;
       const nextKey = m?.phase === 'match' && id ? `${id}:${m.loops ?? 0}` : null;
       if (nextKey !== key || (Number.isFinite(bug?.t) && previousT !== null && bug.t < previousT - 1)) reset(nextKey);
@@ -148,6 +202,6 @@ export function createPostMatchTable({ fetcher = globalThis.fetch, url = LEAGUE_
       return { presentation, elapsed };
     },
     state() { return { ...status }; },
-    dispose() { disposed = true; requestAbort?.abort(); doc = null; presentation = null; idlePresentation = null; status = { visible: false, status: 'disposed' }; },
+    dispose() { resetPreroll(); disposed = true; requestAbort?.abort(); doc = null; presentation = null; idlePresentation = null; status = { visible: false, status: 'disposed' }; },
   };
 }

@@ -41,6 +41,14 @@ const idlePresentation = {
     gd: 20 - i * 4, previousGd: 20 - i * 4, points: 24 - i * 2, previousPoints: 24 - i * 2,
   })),
 };
+// A separate pre-fixture snapshot: never derive it by dropping the score from
+// the post-match table, which would silently retain that fixture's points.
+const prerollPresentation = {
+  ...idlePresentation, mode: 'preroll', basis: 'published-pre-match',
+  matchId: 'offline-preroll-fixture', sourceLabel: 'OFFLINE FIXTURE · Before this match',
+  home: { code: 'SYA', name: 'Synthetic Athletic', color: '#ce4055' },
+  away: { code: 'SGU', name: 'Singularity United', color: '#57badb' },
+};
 if (option('archive')) {
   const doc = JSON.parse(readFileSync(option('archive'), 'utf8'));
   const s = doc.seasons.find((s) => s.season === doc.current_season);
@@ -54,6 +62,7 @@ if (option('archive')) {
 try {
   writeFileSync(join(temp, 'presentation.json'), JSON.stringify(presentation));
   writeFileSync(join(temp, 'idle.json'), JSON.stringify(idlePresentation));
+  writeFileSync(join(temp, 'preroll.json'), JSON.stringify(prerollPresentation));
   writeFileSync(join(temp, 'index.html'), `<!doctype html><html><head><style>body{margin:0;background:#111}canvas{display:block}</style>
 <script type="importmap">{"imports":{"three":"/vendor/three/three.module.js"}}</script></head><body>
 <script type="module">
@@ -68,6 +77,7 @@ const camera = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
 ${background ? "bg.background = await new THREE.TextureLoader().loadAsync('/__league/background.png'); bg.background.colorSpace = THREE.SRGBColorSpace;" : ''}
 const p = await (await fetch('/__league/presentation.json')).json();
 const idle = await (await fetch('/__league/idle.json')).json();
+const preroll = await (await fetch('/__league/preroll.json')).json();
 // Canvas text is baked into WebGL, so instrument the actual paint calls rather
 // than searching a DOM which contains no overlay text. Geometry catches arrows
 // (including their no-change dash) and accidental match-row highlights.
@@ -121,6 +131,38 @@ window.test = {
       return {name,hash:result.hash,overlay:result.overlay};
     });
   },
+  preroll(t, show=true, value=preroll) {return this.idle(t,show,value);},
+  prerollVariant(value) {return this.preroll(5,true,{...preroll,...value});},
+  invalidPreroll() {
+    const cases = [
+      ['missing mode', {mode:undefined}], ['unknown mode', {mode:'prematch'}],
+      ['idle mode', {mode:'idle'}], ['postmatch mode', {mode:'postmatch'}],
+      ...[undefined, 'published-standings', 'published-result', 'first-air-hud', ''].map(basis=>['basis '+basis,{basis}]),
+      ...[undefined, null, [0,0], [3,1]].map(score=>['score '+score,{score}]),
+      ['home missing', {home:undefined}], ['away missing', {away:null}],
+      ['same teams', {away:preroll.home}], ['unknown team', {home:{code:'UNKNOWN'}}],
+      ['blank team', {away:{code:' '}}], ['invalid id', {matchId:''}],
+      ['season', {season:-1}], ['fractional season', {season:3.1}],
+      ['label', {label:''}], ['source', {sourceLabel:' '}], ['timestamp', {generatedAt:'not-a-date'}],
+      ['missing rows', {rows:undefined}], ['too few rows', {rows:preroll.rows.slice(0,1)}],
+      ['too many rows', {rows:[...preroll.rows,...preroll.rows]}], ['null row', {rows:[null,...preroll.rows.slice(1)]}],
+      ['duplicate code', {rows:preroll.rows.map((r,i)=>i===1?{...r,code:preroll.rows[0].code}:r)}],
+      ['duplicate position', {rows:preroll.rows.map((r,i)=>i===1?{...r,position:1,previousPosition:1}:r)}],
+      ['old positions', {rows:preroll.rows.map((r,i)=>({...r,previousPosition:i===0?2:i===1?1:r.position}))}],
+      ...['previousPlayed','previousGd','previousPoints'].map(key=>[key,{rows:preroll.rows.map((r,i)=>i===0?{...r,[key]:r[key]+1}:r)}]),
+      ['negative played', {rows:preroll.rows.map((r,i)=>i===0?{...r,played:-1,previousPlayed:-1}:r)}],
+      ['negative points', {rows:preroll.rows.map((r,i)=>i===0?{...r,points:-1,previousPoints:-1}:r)}],
+      ['fractional points', {rows:preroll.rows.map((r,i)=>i===0?{...r,points:1.5,previousPoints:1.5}:r)}],
+      ['unsafe gd', {rows:preroll.rows.map((r,i)=>i===0?{...r,gd:1e20,previousGd:1e20}:r)}],
+    ];
+    return cases.map(([name,patch])=>{
+      this.preroll(5); // Rejections clear visible pre-match pixels, not just status.
+      const result=this.prerollVariant(patch);
+      return {name,hash:result.hash,overlay:result.overlay};
+    });
+  },
+  invalidPrerollTime(t) {this.preroll(5); return this.preroll(t);},
+  prerollWithoutId() {const {matchId,...value}=preroll; return this.preroll(5,true,value);},
   setRows(n) { const original=p.rows;p.rows=p.rows.slice(0,n); const changed=overlay.draw(p,5); p.rows=original; return {changed,state:overlay.state()}; },
   invalid() { return overlay.draw({...p,rows:[...p.rows,...p.rows]},5),overlay.state(); },
   throwRender() {const r={autoClear:true,render(){throw Error('test');}};try{overlay.render(r);}catch{}return r.autoClear;},
@@ -267,10 +309,117 @@ window.done=true;
   assert.equal(zero.overlay.visible, true, 'zero-game season is valid idle');
   assert.equal(zero.painted.text.find(([,x,y])=>x===1011 && y===491)?.[0], '0', 'equal games played uses one value, including zero');
   assert.equal((await idleDraw(5)).overlay.visible, true, 'valid idle recovers after invalid input');
+  // Warm all card/table crest sizes before exact mode-return comparisons:
+  // Chrome can promote a resampled crest after many canvas draws.
+  const postReturnReference = await draw(5);
+  const idleReturnReference = await idleDraw(5);
+  const prerollDraw = (t, show = true) => chrome.evaluate(`test.preroll(${t},${show})`);
+  const prerollBase = await prerollDraw(0, false);
+  assert.equal(prerollBase.hash, idleBase.hash);
+  assert.equal((await prerollDraw(0)).hash, prerollBase.hash, 'pre-match starts fully transparent');
+  const prerollIntro = await prerollDraw(.275);
+  assert.equal(prerollIntro.overlay.phase, 'entering');
+  assert.equal(prerollIntro.overlay.opacity, idleIntro.overlay.opacity, 'unchanged .55s entrance');
+  assert.equal(prerollIntro.overlay.mode, 'preroll');
+  assert.equal(prerollIntro.overlay.matchId, prerollPresentation.matchId);
+  assert.notEqual(prerollIntro.hash, prerollBase.hash, 'preroll composited into framebuffer during intro');
+  // Force fresh paint after all local crests have loaded; compare rows/copy at
+  // early, middle and late absolute times, not only one cached screenshot.
+  await prerollDraw(0, false);
+  const prerollHeld = await prerollDraw(.55);
+  const preTexts = prerollHeld.painted.text.map(([text])=>text);
+  for (const text of ['LEAGUE TABLE', 'BEFORE THE MATCH', 'HOME', 'AWAY', 'PRE-MATCH STANDINGS',
+    'POSITION', 'POINTS', 'POS', 'CLUB', 'P', 'GD', 'PTS', 'UPDATED 2026-09-23  12:34 UTC', prerollPresentation.sourceLabel]) {
+    assert.ok(preTexts.includes(text), `pre-match paints ${text}`);
+  }
+  const checkPrePaint = (frame) => {
+    const copy = frame.painted.text.map(([text])=>text);
+    assert.ok(!copy.some((s)=>/after|full.?time|^FT$|gained|lost|no change|movement|^from |last result/i.test(s)), 'no result/movement copy');
+    assert.ok(!copy.some((s)=>/^\d+\s+-\s+\d+$/.test(s)), 'no score');
+    assert.ok(!frame.painted.moves.some(([x,y])=>x===0 && y<0), 'no movement arrows');
+    assert.ok(!frame.painted.rects.some(([x,,w,h])=>x===147 && w===8 && h===2), 'no no-change dashes');
+    const rows=frame.painted.text.filter(([,x,y])=>x===228 && y>=253 && y<589).sort((a,b)=>a[2]-b[2]);
+    assert.deepEqual(rows.map(([name])=>name), prerollPresentation.rows.map((r)=>r.name), 'pre-fixture row positions remain static');
+    const highlighted=frame.painted.rects.filter(([x,,w])=>x===84 && w===3).map(([,y])=>y).sort((a,b)=>a-b);
+    const fixtures=prerollPresentation.rows.filter((r)=>[prerollPresentation.home.code,prerollPresentation.away.code].includes(r.code));
+    assert.deepEqual(highlighted, fixtures.map((r)=>253+(r.position-1)*33.6), 'exactly the two fixture clubs are highlighted');
+    const at=(x,y)=>frame.painted.text.find(([,tx,ty])=>tx===x && ty===y)?.[0];
+    for (const [i,y] of [[0,225],[1,411]]) {
+      assert.equal(at(943,y+31), fixtures[i].name, 'card identity follows fixture');
+      assert.equal(at(890,y+107), String(fixtures[i].position), 'card uses pre-match position');
+      assert.equal(at(1011,y+107), String(fixtures[i].points), 'card uses pre-match points, not score');
+    }
+  };
+  checkPrePaint(prerollHeld);
+  assert.equal(prerollHeld.overlay.phase, 'held', 'pre-match skips before/reorder animation');
+  assert.equal(prerollHeld.overlay.opacity, 1);
+  assert.equal(prerollHeld.autoClear, true);
+  assert.equal(prerollHeld.gl, 0);
+  for (const t of [1, 1.8, 2.4, 3, 5, 12, 18, 23.399]) {
+    const frame=await prerollDraw(t);
+    assert.equal(frame.hash, prerollHeld.hash, `static preroll pixels at ${t}s`);
+    assert.equal(frame.overlay.phase, 'held');
+    assert.equal(frame.overlay.uploads, prerollHeld.overlay.uploads, 'held preroll reuses texture');
+    assert.equal(frame.painted.text.length, 0);
+  }
+  for (const t of [.275, 1, 2.4, 12, 23.399, 23.7]) {
+    await prerollDraw(0,false);
+    const frame=await prerollDraw(t);
+    checkPrePaint(frame);
+    assert.deepEqual(frame.painted.text, prerollHeld.painted.text, `same static copy and rows at ${t}s, including fades`);
+  }
+  const prerollFadeStart=await prerollDraw(23.4);
+  assert.equal(prerollFadeStart.overlay.phase, 'leaving');
+  assert.equal(prerollFadeStart.overlay.opacity, 1);
+  const prerollFade=await prerollDraw(23.7);
+  assert.equal(prerollFade.overlay.phase, 'leaving');
+  assert.ok(Math.abs(prerollFade.overlay.opacity-fade.overlay.opacity)<1e-12, 'same .6s outro, not stretched');
+  assert.notEqual(prerollFade.hash, prerollHeld.hash);
+  assert.equal(prerollFade.overlay.uploads, prerollFadeStart.overlay.uploads, 'fade does not repaint');
+  assert.equal((await prerollDraw(23.999)).overlay.visible, true);
+  const prerollFinished=await prerollDraw(24);
+  assert.equal(prerollFinished.overlay.phase, 'finished');
+  assert.equal(prerollFinished.overlay.visible, false);
+  assert.equal(prerollFinished.hash, prerollBase.hash, 'pre-match clears at exactly 24s');
+  assert.equal((await prerollDraw(54)).hash, prerollBase.hash, 'no legacy 54s pre-match hold');
+  assert.equal((await prerollDraw(5)).hash, prerollHeld.hash, 'backward seek restores absolute pre-match frame');
+  assert.equal((await prerollDraw(0,false)).hash, prerollBase.hash, 'null suppresses pre-match immediately');
+  for (const result of await chrome.evaluate('test.invalidPreroll()')) {
+    assert.equal(result.overlay.phase, 'unsupported', `reject invalid preroll: ${result.name}`);
+    assert.equal(result.overlay.visible, false);
+    assert.equal(result.hash, prerollBase.hash, `invalid preroll clears: ${result.name}`);
+  }
+  for (const t of ['NaN', 'Infinity', '-1', 'null', '"5"']) {
+    const result=await chrome.evaluate(`test.invalidPrerollTime(${t})`);
+    assert.equal(result.overlay.phase, 'unsupported', `invalid elapsed ${t}`);
+    assert.equal(result.hash, prerollBase.hash);
+  }
+  const preVariant = (patch) => chrome.evaluate(`test.prerollVariant(${JSON.stringify(patch)})`);
+  const scheduled=await preVariant({basis:'scheduled-pre-match',sourceLabel:'OFFLINE FIXTURE · Published before scheduled match'});
+  assert.equal(scheduled.overlay.visible, true, 'scheduled pre-match provenance accepted');
+  checkPrePaint(scheduled);
+  assert.ok(scheduled.painted.text.some(([s])=>s==='OFFLINE FIXTURE · Published before scheduled match'));
+  const preSmall=await preVariant({rows:prerollPresentation.rows.slice(0,4)});
+  assert.equal(preSmall.overlay.rowCount, 4);
+  assert.ok(preSmall.painted.text.some(([s])=>s==='STANDINGS BEFORE THIS MATCH'));
+  assert.ok(!preSmall.painted.text.some(([s])=>/after|^FT$|movement/i.test(s)));
+  const preShuffled=await preVariant({rows:[...prerollPresentation.rows].reverse()});
+  assert.equal(preShuffled.hash, prerollHeld.hash, 'pre-match order follows positions, not array order');
+  assert.equal((await chrome.evaluate('test.prerollWithoutId()')).overlay.visible, true, 'fixture identity does not require a renderer match id');
+  if (shots) {
+    for (const [name,t] of [['entering',.275],['held',5],['leaving',23.7],['finished',24]]) {
+      await prerollDraw(t);
+      const uri=await chrome.evaluate('test.png()');
+      writeFileSync(join(shots, `preroll-${name}.png`), Buffer.from(uri.split(',')[1], 'base64'));
+    }
+  }
+  assert.equal((await idleDraw(5)).hash, idleReturnReference.hash, 'idle restores identically after preroll');
+  await prerollDraw(5);
   const returned = await draw(5);
-  assert.equal(returned.overlay.visible, true, 'post-match returns after idle');
+  assert.equal(returned.overlay.visible, true, 'post-match returns after idle/preroll');
   assert.equal(returned.overlay.matchId, presentation.matchId);
   assert.notEqual(returned.hash, idleHeld.hash, 'post-match replaces idle pixels');
+  assert.equal(returned.hash, postReturnReference.hash, 'post-match restored pixel-identically after preroll/idle');
   for (const text of ['LEAGUE TABLE', 'AFTER THE MATCH', 'HOME', 'AWAY', 'FT', `${presentation.score[0]}  -  ${presentation.score[1]}`]) {
     assert.ok(returned.painted.text.some(([s]) => s===text), `post-match restores ${text}`);
   }
@@ -283,8 +432,8 @@ window.done=true;
   assert.equal((await draw(5)).overlay.phase, 'held', 'post-match held phase returns');
   assert.equal((await chrome.evaluate('test.dispose()')).disposed, true);
   assert.deepEqual(errors, [], 'no browser errors');
-  console.log('PASS league overlay: framebuffer, animated positions, local crests, hold caching, fade, reset, scorebar; idle no-match text/cards, static order/pixels/cache, 54s fade, invalid rejection, post-match return, disposal');
-  if (shots) console.log(`Screenshots: ${resolve(shots)}/league-{before,moving,after}.png and idle.png`);
+  console.log('PASS league overlay: framebuffer, animated positions, local crests, hold caching, fade, reset, scorebar; idle no-match text/cards, static order/pixels/cache, 54s fade, invalid rejection; preroll 24s static rows/highlights/stats/provenance, fades, invalid/time rejection, seeks; pixel-identical post-match return, disposal');
+  if (shots) console.log(`Screenshots: ${resolve(shots)}/league-{before,moving,after}.png idle.png and preroll-{entering,held,leaving,finished}.png`);
 } finally {
   if (chrome) await chrome.close();
   if (server) await new Promise((r) => server.close(r));
