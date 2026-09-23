@@ -18,9 +18,9 @@ assert.equal(season.matches.find(m => m.n === 42).status, 'scheduled');
 const gpu = args.includes('--gpu'), sleep = ms => new Promise(r => setTimeout(r, ms));
 const report = { scope: 'Real M42 publisher bundle; real automatic production pages and programme. Empty browser-local programme/now feeds, original unmodified scheduled-M42 archive, frozen Date.now; rehearseLive mounts the saved scheduled item. No SDK/runtime modifications, public writes, full-match or benchmark.',
   command: `PATH=/opt/homebrew/bin:$PATH node scripts/league-preroll-browser.mjs${gpu ? ' --gpu' : ''}`, gpu, startedAt: new Date().toISOString(), item,
-  samples: {visitor: [], broadcast: []}, comparisons: [], audits: {}, errors: [], failures: [], clean: null };
+  samples: {visitor: [], broadcast: []}, comparisons: [], audits: {}, errors: [], failures: [], boots: [], clean: null };
 mkdirSync(out, {recursive:true});
-let chrome, server, route = 'setup', injectionId;
+let chrome, server, route = 'setup', injectionId, currentBoot;
 const save = () => writeFileSync(join(out, 'league-preroll-browser.json'), JSON.stringify(report, null, 2));
 const check = (label, fn) => { try { fn(); } catch (e) { report.failures.push({label,message:e.message}); } };
 const near = (a,b,label) => assert.ok(Number.isFinite(a) && Math.abs(a-b)<0.000001, `${label}: ${a} vs ${b}`);
@@ -37,7 +37,7 @@ function injection(seconds) {
     let fixed=${start}+Math.round(${seconds}*1000);
     window.__prerollTime=seconds=>fixed=${start}+Math.round(seconds*1000);
     Date.now=()=>fixed;
-    const audit=window.__prerollAudit={videos:0,mp4:[],bundles:[],writes:[],xhr:[],feeds:[],socketsSuppressed:[]};
+    const audit=window.__prerollAudit={videos:0,mp4:[],bundles:[],writes:[],xhr:[],feeds:[],socketsSuppressed:[],requests:[]};
     const record=(url,type)=>{if(/\\.mp4(?:[?#]|$)/i.test(url))audit.mp4.push({url,type});if(/\\/bundles\\//i.test(url))audit.bundles.push({url,type});};
     new PerformanceObserver(list=>{for(const e of list.getEntries())record(e.name,e.initiatorType);}).observe({type:'resource',buffered:true});
     for(const method of ['createElement','createElementNS']) {
@@ -62,7 +62,8 @@ function injection(seconds) {
       if(u.pathname==='/api/v1/programme/rfl')data={schema:'4dgsx-programme/1',now:new Date(Date.now()).toISOString(),channel:{id:'rfl',timezone:'Europe/London',slots:['12:00','16:00','20:00']},items:[]};
       if(u.href==='https://raw.githubusercontent.com/robot-football-league/rfl-league-data/main/site.json')data=${JSON.stringify(archive)};
       if(data){audit.feeds.push(u.href);return Promise.resolve(new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}}));}
-      return original(input,init);
+      const request={url:u.href,method,status:'pending'};audit.requests.push(request);
+      return original(input,init).then(response=>{request.status=response.status;return response;},error=>{request.status='failed';request.error=String(error);throw error;});
     };
     // Observe the real Canvas2D renderer, including actual row positions and
     // highlight strips. Never substitute an overlay or alter draw arguments.
@@ -92,15 +93,53 @@ const stateExpression = visitor => visitor ? `(() => {
 const comparable=s=>({phase:s.programme.phase,priority:s.programme.priority,camera:s.programme.camera,clock:s.programme.clock,
   programmeT:s.programme.programmeT,phaseOrigin:s.programme.phaseOrigin,phaseElapsed:s.programme.phaseElapsed,
   table:s.programme.table,paint:s.paint,bug:{clock:s.bug.clock,t:s.bug.t,preroll:s.bug.preroll,inPlay:s.bug.inPlay,over:s.bug.over,a:s.bug.a,b:s.bug.b}});
+// whenLoaded/module existence do not await activate()'s asynchronous SDK import.
+// Observe the actual module, never retry rehearseLive or treat a failed SDK as ready.
+const moduleExpression = visitor => visitor
+  ? `window.__venue?.venues.module('stadium','match-4dgsx')?.state`
+  : `window.rflBroadcast?.state().match`;
+async function bootDiagnostic(visitor,stage) {
+  const diagnostic={stage,at:new Date().toISOString()};
+  try {
+    Object.assign(diagnostic,await chrome.evaluate(`(() => {
+      const module=${moduleExpression(visitor)};
+      return {url:location.href,now:Date.now(),
+        venue:${visitor ? 'window.__venue?.state()' : 'null'},
+        venueStats:${visitor ? 'window.__venue?.stats()' : 'null'},
+        module:module??null,sdk:module?.sdk??null,
+        errors:${visitor ? 'window.__venue?.errors' : 'window.rflBroadcast?.state().errors'},
+        requests:window.__prerollAudit?.requests??[],
+        resources:performance.getEntriesByType('resource').map(r=>({url:r.name,type:r.initiatorType,duration:r.duration,responseStatus:r.responseStatus})),
+        audit:window.__prerollAudit};
+    })()`));
+  } catch(e) { diagnostic.diagnosticError=e.message; }
+  // Copy these now, so pre/post checkpoints remain independently interpretable.
+  diagnostic.localRequests=currentBoot.requests.map(r=>({...r}));
+  diagnostic.console=currentBoot.console.slice();
+  currentBoot.diagnostics.push(diagnostic);save();
+}
 async function boot(visitor,seconds) {
+  currentBoot={route,seconds,startedAt:new Date().toISOString(),requests:[],console:[],diagnostics:[]};
+  report.boots.push(currentBoot);
+  try { await bootPage(visitor,seconds); }
+  catch(e) { await bootDiagnostic(visitor,'failure');throw e; }
+}
+async function bootPage(visitor,seconds) {
   if(injectionId)await chrome.send('Page.removeScriptToEvaluateOnNewDocument',{identifier:injectionId});
   injectionId=(await chrome.send('Page.addScriptToEvaluateOnNewDocument',{source:injection(seconds)})).identifier;
   await chrome.goto(`${report.origin}${visitor?'/venue.html?venue=stadium&tier=2&fast=1&street=0':'/broadcast.html'}`);
-  await wait(visitor?'!!window.__venue':'!!window.rflBroadcast',Boolean,'page API');
+  await wait(visitor?'!!window.__venue && (__venue.renderer.setAnimationLoop(null), true)':'!!window.rflBroadcast',Boolean,'page API');
   if(visitor) {
-    await chrome.evaluate('__venue.whenLoaded()',{timeoutMs:120000});
-    await wait(`!!__venue.venues.module('stadium','match-4dgsx')`,Boolean,'match module');
-    await chrome.evaluate(`__venue.renderer.setAnimationLoop(null);__venue.setCam('screen_main');__venue.step(1,0);`);
+    await bootDiagnostic(visitor,'api-ready-before-step');
+    // whenLoaded() is false before the first update starts the near asset.
+    // Drive the real fixture without advancing either simulation or wall time.
+    await chrome.evaluate('__venue.step(1,0)');
+    currentBoot.venueLoaded=await chrome.evaluate('__venue.whenLoaded()',{timeoutMs:120000});
+    await bootDiagnostic(visitor,'after-venue-loaded');
+    assert.equal(currentBoot.venueLoaded,true,`${route}: venue loaded`);
+    // A loaded near asset still needs an update to enter Tier 2 / activate().
+    await wait(`(__venue.step(1,0),!!__venue.venues.module('stadium','match-4dgsx'))`,Boolean,'match module');
+    await chrome.evaluate(`__venue.setCam('screen_main');__venue.step(1,0);`);
   } else {
     await chrome.evaluate('window.__prerollReady=false;rflBroadcast.ready.then(()=>__prerollReady=true,e=>__prerollReady=String(e));true');
     let ready=false;const end=Date.now()+90000;
@@ -109,8 +148,17 @@ async function boot(visitor,seconds) {
     report.bootClock='Integer-second ticks only during empty-pitch networkQuiet; exact frozen time restored before real M42 mount and all captures.';
   }
   await chrome.evaluate(`__prerollTime(${seconds})`);
+  await bootDiagnostic(visitor,'before-sdk-ready');
+  await wait(moduleExpression(visitor),m=>{
+    if(m?.sdk==='failed')throw Error(`${route}: match SDK failed: ${JSON.stringify(m.errors||m)}`);
+    return m?.sdk==='ready';
+  },'match SDK ready');
+  await bootDiagnostic(visitor,'before-mount');
   const rehearsal=visitor?`__venue.venues.module('stadium','match-4dgsx').rehearseLive`:'rflBroadcast.rehearseLive';
-  assert.equal(await chrome.evaluate(`${rehearsal}(${JSON.stringify(item)})`,{timeoutMs:150000}),true,`${route}: real asynchronous M42 mount`);
+  const mounted=await chrome.evaluate(`${rehearsal}(${JSON.stringify(item)})`,{timeoutMs:150000});
+  currentBoot.mounted=mounted;
+  await bootDiagnostic(visitor,'after-mount');
+  assert.equal(mounted,true,`${route}: real asynchronous M42 mount`);
   if(visitor) {
     await wait(`(__venue.step(1,0),__venue.venues.get('stadium').broadcast?.state().ready)`,Boolean,'internal broadcast ready');
     await chrome.evaluate(`window.__prerollRetained=__venue.venues.get('stadium').broadcast;window.__prerollTexture=__prerollRetained.surface.texture;true`);
@@ -253,8 +301,16 @@ async function cleanCheck() {
 }
 try {
   const hosted=await serve(resolve('public'));server=hosted.server;report.origin=hosted.origin;
+  // Include in-flight local module requests, which Resource Timing cannot yet see.
+  server.prependListener('request',(req,res)=>{
+    if(!currentBoot)return;
+    const request={url:new URL(req.url,report.origin).href,method:req.method,status:'pending'};
+    currentBoot.requests.push(request);
+    res.on('finish',()=>{request.status=res.statusCode;});
+    res.on('close',()=>{if(request.status==='pending')request.status='closed';});
+  });
   chrome=await launchChrome({width:1280,height:720,gpu});
-  chrome.onConsole((type,text)=>{if(type==='error')report.errors.push({route,text});});
+  chrome.onConsole((type,text)=>{currentBoot?.console.push({type,text});if(type==='error')report.errors.push({route,text});});
   for(const visitor of [true,false]) {
     route=visitor?'visitor':'broadcast';await boot(visitor,21.999);
     for(const phase of phases){await capture(visitor,phase);if(!visitor&&phase.name==='second-late-read')await cleanCheck();}
