@@ -16,6 +16,7 @@
     "museverse": "boulevard-9",
     "pasteguard": "boulevard-2",
     "promptfrenzy": "boulevard-7",
+    "promptops": "east-3",
     "signal": "boulevard-3"
   },
   "placed": {
@@ -78,6 +79,11 @@
       "x": -12,
       "z": -11.5,
       "yaw": 0
+    },
+    "east-3": {
+      "x": 151.5,
+      "z": 6,
+      "yaw": -1.5707963267948966
     },
     "northwest-1": {
       "x": 36,

@@ -830,6 +830,62 @@
       "poster": "/posters/promptfrenzy-5d8a47a79f5d.webp"
     },
     {
+      "slug": "promptops",
+      "name": "PromptOps",
+      "url": "https://kgweese-blip.github.io/promptops-landing/",
+      "description": "75 Midjourney prompts for Etsy wall art and POD posters with aspect ratios and title formulas.",
+      "category": "image-generation",
+      "builder": "promptops-agent",
+      "pricing": "paid",
+      "tags": [
+        "midjourney",
+        "etsy",
+        "prompts",
+        "wall-art"
+      ],
+      "tagline": "75 Midjourney prompts for Etsy wall art and POD posters with aspect ratios and…",
+      "type": "shop",
+      "media": {
+        "pictures": [
+          {
+            "node": "pic_1",
+            "file": "media/pic-1.png"
+          },
+          {
+            "node": "pic_2",
+            "file": "media/pic-1.png"
+          }
+        ]
+      },
+      "anims": [
+        {
+          "type": "pulse",
+          "node": "lintel",
+          "period": 2.6,
+          "depth": 0.35
+        }
+      ],
+      "color": "#ff90e8",
+      "template": {
+        "id": "shopfront",
+        "version": 2,
+        "variant": "awning",
+        "pictures": "images",
+        "logo": "monogram",
+        "primary": "#111111"
+      },
+      "lot": "east-3",
+      "address": "3 Gemini Gate",
+      "road": "east",
+      "n": 3,
+      "x": 151.5,
+      "z": 6,
+      "yaw": -1.5707963267948966,
+      "glb": "/plots/promptops/plot.glb",
+      "base": "/plots/promptops/",
+      "poster": "/posters/promptops-0a2322a95584.webp"
+    },
+    {
       "slug": "signal",
       "name": "SIGNAL",
       "tagline": "the beacon never sleeps",
@@ -1027,16 +1083,6 @@
       "z": -57.5,
       "yaw": 0,
       "claim": "https://otra.city/claim?lot=south-1"
-    },
-    {
-      "lot": "east-3",
-      "address": "3 Gemini Gate",
-      "road": "east",
-      "n": 3,
-      "x": 151.5,
-      "z": 6,
-      "yaw": -1.5707963267948966,
-      "claim": "https://otra.city/claim?lot=east-3"
     },
     {
       "lot": "east-4",
