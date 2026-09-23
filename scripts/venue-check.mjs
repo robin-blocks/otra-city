@@ -35,7 +35,7 @@ const ids = flag('all') || !arg('venue')
   ? JSON.parse(readFileSync(join(venuesDir, 'index.json'), 'utf8')).venues.map((v) => v.id)
   : [arg('venue')];
 
-const report = { at: new Date().toISOString(), venues: [] };
+const report = { at: new Date().toISOString(), venues: [], matchLifecycle: [] };
 let failed = 0;
 
 // 0. index in sync (one run for all)
@@ -188,7 +188,15 @@ for (const id of ids) {
         const mcfg = def.modules.find((m) => m.type === 'match-4dgsx');
         let mx = null;
         try {
-          mx = await openFixture({ venue: id, tier: 0, fast: true, bundle: arg('bundle', DEFAULT_BUNDLE) });
+          mx = await openFixture({ venue: id, tier: 0, fast: true, bundle: arg('bundle', DEFAULT_BUNDLE),
+            onEvaluate(event) {
+              const row = { venue: id, ...event };
+              report.matchLifecycle.push(row);
+              // Bound artifact growth, not test execution or the existing budgets.
+              if (report.matchLifecycle.length > 4000) report.matchLifecycle.shift();
+              console.log('  TRACE match-evaluate ' + JSON.stringify(row));
+            },
+          });
           for (let i = 0; i < 100 && (await mx.stats()).impostor.meshes === 0; i++) await new Promise((r) => setTimeout(r, 100));
           const m0 = await sweepOn(mx);
           await mx.setTier(2);
@@ -306,6 +314,7 @@ for (const id of ids) {
             }
           }
           const msA = (await mx.state()).venues.find((v) => v.id === id).modules[0].state;
+          console.log('  TRACE match-audio ' + JSON.stringify({ pa: msA?.pa, sdkAudio: msA?.sdkAudio, bundle: arg('bundle', DEFAULT_BUNDLE) }));
           if (paCfg) {
             const listen = async (x, z) => {
               await mx.evaluate(`(() => { const v = window.__venue; const w = v.world.toWorld(v.def, { x: ${x}, z: ${z} });
@@ -409,6 +418,7 @@ for (const id of ids) {
           const dom3 = JSON.parse(await mx.evaluate(DOM_EXPR));
           check('match: dispose leaves no iframes or videos', dom3.iframes === 0 && dom3.videos === 0, `${dom3.iframes} iframes, ${dom3.videos} videos`);
           // second cycle: mount the (now cached) bundle again and unload again
+          console.log('  TRACE match-cycle-2 begin');
           await mx.setTier(2);
           await mx.step(1);
           await mx.waitLoaded();
