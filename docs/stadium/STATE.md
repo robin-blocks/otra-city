@@ -4,9 +4,25 @@ _Last update: 2026-09-03 (M1 MERGED as PR #30 and live on otra.city; critic pass
 
 ## Pitchside banners — 2026-09-23
 
-Robin approved the local preview and requested production deployment on
-2026-09-23. Release goes through `main` → Vercel; deployment confirmation
-must include matching the live GLB and `venues.js` to this commit.
+**Live, verified 2026-09-23 at 15:39 London.** Robin approved the local
+preview and requested deployment. Commit `ff025a7` was rebased on current
+`main` (preserving the newer goal-celebration work and PromptOps submission)
+and pushed through the normal Vercel integration. No fixture was active;
+the next programme starts at 16:01:42 London, outside the 15-minute hold.
+
+- [Vercel deployment](https://vercel.com/robinblocks/otra-city/2eJJLRGikc23rtjU19t6ZQ2KPaVW)
+  succeeded. SHA-256 of the live `venue.glb` and `venues.js` exactly matches
+  the committed files; the GLB hash is
+  `d38cc36bd13ba9d9be0871d5ba3b2e5abc154912bf56d81b8a443753030b44fd`.
+- Production browser check: both blue/yellow halfway boards visually verified,
+  unlit material and 8× filtering confirmed, no console/page errors.
+  Evidence: `qa-out/stadium-banners/production-{blue,yellow}.png` and
+  `production-check.json`.
+- Post-rebase local gate: 46 tests passed (hoardings, goal celebration, match
+  clock, programme), plus strict venue manifest check. Docs-sync CI passed;
+  [venues CI](https://github.com/robin-blocks/otra-city/actions/runs/35875608580)
+  and [city walkthrough CI](https://github.com/robin-blocks/otra-city/actions/runs/35875608600)
+  were still running at production verification; not claimed as passed.
 
 Robin reported hard-to-read pitchside text and asked for `OTRA.CITY STADIUM`
 on the centre boards in front of both the blue and yellow stands.
