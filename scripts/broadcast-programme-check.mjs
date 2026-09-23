@@ -15,6 +15,7 @@ const { createTrack, CAMERAS } = await import(camerasURL);
 const { createBroadcastProgramme, PROGRAMME_TRACK_URLS } = await import(data(
   read('../public/js/broadcast-programme.js')
     .replace("'./broadcast-cameras.js'", JSON.stringify(camerasURL))
+    .replace("'./league-timing.mjs'", JSON.stringify(new URL('../public/js/league-timing.mjs', import.meta.url).href))
     .replace("'./goal-celebration.mjs'", JSON.stringify(new URL('../public/js/goal-celebration.mjs', import.meta.url).href))
     .replace("'./post-match-table.mjs'", JSON.stringify(new URL('../public/js/post-match-table.mjs', import.meta.url).href))));
 const venue = { cameras: {
@@ -466,4 +467,120 @@ test('unavailable idle evidence leaves deterministic aerial without a graphic', 
   const r = p.evaluate({ match:idle,nowMs:50000 });
   assert.equal(r.tableCue,null); assert.equal(r.camera.camera,'heli'); assert.equal(r.state.table.held,true);
   assert.equal(r.state.table.status,'waiting-for-table');
+});
+
+
+function prerollTableStub({ available = true } = {}) {
+  const presentation = { mode: 'preroll', rows: [] };
+  let status = { visible: false, status: 'idle' };
+  return { ...tableStub({ available: false }),
+    updatePreroll({ slot }) {
+      status = { visible: !!slot && available, mode: 'preroll', status: available ? 'idle' : 'waiting-for-table' };
+      return slot && available ? { presentation, elapsed: slot.elapsed } : null;
+    }, state: () => status };
+}
+
+test('pre-roll has exactly two 24s standings reads; authored gap and final 43.3s stay clear', async () => {
+  const p = await director({ tableController: prerollTableStub() });
+  const plain = await director();
+  const run = pT => p.evaluate({ match: match(pT - 180, pT), nowMs: 0 });
+  for (const start of [22, 112]) {
+    assert.equal(run(start - .001).tableCue, null);
+    assert.equal(run(start).camera.camera, 'heli');
+    assert.equal(run(start + .699).tableCue, null);
+    near(run(start + .7).tableCue.elapsed, 0);
+    for (const offset of [1, 5, 20, 24.699]) {
+      const r = run(start + offset);
+      assert.equal(r.camera.camera, 'heli'); assert.equal(r.state.table.duration, 24);
+      assert.equal(r.tableCue.presentation.mode, 'preroll'); near(r.tableCue.elapsed, offset - .7);
+    }
+    assert.equal(run(start + 24.7).tableCue, null);
+  }
+  for (const t of [0, 20, 46.7, 60, 90, 111.99, 136.7, 150, 179.99, 180, 240, 300]) {
+    const r = run(t);
+    assert.equal(r.tableCue, null, `no overlay at ${t}`);
+    assert.deepEqual(r.camera, plain.evaluate({ match: match(t - 180, t), nowMs: 0 }).camera);
+  }
+  let shown = 0;
+  for (let ms = 0; ms < 180000; ms += 100) shown += !!run(ms / 1000).tableCue;
+  assert.equal(shown, 480, '48 of 180 pre-roll seconds, not a looping table');
+});
+
+test('pre-roll time and moving aerial agree for late joins, reverse seeks, wall fallback and no map', async () => {
+  const a = await director({ tableController: prerollTableStub() });
+  for (const t of [28, 135, 22.7, 136.7, 118, 46.7, 25]) {
+    const b = await director({ tableController: prerollTableStub() });
+    const m = match(t - 180, t);
+    const x = a.evaluate({ match: m, nowMs: 1000, dt: 1/50 });
+    const y = b.evaluate({ match: m, nowMs: 9876543, dt: 1/8 });
+    assert.deepEqual(x.camera, y.camera); assert.deepEqual(x.tableCue, y.tableCue);
+    const fallback = b.evaluate({ match: {...m, programme:null, programmeT:null, bug:{...m.bug,programmeT:null}}, nowMs:0 });
+    assert.deepEqual(x.camera, fallback.camera); assert.deepEqual(x.tableCue, fallback.tableCue);
+    const wall = {...m, drive:'wall', programmeT:null, bug:{...m.bug,programmeT:null}};
+    const z = b.evaluate({match:wall,nowMs:Date.parse(m.match.startsAt) + t * 1000});
+    assert.deepEqual(x.camera, z.camera); assert.deepEqual(x.tableCue, z.tableCue);
+    b.dispose();
+  }
+  assert.notDeepEqual(a.evaluate({match:match(-152,28)}).camera.pos,
+    a.evaluate({match:match(-151,29)}).camera.pos, 'aerial is moving, not a frozen plate');
+});
+
+test('pre-roll never obscures play, replay, headcam, goals, intervals, or contradictory/missing clocks', async () => {
+  const p = await director({ tableController: prerollTableStub() });
+  for (const extra of [
+    {bug:{inPlay:true}}, {bug:{inPlay:undefined}}, {bug:{replay:true}}, {bug:{celebrating:true}},
+    {bug:{over:true}}, {bug:{preroll:false}}, {bug:{t:NaN}}, {bug:{t:0}},
+    {headcam:{pos:[1,2,3],lookAt:[3,2,1]}}, {board:'GOAL'}, {phase:'loading'}, {phase:'idle'},
+  ]) assert.equal(p.evaluate({match:match(-152,28,extra)}).tableCue,null,JSON.stringify(extra));
+  for (const m of [match(0,180),match(310,498),match(622,860)])
+    assert.equal(p.evaluate({match:m}).tableCue,null);
+});
+
+test('short pre-roll skips whole appearances without 30s lead; unknown kickoff map fails shut', async () => {
+  const p = await director({ tableController: prerollTableStub() });
+  for (const duration of [60, 76.699, 76.7, 120, 166.699, 166.7, 180]) {
+    for (const [pT, end] of [[28,46.7],[118,136.7]]) {
+      if (pT >= duration) continue;
+      const m = match(pT-duration,pT,{programme:{map:[[-duration,0],[622,duration+622]]}});
+      const r = p.evaluate({match:m});
+      assert.equal(!!r.tableCue,end+30<=duration, `duration ${duration} / slot ${pT}`);
+    }
+  }
+  const bad = match(-152,28,{programme:{map:[[-180,0],[-100,80]]}});
+  assert.equal(p.evaluate({match:bad}).tableCue,null,'map cannot establish kickoff');
+});
+
+test('pre-roll archive timing cannot change the reserved camera, and absent evidence stays unobscured', async () => {
+  const a = await director({tableController:prerollTableStub()});
+  const b = await director({tableController:prerollTableStub({available:false})});
+  for (const t of [22,28,46.699,112,118,136.699]) {
+    const x = a.evaluate({match:match(t-180,t)}), y = b.evaluate({match:match(t-180,t)});
+    assert.deepEqual(x.camera,y.camera); assert.equal(y.tableCue,null);
+    assert.equal(y.camera.camera,'heli'); assert.equal(y.state.table.status,'waiting-for-table');
+  }
+});
+
+
+test('a supplied pre-roll map cannot silently fall back to the default duration when unusable', async () => {
+  const p = await director({tableController:prerollTableStub()});
+  const short = {map:[[-60,0],[0,60],[622,682]]};
+  for (const programme of [short, {map:[[-60,0],[0,60],[622,50]]}, {map:[]}, {map:'invalid'}]) {
+    for (const programmeT of [null, NaN, Infinity]) {
+      const m = match(-52,programmeT,{programme});
+      const r = p.evaluate({match:m});
+      assert.equal(r.tableCue,null,'unknown clock must not turn elapsed8/60s into128/180s');
+      assert.equal(r.state.table.prerollDuration,null);
+      assert.equal(r.state.table.prerollSegment,null);
+    }
+  }
+  for (const badMap of [{map:[]},{map:[[-60,0],[0,60],[622,50]]}]) {
+    assert.equal(p.evaluate({match:match(-52,8,{programme:badMap})}).tableCue,null);
+  }
+  assert.equal(p.evaluate({match:match(-52,8,{programme:short})}).tableCue,null);
+  const standard = match(-62,null,{bug:{programmeT:null}});
+  assert.equal(p.evaluate({match:standard}).tableCue,null,'even a valid180s map needs its clock');
+  standard.drive='wall';
+  const wall=p.evaluate({match:standard,nowMs:Date.parse(standard.match.startsAt)+118000});
+  assert.ok(wall.tableCue,'valid map plus explicit wall-clock drive remains supported');
+  near(wall.tableCue.elapsed,5.3);
 });

@@ -81,6 +81,8 @@ jobs:
       - run: npm run league:check
       # No bundle/replay: verify both automatic routes at shared idle slot times.
       - run: node scripts/league-idle-browser.mjs
+      # Pinned real fixture: two pre-match reads, no result spoilers, both routes.
+      - run: node scripts/league-preroll-browser.mjs
       - run: node --test scripts/stadium-hoardings-check.mjs
       - run: node scripts/build-venues.mjs --check --strict
       # --match mounts a real bundle through the publisher's SDK and asserts the
@@ -111,4 +113,5 @@ jobs:
             poc/out/broadcast-crowd.json
             poc/out/shots/*.png
             qa-out/league-idle/integration/
+            qa-out/league-preroll/integration/
           if-no-files-found: warn

@@ -153,6 +153,77 @@ export function buildIdleTable(doc, { nowMs = Date.now() } = {}) {
   } catch (e) { return { table: null, reason: e.message || String(e) }; }
 }
 
+/** Standings BEFORE an identified fixture, never including its HUD or archive
+ * result. Replays reconstruct the complete reconciled ledger at aired_at;
+ * scheduled first air requires the same current, ordered prior-result evidence
+ * as the post-match path, but never applies a speculative result. An explicit
+ * source other than schedule cannot authorize an unpublished fixture.
+ */
+export function buildPreMatchTable(doc, { matchId, bundleUrl, home, away, startsAt,
+  nowMs = Date.now(), source } = {}) {
+  try {
+    require(Array.isArray(doc?.seasons) && stamp(doc.generated_at), 'invalid league archive');
+    require(Number.isFinite(nowMs), 'invalid pre-match wall clock');
+    require(doc.seasons.every((s) => s && integer(s.season)) &&
+      new Set(doc.seasons.map((s) => s.season)).size === doc.seasons.length, 'ambiguous season identity');
+    let folder = null;
+    try { folder = new URL(bundleUrl).pathname.split('/').filter(Boolean).pop(); } catch { /* exact id alone is permitted */ }
+    const candidates = [];
+    for (const season of doc.seasons) {
+      for (const match of season.matches || []) {
+        const id = match.status === 'scheduled' ? fixtureId(season, match) : match.watch?.id;
+        if (id && (identifies(matchId, id) || identifies(folder, id))) candidates.push({ season, match, id });
+      }
+    }
+    require(candidates.length === 1, 'pre-match fixture identity unavailable or ambiguous');
+    const { season, match, id } = candidates[0];
+    require(match.status === 'aired' || match.status === 'scheduled', 'pre-match fixture is unavailable');
+    require((matchId == null || identifies(matchId, id)) &&
+      (bundleUrl == null || (folder && identifies(folder, id))), 'pre-match identity disagrees');
+    require(home?.code === match.home_code && away?.code === match.away_code, 'pre-match teams do not match fixture');
+    require(season.name == null || (typeof season.name === 'string' && season.name.trim()), 'invalid season name');
+    require(season.preseason == null || typeof season.preseason === 'boolean', 'invalid season type');
+    const { teams, aired } = validateSeason(season);
+    const generated = Date.parse(doc.generated_at);
+    require(generated <= nowMs + 60000, 'pre-match archive is future-dated');
+    require(aired.every((m) => Date.parse(m.aired_at) <= generated && Date.parse(m.aired_at) <= nowMs),
+      'pre-match archive contains future or unpublished results');
+    const rows = empty(teams);
+    const scheduled = match.status === 'scheduled';
+    if (scheduled) {
+      require(source === undefined || source === 'schedule', 'scheduled pre-match requires schedule source');
+      require(!match.watch || match.watch.id === id, 'scheduled pre-match published identity disagrees');
+      firstAirBoundary(doc, season, match, aired, { startsAt, nowMs });
+      for (const m of aired) apply(rows, m);
+    } else {
+      // Historical replay uses aired chronology, not fixture numbers, and
+      // validates the entire archive even though only this prefix is shown.
+      require(aired.includes(match), 'no confirmed pre-match boundary');
+      for (const m of aired) {
+        if (m === match) break;
+        apply(rows, m);
+      }
+    }
+    const label = season.preseason ? 'PRE-SEASON' : `SEASON ${season.season}`;
+    const identity = (slug) => {
+      const t = teams.find((t) => t.slug === slug);
+      return { code: t.code, name: t.name, color: t.color };
+    };
+    return { table: {
+      mode: 'preroll', matchId: id, season: season.season, seasonId: season.season,
+      seasonName: season.name ?? label, label, generatedAt: doc.generated_at,
+      basis: scheduled ? 'scheduled-pre-match' : 'published-pre-match',
+      sourceLabel: 'RFL · Pre-match standings',
+      // Copy only validated identity fields: caller/HUD objects may carry
+      // result metadata and must not mutate a frozen presentation later.
+      home: identity(match.home), away: identity(match.away),
+      rows: rank(rows).map((r) => ({ code: r.code, name: r.name, color: r.color,
+        position: r.pos, previousPosition: r.pos, played: r.P, previousPlayed: r.P,
+        gd: r.GD, previousGd: r.GD, points: r.Pts, previousPoints: r.Pts })),
+    }, reason: null };
+  } catch (e) { return { table: null, reason: e.message || String(e) }; }
+}
+
 /** firstAir is supplied only by a controller which has confirmed final play-end
  * on a mounted scheduled programme. Never authorize it from publication alone.
  * No throwing into the render loop: unavailable data is a diagnostic. */
