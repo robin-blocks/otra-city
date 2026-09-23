@@ -534,6 +534,24 @@ feed's rolling results. The main screen can show the validated post-match
 overlay because that is part of the broadcast, using the separate complete-
 season archive below, not a replacement for fixtures/results.
 
+### Between-match current standings
+
+Automatic broadcast and stadium television also show a static current table
+occasionally during idle stadium shots: **54 seconds per 281.7-second rotation
+(19.2% of eligible idle time)**. Every other opening aerial is extended for the
+read; the intervening lap stays clear. The complete slot is skipped near the
+next programme (60 seconds clear before stream start), while a loading/live
+fixture, build-up, play or replay suppresses it immediately. Shared absolute
+timing makes late arrivals join the remaining segment, not start a new one.
+
+This is published current standings, not a rerun of a match result: no FT score,
+match-team highlights or before/after animation. It uses the same archive and
+strict reconciliation, with six-hour freshness and no future results, and
+shares the existing bounded archive cache. Unavailable evidence leaves the
+aerial clear. No new media, match mounts or external feed are required.
+See [the full cadence, data and lifecycle contract](STADIUM-SCREEN.md#occasional-standings-between-matches).
+The post-match graphic below is a separate context and remains unchanged.
+
 ### Post-match league table — 19 September, first-air fix 21 September 2026
 
 On the shared automatic live programme (`/broadcast` and the visitor's main

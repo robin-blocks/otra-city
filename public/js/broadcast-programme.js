@@ -14,6 +14,11 @@ const DEFAULT_FOV = 50;
 const BALL_STILL_MS = 0.6;
 const BALL_SETTLE_S = 6;
 const CUE_DELAY_S = 0.7;
+// One standings segment on every other idle cut-list lap. Extend only that
+// lap's opening aerial to fit the existing 54s reading hold; retain every
+// other authored shot. With today's 136s list: 54 / 281.7 = 19.2% airtime.
+export const IDLE_TABLE_EVERY_LAPS = 2;
+export const IDLE_TABLE_LEAD_IN_S = 60;
 const HISTORY_S = 4;
 const HISTORY_FPS = 50;
 const finite = Number.isFinite;
@@ -218,6 +223,40 @@ export async function createBroadcastProgramme({ venue, fetcher = globalThis.fet
         held = true;
       } else c = at(cut, postElapsed >= slotEnd ? postElapsed - extension : postElapsed);
     }
+    // Idle is the only other standings context. Never mistake a bundle that
+    // is loading, or a live programme awaiting its stage, for between games.
+    const idleReady = phase === 'idle' && ['idle', 'countdown'].includes(m?.phase) && !m?.live;
+    const idleLayout = !!table?.updateIdle && phase === 'idle' && cuts.ambient?.loop &&
+      first?.camera === 'heli' && first.from === 0 && cuts.ambient.lastFrame > 0;
+    let idleSlot = null, idlePeriod = null, idleSlotElapsed = null, idleBlocked = null;
+    if (idleLayout) {
+      const fps = cuts.ambient.fps || 50;
+      const lap = cuts.ambient.lastFrame / fps;
+      const end = first.to / fps;
+      const extension = Math.max(0, slotEnd - end);
+      idlePeriod = IDLE_TABLE_EVERY_LAPS * lap + extension;
+      const periodMs = Math.round(idlePeriod * 1000);
+      const cycle = Math.floor((nowMs - idleEpochMs) / periodMs);
+      const slotStartMs = idleEpochMs + cycle * periodMs;
+      const t = (nowMs - slotStartMs) / 1000;
+      const nextAt = m?.next ? Date.parse(m.next.startsAt) : Infinity;
+      // Reserve enough space for the ENTIRE segment and a clean final minute
+      // before stream start (not kickoff). Unknown/malformed timing fails shut.
+      const enoughRoom = nextAt >= slotStartMs + (slotEnd + IDLE_TABLE_LEAD_IN_S) * 1000;
+      idleBlocked = !idleReady ? 'not-between-matches' : !enoughRoom ? 'next-programme' : null;
+      if (idleReady && enoughRoom) {
+        idleSlotElapsed = t;
+        if (t >= end && t < end + extension) {
+          const cameraT = frameOf(t, fps) / fps;
+          c = { ...CAMERAS.heli(cameraT, first.seed, first.params), camera: 'heli',
+            segment: first.index ?? 0, seed: first.seed, params: first.params, t: cameraT, held: true };
+          held = true;
+        } else c = at(cuts.ambient, t >= slotEnd ? t - extension : t);
+        if (t >= CUE_DELAY_S && t < slotEnd) idleSlot = {
+          key: `idle:${idleEpochMs}:${cycle}`, elapsed: t - CUE_DELAY_S,
+        };
+      }
+    }
     const tracking = gantryAt(m, clock, dt, sampler);
     if (c?.camera === 'gantry' && tracking.pose) c = { ...c,
       lookAt: tracking.pose.aim.map((v) => +v.toFixed(3)), fov: +tracking.pose.fov.toFixed(3) };
@@ -252,9 +291,13 @@ export async function createBroadcastProgramme({ venue, fetcher = globalThis.fet
     // This deliberately permits a late join / late archive within the fixed
     // slot to show its remaining time, not a new 54s show or local 25s window.
     let tableCue = null;
+    if (table && !onAir) {
+      table.update({ match: null, time: 0, nowMs });
+      tableCue = table.updateIdle?.({ slot: idleSlot, warm: idleReady, nowMs }) ?? null;
+    }
     const safe = hasSlot && !inPlay && !bug?.preroll && !bug?.replay && !bug?.celebrating && !m?.headcam &&
       bug?.inPlay === false && stopped(m, full) && priority !== 'goal';
-    if (table) {
+    if (table && onAir) {
       // The wrapper, not the old page-local controller, owns interruption.
       // Clear its finished/safe timer after a protected cut so clients that
       // witnessed a headcam/goal can rejoin the same remaining global slot
@@ -276,6 +319,7 @@ export async function createBroadcastProgramme({ venue, fetcher = globalThis.fet
       table: { ...(table?.state?.() || { status: 'disabled' }), visible: !!tableCue,
         elapsed: tableCue?.elapsed ?? null, slotElapsed: hasSlot ? postElapsed : null,
         duration: TABLE_DURATION_S, held, expired: hasSlot && postElapsed >= slotEnd,
+        idlePeriod, idleSlotElapsed, idleBlocked,
         status: !table ? 'disabled' : hasSlot && postElapsed >= slotEnd ? 'complete'
           : tableCue ? 'on-air' : table?.state?.().status || 'idle' },
     };

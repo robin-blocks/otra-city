@@ -79,6 +79,8 @@ jobs:
       - run: npm run broadcast-output:check
       - run: npm run stadium-screen:check
       - run: npm run league:check
+      # No bundle/replay: verify both automatic routes at shared idle slot times.
+      - run: node scripts/league-idle-browser.mjs
       - run: node --test scripts/stadium-hoardings-check.mjs
       - run: node scripts/build-venues.mjs --check --strict
       # --match mounts a real bundle through the publisher's SDK and asserts the
@@ -108,4 +110,5 @@ jobs:
             poc/out/broadcast-check.json
             poc/out/broadcast-crowd.json
             poc/out/shots/*.png
+            qa-out/league-idle/integration/
           if-no-files-found: warn

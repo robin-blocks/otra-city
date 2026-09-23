@@ -1,4 +1,4 @@
-// Post-match standings, painted INTO the broadcast frame, not onto the page.
+// League standings, painted INTO the broadcast frame, not onto the page.
 // All coordinates are in a title-safe 1280 x 720 design space. The caller owns
 // the presentation, the clock, and hiding the scorebug's bottom scoreboard.
 import * as THREE from 'three';
@@ -29,8 +29,18 @@ function colour(value) {
 
 function validPresentation(p) {
   if (!p || !Array.isArray(p.rows) || p.rows.length < 2 || p.rows.length > 12) return false;
-  if (!p.home?.code || !p.away?.code || p.home.code === p.away.code) return false;
-  if (!Array.isArray(p.score) || p.score.length !== 2 || !p.score.every((v) => Number.isInteger(v) && v >= 0)) return false;
+  const idle = p.mode === 'idle';
+  if (idle) {
+    // A current table has no match context. Do not silently turn an incomplete
+    // match presentation into idle, or animate fabricated previous standings.
+    if (['home', 'away', 'score', 'matchId'].some((key) => key in p)) return false;
+    if (p.basis !== 'published-standings' || !Number.isSafeInteger(p.season) || p.season < 0) return false;
+    if (![p.label, p.sourceLabel, p.generatedAt].every((v) => typeof v === 'string' && v.trim())) return false;
+    if (!Number.isFinite(Date.parse(p.generatedAt))) return false;
+  } else {
+    if (!p.home?.code || !p.away?.code || p.home.code === p.away.code) return false;
+    if (!Array.isArray(p.score) || p.score.length !== 2 || !p.score.every((v) => Number.isInteger(v) && v >= 0)) return false;
+  }
   const codes = new Set();
   const positions = new Set();
   const previous = new Set();
@@ -40,17 +50,25 @@ function validPresentation(p) {
     for (const key of ['position', 'previousPosition']) {
       if (!Number.isInteger(row[key]) || row[key] < 1 || row[key] > p.rows.length) return false;
     }
+    if (idle) {
+      if (typeof row.code !== 'string' || !row.code.trim()) return false;
+      if (!['played', 'gd', 'points'].every((key) => Number.isSafeInteger(row[key]))) return false;
+      if (row.played < 0 || row.points < 0) return false;
+      if (![['position', 'previousPosition'], ['played', 'previousPlayed'], ['gd', 'previousGd'], ['points', 'previousPoints']]
+        .every(([current, old]) => row[current] === row[old])) return false;
+    }
     codes.add(row.code);
     positions.add(row.position);
     previous.add(row.previousPosition);
   }
-  return codes.has(p.home.code) && codes.has(p.away.code) && positions.size === p.rows.length && previous.size === p.rows.length;
+  return (idle || (codes.has(p.home.code) && codes.has(p.away.code))) && positions.size === p.rows.length && previous.size === p.rows.length;
 }
 
 /**
  * @param {{width?: number, height?: number, crestFor?: (team: object) => string|null}} options
  * draw(presentation, elapsedSeconds): an absolute, caller-controlled clock.
  * 0–.55 intro; old standings to 1.8; reorder to 3; hold to 53.4; out at 54.
+ * Idle: published order throughout, held immediately after the same intro.
  * draw(null, ...) clears stale pixels. Invalid/incomplete tables also hide;
  * in particular, this renderer NEVER truncates tables with more than 12 clubs.
  * render(renderer) must follow the world/composer render, before frame capture.
@@ -208,7 +226,36 @@ export function createLeagueOverlay({ width = W, height = H, crestFor } = {}) {
     }
   }
 
+  function idleCards(rows, teams, urls) {
+    const x = 866;
+    const leader = rows[0]; // Published position, not the most recent match.
+    rect(x, 225, 328, 170, '#152236');
+    rect(x, 225, 4, 170, colour(teams[0].color));
+    rect(x + 4, 225, 324, 1, 'rgba(255,255,255,.09)');
+    crest(teams[0], urls[0], x + 20, 242, 42);
+    text(leader.name || leader.code, x + 77, 256, 20, 700, WHITE, 'left', 232, 16);
+    text('TABLE LEADER', x + 77, 278, 10, 700, LIME);
+    text(leader.position, x + 24, 332, 55, 800, WHITE);
+    text('POSITION', x + 25, 371, 10, 700, MUTED);
+    rect(x + 123, 310, 1, 65, 'rgba(255,255,255,.09)');
+    text(leader.points, x + 145, 332, 48, 800, LIME, 'left', 160);
+    text('POINTS', x + 145, 371, 10, 700, MUTED);
+
+    const played = rows.map((r) => r.played);
+    const min = Math.min(...played), max = Math.max(...played);
+    rect(x, 411, 328, 170, '#152236');
+    rect(x, 411, 328, 1, 'rgba(255,255,255,.09)');
+    text('SEASON SNAPSHOT', x + 24, 438, 13, 700, MUTED);
+    text(rows.length, x + 24, 491, 43, 800, WHITE);
+    text('CLUBS', x + 25, 529, 10, 700, MUTED);
+    rect(x + 123, 466, 1, 72, 'rgba(255,255,255,.09)');
+    text(min === max ? min : `${min}–${max}`, x + 145, 491, 38, 800, WHITE, 'left', 164, 26);
+    text('PLAYED PER CLUB', x + 145, 529, 10, 700, MUTED);
+    text('Published order · Season so far', x + 24, 561, 12, 400, '#c9d3df', 'left', 280);
+  }
+
   function paint(p, rows, teams, urls, progress) {
+    const idle = p.mode === 'idle';
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, canvas.width, canvas.height);
     g.setTransform(scale, 0, 0, scale, originX, originY);
@@ -225,8 +272,8 @@ export function createLeagueOverlay({ width = W, height = H, crestFor } = {}) {
     rect(86, 126, 49, 24, LIME);
     text('RFL', 110.5, 139, 17, 900, '#101923', 'center');
     text(p.label || `SEASON ${p.season}`, 151, 139, 13, 700, '#c4cfdd', 'left', 580);
-    text('LEAGUE TABLE', 85, 181, 36, 800, WHITE, 'left', 710);
-    text(progress === 0 ? 'BEFORE THE MATCH' : 'AFTER THE MATCH', 1194, 181, 17, 700, LIME, 'right');
+    text(idle ? 'CURRENT STANDINGS' : 'LEAGUE TABLE', 85, 181, 36, 800, WHITE, 'left', 710);
+    text(idle ? 'BETWEEN GAMES' : progress === 0 ? 'BEFORE THE MATCH' : 'AFTER THE MATCH', 1194, 181, 17, 700, LIME, 'right');
     text(p.sourceLabel || 'FULL TIME', 1194, 139, 11, 700, MUTED, 'right', 392);
     rect(84, 209, 1110, 1, 'rgba(255,255,255,.13)');
 
@@ -246,7 +293,7 @@ export function createLeagueOverlay({ width = W, height = H, crestFor } = {}) {
       if (i % 2 === 0) rect(tableX, tableTop + i * rowH, tableW, rowH - 1, 'rgba(255,255,255,.018)');
       rect(tableX, tableTop + (i + 1) * rowH - 1, tableW, 1, 'rgba(255,255,255,.055)');
     }
-    const selected = (r) => r.code === p.home.code || r.code === p.away.code;
+    const selected = (r) => !idle && (r.code === p.home.code || r.code === p.away.code);
     const ordered = [...rows].sort((a, b) => Number(selected(a)) - Number(selected(b)) || a.position - b.position);
     g.save();
     g.beginPath(); g.rect(tableX, tableTop, tableW, rows.length * rowH); g.clip();
@@ -267,7 +314,7 @@ export function createLeagueOverlay({ width = W, height = H, crestFor } = {}) {
       }
       text(progress < .5 ? row.previousPosition : row.position, 113, cy, 18, 700, active ? WHITE : '#bec9d7', 'center');
       const reveal = smooth(progress * 2);
-      if (reveal > 0) {
+      if (!idle && reveal > 0) {
         g.save(); g.globalAlpha = reveal;
         const tint = active ? (movement > 0 ? UP : movement < 0 ? DOWN : MUTED) : '#8b9eaf';
         arrow(151, cy, 10, Math.sign(movement), tint);
@@ -285,21 +332,31 @@ export function createLeagueOverlay({ width = W, height = H, crestFor } = {}) {
     g.restore();
     if (rows.length <= 5) {
       text(`${rows.length} CLUBS`, 88, 580, 11, 700, MUTED);
-      text(progress === 0 ? 'STANDINGS BEFORE THIS MATCH' : 'STANDINGS AFTER THIS MATCH', 832, 580, 11, 700, MUTED, 'right');
+      text(idle ? 'PUBLISHED STANDINGS' : progress === 0 ? 'STANDINGS BEFORE THIS MATCH' : 'STANDINGS AFTER THIS MATCH', 832, 580, 11, 700, MUTED, 'right');
     }
-    const homeIndex = rows.findIndex((r) => r.code === p.home.code);
-    const awayIndex = rows.findIndex((r) => r.code === p.away.code);
-    card(teams[homeIndex], rows[homeIndex], urls[homeIndex], 225, progress, 'HOME');
-    card(teams[awayIndex], rows[awayIndex], urls[awayIndex], 411, progress, 'AWAY');
+    if (idle) {
+      idleCards(rows, teams, urls);
+      rect(84, 611, 1110, 1, 'rgba(255,255,255,.16)');
+      text('PUBLISHED STANDINGS', 86, 634, 17, 700, LIME);
+      const updated = new Date(p.generatedAt).toISOString().replace('T', '  ').slice(0, 17);
+      text(`UPDATED ${updated} UTC`, 1194, 634, 12, 700, MUTED, 'right', 580);
+      text('P · Played     GD · Goal difference     PTS · Points', 86, 653, 10, 400, MUTED);
+      text('RFL  /  CURRENT STANDINGS', 1194, 653, 10, 400, MUTED, 'right');
+    } else {
+      const homeIndex = rows.findIndex((r) => r.code === p.home.code);
+      const awayIndex = rows.findIndex((r) => r.code === p.away.code);
+      card(teams[homeIndex], rows[homeIndex], urls[homeIndex], 225, progress, 'HOME');
+      card(teams[awayIndex], rows[awayIndex], urls[awayIndex], 411, progress, 'AWAY');
 
-    rect(84, 611, 1110, 1, 'rgba(255,255,255,.16)');
-    rect(86, 622, 32, 22, LIME);
-    text('FT', 102, 634, 12, 800, '#101923', 'center');
-    text(p.home.name || p.home.code, 552, 634, 19, 700, WHITE, 'right', 410, 15);
-    text(`${p.score[0]}  -  ${p.score[1]}`, 640, 634, 25, 800, LIME, 'center', 145);
-    text(p.away.name || p.away.code, 728, 634, 19, 700, WHITE, 'left', 462, 15);
-    text('Movement from before this match', 86, 653, 10, 400, MUTED);
-    text('RFL  /  FULL-TIME STANDINGS', 1194, 653, 10, 400, MUTED, 'right');
+      rect(84, 611, 1110, 1, 'rgba(255,255,255,.16)');
+      rect(86, 622, 32, 22, LIME);
+      text('FT', 102, 634, 12, 800, '#101923', 'center');
+      text(p.home.name || p.home.code, 552, 634, 19, 700, WHITE, 'right', 410, 15);
+      text(`${p.score[0]}  -  ${p.score[1]}`, 640, 634, 25, 800, LIME, 'center', 145);
+      text(p.away.name || p.away.code, 728, 634, 19, 700, WHITE, 'left', 462, 15);
+      text('Movement from before this match', 86, 653, 10, 400, MUTED);
+      text('RFL  /  FULL-TIME STANDINGS', 1194, 653, 10, 400, MUTED, 'right');
+    }
     g.setTransform(1, 0, 0, 1, 0, 0);
     texture.needsUpdate = true;
     uploads += 1;
@@ -329,7 +386,8 @@ export function createLeagueOverlay({ width = W, height = H, crestFor } = {}) {
     if (!validPresentation(presentation)) return hide('unsupported', elapsed);
     if (elapsed >= TABLE_DURATION_S) return hide('finished', elapsed);
     const p = presentation;
-    const progress = smooth((elapsed - 1.8) / 1.2);
+    const idle = p.mode === 'idle';
+    const progress = idle ? 1 : smooth((elapsed - 1.8) / 1.2);
     const intro = smooth(elapsed / .55);
     const outro = smooth((elapsed - TABLE_FADE_START_S) / TABLE_FADE_S);
     const opacity = intro * (1 - outro);
@@ -339,14 +397,14 @@ export function createLeagueOverlay({ width = W, height = H, crestFor } = {}) {
     material.opacity = opacity;
     quad.position.y = y;
     const rows = [...p.rows].sort((a, b) => a.position - b.position);
-    const teams = rows.map((r) => ({ ...r, ...(r.code === p.home.code ? p.home : r.code === p.away.code ? p.away : {}) }));
+    const teams = idle ? rows : rows.map((r) => ({ ...r, ...(r.code === p.home.code ? p.home : r.code === p.away.code ? p.away : {}) }));
     // Resolve again on held frames: scorebug's crest manifest can arrive later.
     // Images themselves load once per URL, and only a new image invalidates paint.
     const urls = teams.map(requestCrest);
     const key = JSON.stringify([p, urls, imageRevision, progress]);
     status = {
-      visible: opacity > 0, phase: elapsed < .55 ? 'entering' : elapsed < 1.8 ? 'before' : elapsed < 3 ? 'moving' : elapsed < TABLE_FADE_START_S ? 'held' : 'leaving',
-      elapsedSeconds: elapsed, matchId: p.matchId ?? null, rowCount: rows.length,
+      visible: opacity > 0, phase: elapsed < .55 ? 'entering' : !idle && elapsed < 1.8 ? 'before' : !idle && elapsed < 3 ? 'moving' : elapsed < TABLE_FADE_START_S ? 'held' : 'leaving',
+      elapsedSeconds: elapsed, matchId: p.matchId ?? null, rowCount: rows.length, mode: idle ? 'idle' : 'postmatch',
     };
     if (key === paintedKey) return changed;
     paint(p, rows, teams, urls, progress);

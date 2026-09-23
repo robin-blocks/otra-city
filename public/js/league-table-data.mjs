@@ -108,6 +108,51 @@ function firstAirBoundary(doc, season, match, aired, firstAir) {
   }
 }
 
+/** A static, wall-clock snapshot, never a speculative first-air result.
+ * Prefer the publisher's current season; only a reconciled, unplayed season
+ * permits trying an earlier season. A corrupt current table must not silently
+ * become an old table. Future seasons are not eligible, regardless of ordering.
+ *
+ * Keep the SAME complete-ledger/identity reconciliation as match snapshots.
+ * If any published result crosses now or publication time, fail closed rather
+ * than subtracting it and calling an unpublished reconstruction official.
+ * A fresh archive may legitimately contain old results during a league break.
+ */
+export function buildIdleTable(doc, { nowMs = Date.now() } = {}) {
+  try {
+    require(Array.isArray(doc?.seasons) && stamp(doc.generated_at), 'invalid league archive');
+    require(Number.isFinite(nowMs), 'invalid idle wall clock');
+    const generated = Date.parse(doc.generated_at);
+    require(generated <= nowMs + 60000 && nowMs - generated <= ARCHIVE_MAX_AGE_MS, 'idle archive is stale or future-dated');
+    require(integer(doc.current_season), 'invalid current season');
+    require(doc.seasons.every((s) => s && integer(s.season)) &&
+      new Set(doc.seasons.map((s) => s.season)).size === doc.seasons.length, 'ambiguous season identity');
+    require(doc.seasons.some((s) => s.season === doc.current_season), 'current season is missing');
+    const candidates = doc.seasons.filter((s) => s.season <= doc.current_season).sort((a, b) => b.season - a.season);
+    for (const season of candidates) {
+      require(season.name == null || (typeof season.name === 'string' && season.name.trim()), 'invalid season name');
+      require(season.preseason == null || typeof season.preseason === 'boolean', 'invalid season type');
+      const { teams, aired } = validateSeason(season);
+      require(aired.every((m) => Date.parse(m.aired_at) <= nowMs && Date.parse(m.aired_at) <= generated), 'idle archive contains future or unpublished results');
+      if (!aired.length) continue;
+      const rows = empty(teams);
+      for (const m of aired) apply(rows, m);
+      const label = season.preseason ? 'PRE-SEASON' : `SEASON ${season.season}`;
+      return { table: {
+        mode: 'idle', season: season.season, seasonId: season.season,
+        seasonName: season.name ?? label, label,
+        generatedAt: doc.generated_at, basis: 'published-standings', sourceLabel: 'RFL · Published standings',
+        // No matchId, home, away or score: this graphic is not a match result.
+        // Round-level publisher movement is not a between-match comparison.
+        rows: rank(rows).map((r) => ({ code: r.code, name: r.name, color: r.color,
+          position: r.pos, previousPosition: r.pos, played: r.P, previousPlayed: r.P,
+          gd: r.GD, previousGd: r.GD, points: r.Pts, previousPoints: r.Pts })),
+      }, reason: null };
+    }
+    return { table: null, reason: 'no confirmed published standings' };
+  } catch (e) { return { table: null, reason: e.message || String(e) }; }
+}
+
 /** firstAir is supplied only by a controller which has confirmed final play-end
  * on a mounted scheduled programme. Never authorize it from publication alone.
  * No throwing into the render loop: unavailable data is a diagnostic. */

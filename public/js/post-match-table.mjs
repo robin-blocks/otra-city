@@ -1,7 +1,8 @@
-// Live-broadcast cueing only. The renderer never chooses when football ends.
+// Live-broadcast standings evidence and cueing. Idle and post-match modes
+// share one bounded archive fetch/cache. The renderer never chooses when football ends.
 // No timer renders frames: time is supplied by /broadcast, and capture mode
 // never creates this controller (or fetches the league archive).
-import { buildMatchTable, LEAGUE_DATA_URL } from './league-table-data.mjs';
+import { buildMatchTable, buildIdleTable, LEAGUE_DATA_URL } from './league-table-data.mjs';
 
 import { TABLE_DURATION_S } from './league-timing.mjs';
 export { TABLE_DURATION_S } from './league-timing.mjs';
@@ -16,6 +17,7 @@ export function createPostMatchTable({ fetcher = globalThis.fetch, url = LEAGUE_
   let key = null, previousT = null, safeSince = null, startedAt = null;
   let finished = false, presentation = null, assessed = null, assessment = null;
   let status = { visible: false, status: 'idle', reason: null, matchId: null };
+  let idleKey = null, idlePresentation = null, idleAssessment = null, idleAssessed = null, idleElapsed = null;
 
   async function refresh(nowMs) {
     if (disposed || pending || nowMs - attemptedAt < REFRESH_MS) return;
@@ -42,6 +44,36 @@ export function createPostMatchTable({ fetcher = globalThis.fetch, url = LEAGUE_
   }
 
   return {
+    /** Programme supplies a fixed slot and elapsed, never an arrival timer.
+     * No HUD result is authorized here: idle uses published current standings.
+     * Freeze once visible; a refresh cannot shuffle rows during the read. */
+    updateIdle({ slot = null, warm = false, nowMs = Date.now() } = {}) {
+      if (disposed) return null;
+      if (warm) void refresh(nowMs);
+      const next = slot?.key ?? null;
+      if (next !== idleKey || (idleElapsed !== null && slot?.elapsed < idleElapsed)) {
+        idleKey = next; idlePresentation = null; idleAssessment = null; idleAssessed = null;
+      }
+      idleElapsed = slot?.elapsed ?? null;
+      const hidden = (state, reason = null) => {
+        status = { visible: false, mode: 'idle', status: state, reason, matchId: null,
+          dataLoading: pending, dataError: networkError };
+        return null;
+      };
+      if (!slot || !Number.isFinite(slot.elapsed) || slot.elapsed < 0 || slot.elapsed >= TABLE_DURATION_S)
+        return hidden('idle');
+      const signature = `${revision}:${Math.floor(nowMs / 1000)}`;
+      if (!idlePresentation && signature !== idleAssessed) {
+        idleAssessed = signature;
+        idleAssessment = doc ? buildIdleTable(doc, { nowMs }) : null;
+        idlePresentation = idleAssessment?.table ?? null;
+      }
+      if (!idlePresentation) return hidden('waiting-for-table', idleAssessment?.reason || networkError || 'loading league archive');
+      status = { visible: true, mode: 'idle', status: 'on-air', reason: null, matchId: null,
+        elapsed: slot.elapsed, source: url, generatedAt: idlePresentation.generatedAt,
+        basis: idlePresentation.basis, season: idlePresentation.season, movements: [] };
+      return { presentation: idlePresentation, elapsed: slot.elapsed };
+    },
     /** m is the match module's state, not the public diagnostics subset. */
     update({ match: m, camera, settling = false, time, nowMs = Date.now() }) {
       if (disposed) return null;
@@ -55,6 +87,7 @@ export function createPostMatchTable({ fetcher = globalThis.fetch, url = LEAGUE_
         return null;
       };
       if (!nextKey || !bug) return hidden('idle');
+      idleKey = null; idlePresentation = null; idleAssessed = null; idleElapsed = null;
       // Warm the archive during play. One bounded request per minute, not per
       // frame; no programme/window-derived standings and no mock fallback.
       void refresh(nowMs);
@@ -115,6 +148,6 @@ export function createPostMatchTable({ fetcher = globalThis.fetch, url = LEAGUE_
       return { presentation, elapsed };
     },
     state() { return { ...status }; },
-    dispose() { disposed = true; requestAbort?.abort(); doc = null; presentation = null; status = { visible: false, status: 'disposed' }; },
+    dispose() { disposed = true; requestAbort?.abort(); doc = null; presentation = null; idlePresentation = null; status = { visible: false, status: 'disposed' }; },
   };
 }

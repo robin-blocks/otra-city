@@ -400,3 +400,70 @@ test('rounded final celebration reaches postmatch immediately after replay, with
     }
   }
 });
+
+function idleTableStub({ available = true } = {}) {
+  const presentation = { mode: 'idle', rows: [] };
+  let status = { visible: false, status: 'idle' };
+  return { ...tableStub({ available: false }),
+    updateIdle({ slot }) {
+      status = { visible: !!slot && available, status: available ? 'idle' : 'waiting-for-table' };
+      return slot && available ? { presentation, elapsed: slot.elapsed } : null;
+    }, state: () => status };
+}
+const idle = { phase: 'idle', next: null, live: null };
+const idlePeriod = 281.7;
+test('idle standings occupy 54s every two authored laps (19.2%), leaving other shots intact', async () => {
+  const p = await director({ tableController: idleTableStub() });
+  const run = seconds => p.evaluate({ match: idle, nowMs: seconds * 1000 });
+  assert.equal(run(0).tableCue, null);
+  assert.equal(run(.699).tableCue, null);
+  near(run(.7).tableCue.elapsed, 0);
+  near(run(5).tableCue.elapsed, 4.3);
+  assert.equal(run(45).camera.camera, 'heli');
+  assert.equal(run(54.699).camera.camera, 'heli');
+  assert.equal(run(54.699).state.table.held, true);
+  assert.equal(run(54.7).tableCue, null);
+  assert.equal(run(54.7).camera.camera, 'screen_main');
+  assert.equal(run(66.7).camera.camera, 'stands');
+  assert.equal(run(145.7).camera.camera, 'heli');
+  assert.equal(run(150).tableCue, null, 'second aerial stays unobscured');
+  near(run(idlePeriod + 5).tableCue.elapsed, 4.3);
+  near(run(5).state.table.idlePeriod, idlePeriod);
+  let shown = 0;
+  for (let ms = 0; ms < idlePeriod * 1000; ms += 100) shown += !!run(ms / 1000).tableCue;
+  assert.equal(shown, 540, 'exactly 54 of 281.7 seconds reserved, not random per frame');
+});
+
+test('idle slots are late-join/reload/seek deterministic at real epoch timestamps', async () => {
+  const a = await director({ tableController: idleTableStub() });
+  const b = await director({ tableController: idleTableStub() });
+  const base = Math.floor(Date.parse('2026-09-23T12:00:00Z') / 281700) * 281700;
+  a.evaluate({ match: idle, nowMs: base + 3000 });
+  const x = a.evaluate({ match: idle, nowMs: base + 52000 });
+  const y = b.evaluate({ match: idle, nowMs: base + 52000 });
+  assert.deepEqual(x, y);
+  near(x.tableCue.elapsed, 51.3);
+  assert.equal(b.evaluate({ match: idle, nowMs: base + 54700 }).tableCue, null);
+  assert.deepEqual(a.evaluate({ match: idle, nowMs: base + 10000 }), b.evaluate({ match: idle, nowMs: base + 10000 }));
+});
+
+test('idle standings skip loading/live, malformed dates, and entire slots near next programme', async () => {
+  const p = await director({ tableController: idleTableStub() });
+  for (const m of [null, {phase:'loading'}, {phase:'disposed'}, {...idle,live:{startsAt:'1970-01-01T00:00:00Z'}},
+    {...idle,next:{startsAt:'invalid'}}, {...idle,next:{startsAt:new Date(114699).toISOString()}},
+    {...idle,next:{startsAt:new Date(-1).toISOString()}}]) {
+    assert.equal(p.evaluate({ match:m,nowMs:5000 }).tableCue, null);
+  }
+  assert.ok(p.evaluate({ match:{...idle,phase:'countdown',next:{startsAt:new Date(114700).toISOString()}}, nowMs:5000 }).tableCue);
+  for (const m of [match(-120,60), match(10,190), match(310,498), match(622,860)]) {
+    assert.equal(p.evaluate({ match:m,nowMs:5000 }).tableCue, null, 'idle table cannot leak into mounted coverage');
+  }
+  assert.ok(p.evaluate({ match:idle,nowMs:10000 }).tableCue, 'return to idle joins remaining slot');
+});
+
+test('unavailable idle evidence leaves deterministic aerial without a graphic', async () => {
+  const p = await director({ tableController: idleTableStub({available:false}) });
+  const r = p.evaluate({ match:idle,nowMs:50000 });
+  assert.equal(r.tableCue,null); assert.equal(r.camera.camera,'heli'); assert.equal(r.state.table.held,true);
+  assert.equal(r.state.table.status,'waiting-for-table');
+});

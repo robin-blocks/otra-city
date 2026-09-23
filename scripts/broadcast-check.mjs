@@ -910,39 +910,134 @@ try {
       check('in play the mounted scoreboard shows the same half clock as the scorebug',
         playBoard.ok && playBoard.x.scorebug?.playing === true && playBoard.x.scorebug?.half === 1,
         `board "${playBoard.x?.match?.board}", bug ${playBoard.x?.scorebug?.tag} ${playBoard.x?.scorebug?.clock}`);
-      // Just before the goal, so the hold arrives while we watch, however long
-      // the mount from cache took.
-      const hold = await rehearse(180 + g0.t - 1.5);
-      let seen = null;
-      for (let i = 0; i < 40 && !seen; i++) { const x = i ? await lv.state() : hold.x; if (x.match?.replay && x.director?.shot === 'headcam') seen = x; else await sleep(250); }
-      check('on a goal\'s hold a LIVE fixture replays from the scorer\'s head',
-        !!seen && seen.scorebug?.replay === true && seen.scorebug?.live === true,
-        seen ? `goal ${g0.t}s by ${g0.player}: replay t=${seen.match.replay.t}, shot ${seen.director?.shot}, bug ${seen.scorebug?.replay ? 'REPLAY' : 'no tag'}, LIVE ${seen.scorebug?.live}` : `no replay: drive ${hold.x?.match?.drive}, replay ${JSON.stringify(hold.x?.match?.replay)}, shot ${hold.x?.director?.shot}`);
-      // AND THE TAPE RUNS ON ACROSS IT. `audioOffset` is where RFL put their
-      // premix — they play it into the bus that captures this page — and the
-      // match clock is not a position on that tape: a hold is one instant of
-      // the match stretched across several seconds of programme, because the
-      // commentator is calling the goal over it. So the offset must keep
-      // moving while the clock does not. It is also the number our own
-      // speakers are driven from in the bowl (`stemSeconds` in the module,
-      // reported back as `pa.stemT`), which is why there is one expression
-      // and not two: a stem positioned by mapping the held clock forward
-      // sticks on the near edge of the hold and is dragged back to it every
-      // third of a second, for the length of every goal in the match.
-      if (seen) {
-        let ran = null;
-        for (let i = 0; i < 20 && !ran; i++) {
-          await sleep(200);
-          const x = await lv.state();
-          if (!x.scorebug || x.match?.drive !== 'wall') continue;
-          if (Math.abs((x.scorebug.t ?? 0) - (seen.scorebug.t ?? 0)) < 0.05
-              && (x.scorebug.audioOffset ?? 0) - (seen.scorebug.audioOffset ?? 0) > 0.15) ran = x;
+      // The old pre-mount target plus CDP polling could consume almost all of
+      // a short hold before the first observation, leaving no second sample.
+      // Fetch the actual mounted manifest, then hold ONLY the browser wall
+      // clock at two interior positions AFTER the asynchronous live mount.
+      // These are real rendered frames: sampling correctness, not device FPS.
+      report.liveGoalHold = await lv.chrome.evaluate(`(async () => {
+        const result = {
+          bundleUrl: ${JSON.stringify(bundleUrl)}, goal: ${JSON.stringify(g0)},
+          manifestUrl: null, hold: null, positions: [], samples: [],
+          mounted: false, error: null, dateNowRestored: false,
+        };
+        const originalNow = Date.now;
+        const snapshot = () => JSON.parse(JSON.stringify(window.rflBroadcast.state()));
+        try {
+          result.manifestUrl = result.bundleUrl.replace(/\\/+$/, '') + '/scene.json';
+          // Normal browser fetch: no proxy, auth bypass, or programme-map shim.
+          const response = await fetch(result.manifestUrl, { signal: AbortSignal.timeout(30000) });
+          result.fetch = { status: response.status, url: response.url };
+          if (!response.ok) throw new Error('scene.json fetch failed: HTTP ' + response.status);
+          const scene = await response.json();
+          const map = scene.program?.map;
+          const goalT = result.goal.replay_t ?? result.goal.t;
+          if (!Number.isFinite(result.goal.t) || !Number.isFinite(goalT) || goalT < 0
+              || !Array.isArray(map)) throw new Error('missing/invalid goal time or program.map');
+          for (let i = 0; i + 1 < map.length; i++) {
+            const a = map[i], b = map[i + 1];
+            if (!Array.isArray(a) || !Array.isArray(b)) continue;
+            const [t0, p0] = a, [t1, p1] = b;
+            if ([t0, p0, t1, p1].every(Number.isFinite) && t0 >= 0 && p0 >= 0
+                && t0 === t1 && p1 > p0 && Math.abs(t0 - goalT) < 0.05) {
+              result.hold = { mapIndex: i, t: t0, p0, p1 };
+              break;
+            }
+          }
+          if (!result.hold) throw new Error('no duplicate-match-time hold for this goal');
+          const { p0, p1 } = result.hold;
+          result.positions = [p0 + 0.05, p0 + 0.65];
+          if (!result.positions.every(Number.isFinite) || !(result.positions[0] > p0)
+              || !(result.positions[1] < p1 - 0.01)
+              || result.positions[1] - result.positions[0] < 0.5) {
+            throw new Error('goal hold is too short for two safe interior samples');
+          }
+          result.browserNow = originalNow();
+          if (!Number.isFinite(result.browserNow)) throw new Error('invalid browser wall clock');
+          let fixedNow = result.browserNow;
+          Date.now = () => fixedNow;
+          result.startsAt = new Date(result.browserNow).toISOString();
+          result.mounted = await window.rflBroadcast.rehearseLive({
+            bundleUrl: result.bundleUrl, startsAt: result.startsAt,
+          });
+          result.afterMount = snapshot();
+          if (result.mounted !== true) throw new Error('live rehearsal did not mount');
+          for (const position of result.positions) {
+            const previousSerial = snapshot().renderSerial;
+            if (!Number.isFinite(previousSerial)) throw new Error('missing renderSerial');
+            // No stage seeks/capture steps: let the live page update and render
+            // normally, driven by its own startsAt-to-Date.now calculation.
+            fixedNow = result.browserNow + position * 1000;
+            if (!Number.isFinite(fixedNow)) throw new Error('invalid fixed wall clock');
+            result.pending = { position, previousSerial, fixedNow };
+            const sample = await new Promise((resolve, reject) => {
+              const started = performance.now(), deadline = started + 30000;
+              let raf = null, timer = null;
+              const finish = (error, value) => {
+                cancelAnimationFrame(raf);
+                clearTimeout(timer);
+                if (error) reject(error); else resolve(value);
+              };
+              const timeout = () => finish(new Error('no new rendered frame at programme ' + position + ' within 30 s'));
+              const observe = () => {
+                try {
+                  const now = performance.now();
+                  if (now >= deadline) { timeout(); return; }
+                  const state = snapshot();
+                  result.lastObserved = { position, previousSerial, elapsedMs: now - started, state };
+                  if (Number.isFinite(state.renderSerial) && state.renderSerial > previousSerial
+                      && Number.isFinite(state.scorebug?.programmeT)
+                      && Math.abs(state.scorebug.programmeT - position) <= 0.01) {
+                    finish(null, { position, previousSerial, serial: state.renderSerial,
+                      elapsedMs: now - started, state });
+                  } else raf = requestAnimationFrame(observe);
+                } catch (error) { finish(error); }
+              };
+              // Real timers also bound the wait if animation frames stop.
+              timer = setTimeout(timeout, 30000);
+              raf = requestAnimationFrame(observe);
+            });
+            result.samples.push(sample);
+            result.pending = null;
+          }
+        } catch (error) {
+          result.error = String(error?.stack || error);
+        } finally {
+          Date.now = originalNow;
+          result.dateNowRestored = Date.now === originalNow;
         }
-        check('and the premix offset runs on across the hold while the match clock stands still',
-          !!ran, ran
-            ? `match clock held at ${ran.scorebug.t}s while the offset went ${seen.scorebug.audioOffset}s -> ${ran.scorebug.audioOffset}s`
-            : `the offset never moved past ${seen.scorebug?.audioOffset}s with the clock held at ${seen.scorebug?.t}s`);
-      }
+        return result;
+      })()`, { timeoutMs: 300000 });
+      const hold = report.liveGoalHold;
+      const [first, second] = hold.samples;
+      const seen = first?.state, ran = second?.state;
+      const sameGoalReplay = (x) => x?.match?.drive === 'wall'
+        && x.director?.shot === 'headcam' && !!x.match?.headcam
+        && x.scorebug?.replay === true && x.scorebug?.live === true
+        && Number.isFinite(x.match?.replay?.goalT)
+        && Math.abs(x.match.replay.goalT - hold.hold.t) < 0.05
+        && x.match.replay.player === g0.player && x.match.replay.team === g0.team;
+      const validSamples = !hold.error && hold.mounted === true && hold.dateNowRestored
+        && hold.samples.length === 2 && second.serial > first.serial
+        && hold.samples.every((sample) => sample.serial > sample.previousSerial
+          && Number.isFinite(sample.state.scorebug?.programmeT)
+          && Math.abs(sample.state.scorebug.programmeT - sample.position) <= 0.01);
+      const detail = hold.error || JSON.stringify({ hold: hold.hold, positions: hold.positions,
+        samples: hold.samples.map((sample) => ({ serial: sample.serial,
+          programmeT: sample.state.scorebug?.programmeT, t: sample.state.scorebug?.t,
+          audioOffset: sample.state.scorebug?.audioOffset, replay: sample.state.match?.replay,
+          shot: sample.state.director?.shot, live: sample.state.scorebug?.live })) });
+      check('on a goal\'s hold a LIVE fixture replays from the scorer\'s head',
+        validSamples && sameGoalReplay(seen) && sameGoalReplay(ran), detail);
+      // The premix is programme time, not held match time mapped forward.
+      // Assert both real samples even on failure: missing frames are not skips.
+      check('and the premix offset runs on across the hold while the match clock stands still',
+        validSamples && sameGoalReplay(seen) && sameGoalReplay(ran)
+          && [seen.scorebug.t, ran.scorebug.t, seen.scorebug.audioOffset, ran.scorebug.audioOffset].every(Number.isFinite)
+          && Math.abs(seen.scorebug.t - hold.hold.t) < 0.05
+          && Math.abs(ran.scorebug.t - hold.hold.t) < 0.05
+          && Math.abs(ran.scorebug.t - seen.scorebug.t) < 0.05
+          && ran.scorebug.audioOffset - seen.scorebug.audioOffset > 0.15, detail);
       const down = await lv.evaluate('window.rflBroadcast.rehearseLive(null)', { timeoutMs: 60000 });
       let after = await lv.state();
       for (let i = 0; i < 12 && after.match?.drive === 'wall'; i++) { await sleep(250); after = await lv.state(); }
