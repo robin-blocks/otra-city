@@ -12,6 +12,7 @@ name: venues
 on:
   pull_request:
     paths:
+      - 'poc/stadium/**'
       - 'public/venues/**'
       - 'public/city/**'
       - 'public/js/**'
@@ -40,6 +41,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'poc/stadium/**'
       - 'public/venues/**'
       - 'public/city/**'
       - 'public/js/**'
@@ -77,6 +79,7 @@ jobs:
       - run: npm run broadcast-output:check
       - run: npm run stadium-screen:check
       - run: npm run league:check
+      - run: node --test scripts/stadium-hoardings-check.mjs
       - run: node scripts/build-venues.mjs --check --strict
       # --match mounts a real bundle through the publisher's SDK and asserts the
       # contract we cannot see any other way: docks attached, the scoreboard

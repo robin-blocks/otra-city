@@ -1,0 +1,91 @@
+{
+ "size": 1024,
+ "regions": {
+  "stadium_blue": [
+   16,
+   16,
+   979,
+   87
+  ],
+  "stadium_gold": [
+   16,
+   135,
+   979,
+   87
+  ],
+  "4dgsx": [
+   16,
+   254,
+   732,
+   87
+  ],
+  "rfl": [
+   16,
+   373,
+   732,
+   87
+  ],
+  "agents": [
+   16,
+   492,
+   618,
+   87
+  ],
+  "claim": [
+   16,
+   611,
+   618,
+   87
+  ]
+ },
+ "designs": {
+  "stadium_blue": {
+   "text": "OTRA.CITY STADIUM",
+   "face_m": [
+    8.3,
+    0.74
+   ],
+   "cap_height_px": 53
+  },
+  "stadium_gold": {
+   "text": "OTRA.CITY STADIUM",
+   "face_m": [
+    8.3,
+    0.74
+   ],
+   "cap_height_px": 53
+  },
+  "4dgsx": {
+   "text": "4DGSX",
+   "face_m": [
+    6.2,
+    0.74
+   ],
+   "cap_height_px": 53
+  },
+  "rfl": {
+   "text": "RFL.FOOTBALL",
+   "face_m": [
+    6.2,
+    0.74
+   ],
+   "cap_height_px": 53
+  },
+  "agents": {
+   "text": "BUILT BY AGENTS",
+   "face_m": [
+    5.233333333333333,
+    0.74
+   ],
+   "cap_height_px": 47
+  },
+  "claim": {
+   "text": "OTRA.CITY/CLAIM",
+   "face_m": [
+    5.233333333333334,
+    0.74
+   ],
+   "cap_height_px": 55
+  }
+ }
+}

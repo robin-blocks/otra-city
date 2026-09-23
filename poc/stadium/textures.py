@@ -4,11 +4,12 @@
 Writes, next to this script:
   palette.png / palette_emis.png  256 px, 16x16 swatches (base RGBA + emissive RGB)
   palette_map.json                swatch name -> cell / colours
-  atlas.png / atlas_map.json      1024 px art atlas (signage, screen plates, block letters)
+  atlas.png / atlas_map.json      1024 px art atlas (signage, block letters)
+  hoardings.png / hoardings_map.json  1024 px, aspect-correct pitchside artwork
   tile_base.png / tile_normal.png / tile_rough.png / tile_emis.png   512 px concrete slabs
 
 Same technique as poc/city-hall/textures.py (one palette material carries
-every voxel colour, one atlas carries every word); run with the system
+every voxel colour, atlases carry the words); run with the system
 python (PIL + numpy), NOT inside Blender.
 """
 import json
@@ -17,6 +18,8 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
+
+from hoardings import DESIGNS, panels, face_size
 
 HERE = Path(__file__).resolve().parent
 FONTS = {
@@ -163,20 +166,45 @@ d = ImageDraw.Draw(atlas)
 draw_tracked(d, (x + w / 2 - tracked_width(font("black", 74), "STADIUM", 30) / 2, y + 176), "STADIUM",
              font("black", 74), WHITE, tracking=30)
 
-# pitch-side boards: four 1024 x 56 strips, full atlas width so the type is big
-boards = [("board_1", "THE CITY AGENTS BUILT", CYAN),
-          ("board_2", "otra.city/claim  ·  your project could stand here", WHITE),
-          ("board_3", "4DGSX  ·  volumetric sport, free camera", GOLD),
-          ("board_4", "RFL  ·  robot football league  ·  rfl.football", MAG)]
-for i, (name, text, colr) in enumerate(boards):
-    bx, by, bw, bh = region(name, 0, 192 + i * 56, 1024, 56)
-    d = ImageDraw.Draw(atlas)
-    d.rectangle((bx, by, bx + bw - 1, by + bh - 1), fill=(10, 8, 20))
-    frame(d, (bx, by, bx + bw - 1, by + bh - 1), scale(colr, 0.5), 3, 4)
-    f = font("bold", 34)
-    while f.getlength(text) > bw - 40 and f.size > 12:
-        f = font("bold", f.size - 1)
-    d.text((bx + bw / 2, by + bh / 2 + 1), text, font=f, fill=colr, anchor="mm")
+# Pitchside artwork has its own atlas: 18:1 strips used to be squeezed onto
+# ~7:1 faces, turning letters into thin vertical strokes. Use ONE texel density
+# in both axes, black-weight type, short copy and no fine frame or baked glow.
+# Regions have gutters so mipmaps cannot pull in a neighbouring design.
+board_atlas = Image.new("RGB", (S, S), BG)
+board_map = {"size": S, "regions": {}, "designs": {}}
+density, gutter, row_y = 118, 16, 16
+sizes = {}
+for panel in panels():
+    size = face_size(panel)
+    name = panel["design"]
+    assert name not in sizes or all(math.isclose(a, b) for a, b in zip(sizes[name], size)), "one region cannot fit different board aspects"
+    sizes[name] = size
+for name, (text, accent) in DESIGNS.items():
+    width_m, height_m = sizes[name]
+    bw, bh = round(width_m * density), round(height_m * density)
+    bx, by = gutter, row_y
+    assert bx + bw + gutter <= S and by + bh + gutter <= S
+    board_map["regions"][name] = [bx, by, bw, bh]
+    d = ImageDraw.Draw(board_atlas)
+    colr = hex2rgb(accent)
+    # Small solid end tabs give the ring a rhythm without boxing in the type.
+    tab = 8
+    d.rectangle((bx + 4, by + 14, bx + 4 + tab, by + bh - 15), fill=colr)
+    d.rectangle((bx + bw - 5 - tab, by + 14, bx + bw - 5, by + bh - 15), fill=colr)
+    f = font("black", 72)
+    while f.getlength(text) > bw - 64:
+        f = font("black", f.size - 1)
+    bounds = d.textbbox((0, 0), text, font=f)
+    # Centre the visible capitals, not the font's ascender/descender box.
+    tx = bx + (bw - (bounds[2] - bounds[0])) / 2 - bounds[0]
+    ty = by + (bh - (bounds[3] - bounds[1])) / 2 - bounds[1]
+    d.text((tx, ty), text, font=f, fill=WHITE)
+    board_map["designs"][name] = {"text": text, "face_m": [width_m, height_m],
+                                  "cap_height_px": bounds[3] - bounds[1]}
+    row_y += bh + 2 * gutter
+board_atlas.save(HERE / "hoardings.png")
+json.dump(board_map, open(HERE / "hoardings_map.json", "w"), indent=1)
+print("hoardings:", list(board_map["regions"]))
 
 # gate signs — one per gate, because a gate that reads WEST on the east wall is
 # worse than no sign at all — and the stair sign

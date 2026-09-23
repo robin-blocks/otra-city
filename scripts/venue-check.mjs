@@ -126,6 +126,16 @@ for (const id of ids) {
       check('tier 1 loaded', v1.loaded && v1.tier === 1, `${s1.near.meshes} meshes, ${s1.near.tris} tris, ${s1.colliders} colliders, ${v1.gates} gates, ${v1.lights} lights`);
       check('tier 1 colliders registered', s1.colliders >= 1, `${s1.colliders}`);
       check('tier 1 scene lights', s1.lights <= SCENE_LIGHTS, `${s1.lights} (max ${SCENE_LIGHTS})`);
+      if (id === 'stadium') {
+        const boards = JSON.parse(await fx.evaluate(`JSON.stringify((() => {
+          const v = window.__venue;
+          const m = v.venues.get(v.id).near.getObjectByName('stadium_hoardings')?.material;
+          return { unlit: !!m?.isMeshBasicMaterial, anisotropy: m?.map?.anisotropy,
+            expected: Math.min(8, v.renderer.capabilities.getMaxAnisotropy()) };
+        })())`));
+        check('pitchside boards unlit and angle-filtered', boards.unlit && boards.anisotropy === boards.expected,
+          `unlit=${boards.unlit}, anisotropy=${boards.anisotropy} (device target ${boards.expected})`);
+      }
       // the camera set is the visual contract: the worst view must fit the budget
       let worst = { calls: 0, tris: 0, cam: null };
       for (const cam of cams) {

@@ -7,14 +7,16 @@
 # The pitch centre is the origin; the west gate faces the boulevard (-x).
 #
 # Technique, as City Hall: axis-aligned boxes on a 0.25 m grid meshed with
-# one palette material (base + emissive), an art atlas for every word, a
-# tiled PBR concrete for walkable decks, a blended palette for glass, and
+# one palette material (base + emissive), a signage atlas plus an unlit
+# pitchside atlas, tiled PBR concrete for walkable decks, blended glass, and
 # one small image per media plate (docks need FULL 0..1 UVs). Collision is
 # a handful of col_* proxies the client hides; visual meshes are never
 # raycast. Seats are exported as positions the walkability check must reach.
+import importlib
 import json
 import math
 import os
+import sys
 import time
 
 import bpy
@@ -23,6 +25,11 @@ from mathutils import Vector
 T0 = time.time()
 REPO = globals().get("OTRA_REPO", "/Users/robin/Code/personal/otra-city-3d")
 SRC = os.path.join(REPO, "poc", "stadium")
+sys.path.insert(0, SRC)
+import hoardings
+importlib.reload(hoardings)  # bridge builds reuse a Blender process; do not cache yesterday's layout
+from hoardings import HOARD_X, HOARD_Y, BOARD_H, EDGE_X, EDGE_Z, panels
+
 OUT_DIR = os.path.join(SRC, "out")
 VENUE_DIR = os.path.join(REPO, "public", "venues", "stadium")
 DO_RENDER = globals().get("OTRA_RENDER", False)
@@ -33,6 +40,7 @@ os.makedirs(VENUE_DIR, exist_ok=True)
 
 PMAP = json.load(open(os.path.join(SRC, "palette_map.json")))
 AMAP = json.load(open(os.path.join(SRC, "atlas_map.json")))
+HMAP = json.load(open(os.path.join(SRC, "hoardings_map.json")))
 scene = bpy.context.scene
 
 # ------------------------------------------------------------------ cleanup
@@ -133,6 +141,16 @@ L.new(t.outputs["Color"], b.inputs["Emission Color"])
 b.inputs["Emission Strength"].default_value = 1.2
 b.inputs["Roughness"].default_value = 0.9
 
+# LED-style hoardings are unlit: their contrast should not depend on which
+# floodlight hits them. A single atlas/mesh keeps the whole ring one draw.
+mat_hoardings = new_mat("stad_hoardings")
+N, L = mat_hoardings.node_tree.nodes, mat_hoardings.node_tree.links
+N.remove(principled(mat_hoardings))
+# A colour socket wired directly to Surface is Blender's glTF unlit pattern;
+# an Emission shader alone exports as a lit PBR material with an emissive map.
+L.new(tex_node(mat_hoardings, load_img("hoardings.png", "st_hoardings"), 'Linear').outputs["Color"],
+      next(n for n in N if n.type == 'OUTPUT_MATERIAL').inputs["Surface"])
+
 mat_tile = new_mat("stad_tile")
 b = principled(mat_tile)
 N = mat_tile.node_tree.nodes
@@ -178,9 +196,10 @@ def cell_uv(sw):
     return ((c + 0.5) / G, 1.0 - (r + 0.5) / G)
 
 
-def region_uvs(rname, mirror=False):
-    S = AMAP["size"]
-    x, y, w, h = AMAP["regions"][rname]
+def region_uvs(rname, mirror=False, atlas_map=None):
+    atlas_map = AMAP if atlas_map is None else atlas_map
+    S = atlas_map["size"]
+    x, y, w, h = atlas_map["regions"][rname]
     u0, u1 = x / S, (x + w) / S
     if mirror:
         u0, u1 = u1, u0
@@ -268,7 +287,6 @@ def empty(name, loc, parent=None, rot=(0, 0, 0)):
 # ------------------------------------------------------------------- layout
 PITCH_X, PITCH_Y = 10.0, 7.5        # the 4DGSX stage tile, half extents
 PLAY_X, PLAY_Y = 7.0, 4.5           # marked playing area
-HOARD_X, HOARD_Y = 10.5, 8.0        # our hoardings, just outside the tile
 GANG = 1.5                           # pitch-side gangway
 FRONT_X, FRONT_Y = HOARD_X + GANG, HOARD_Y + GANG   # stand fronts: 12, 9.5
 ROWS, ROW_D, ROW_H, TREAD = 6, 1.0, 0.5, 0.75
@@ -351,26 +369,20 @@ for (mn, mx) in (((-INNER_X, -INNER_Y), (-FRONT_X, -FRONT_Y)), ((FRONT_X, -INNER
 for (mn, mx) in (((-FRONT_X, -FRONT_Y), (-HOARD_X, FRONT_Y)), ((HOARD_X, -FRONT_Y), (FRONT_X, FRONT_Y)),
                  ((-HOARD_X, -FRONT_Y), (HOARD_X, -HOARD_Y)), ((-HOARD_X, HOARD_Y), (HOARD_X, FRONT_Y))):
     opaque.box((mn[0], mn[1], -0.02), (mx[0], mx[1], 0.0), "deck")
-# hoardings: 0.9 m boards facing the pitch, advert strips from the atlas
-BOARD_H = 0.9
-boards = ["board_1", "board_2", "board_3", "board_4"]
-def hoarding(facing, at, a0, a1, name_i):
-    n = int((a1 - a0) / 5.0)
-    step = (a1 - a0) / n
-    for k in range(n):
-        s0 = a0 + k * step
-        if facing in ('+x', '-x'):
-            mn, mx = ((at - 0.15, s0, 0.0), (at + 0.15, s0 + step, BOARD_H)) if True else None
-        else:
-            mn, mx = ((s0, at - 0.15, 0.0), (s0 + step, at + 0.15, BOARD_H))
-        opaque.box(mn, mx, "board")
-        inner = at - (0.15 + PROUD) if facing == '-x' or facing == '-y' else at + (0.15 + PROUD)
-        art.quad(facing, inner, s0 + 0.05, s0 + step - 0.05, 0.08, BOARD_H - 0.08,
-                 region_uvs(boards[(name_i + k) % 4]))
-hoarding('-x', HOARD_X, -HOARD_Y, HOARD_Y, 0)      # east boards face the pitch (-x)
-hoarding('+x', -HOARD_X, -HOARD_Y, HOARD_Y, 1)
-hoarding('-y', HOARD_Y, -HOARD_X, HOARD_X, 2)
-hoarding('+y', -HOARD_Y, -HOARD_X, HOARD_X, 3)
+# 0.9 m pitch-facing boards. Both touchlines have a true halfway-line name
+# panel, with partner boards either side. Keep the authored depth clearance.
+hoarding_art = MB("stadium_hoardings", [mat_hoardings])
+for panel in panels():
+    facing, at, s0, s1 = (panel[k] for k in ("facing", "at", "a0", "a1"))
+    if facing in ('+x', '-x'):
+        mn, mx = (at - 0.15, s0, 0.0), (at + 0.15, s1, BOARD_H)
+    else:
+        mn, mx = (s0, at - 0.15, 0.0), (s1, at + 0.15, BOARD_H)
+    opaque.box(mn, mx, "board")
+    inner = at - (0.15 + PROUD) if facing in ('-x', '-y') else at + (0.15 + PROUD)
+    hoarding_art.quad(facing, inner, s0 + EDGE_X, s1 - EDGE_X, EDGE_Z, BOARD_H - EDGE_Z,
+                      region_uvs(panel["design"], atlas_map=HMAP))
+hoarding_art.finish()
 
 # ---- concourse deck (tile-topped), with the pitch/gangway rectangle cut out --
 for (mn, mx) in (((-FOOT_X, -FOOT_Y), (-INNER_X, FOOT_Y)), ((INNER_X, -FOOT_Y), (FOOT_X, FOOT_Y)),

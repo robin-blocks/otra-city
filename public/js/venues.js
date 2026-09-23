@@ -120,6 +120,11 @@ export function createVenues(scene, world, deps) {
     if (total > cap) for (const l of lights) l.intensity *= cap / total;
     obj.traverse((o) => {
       for (const m of [].concat(o.material || [])) {
+        // Pitchside lettering is usually viewed at a grazing angle. Keep its
+        // mipmaps, but sample along the face rather than blurring across it.
+        if (m.name === 'stad_hoardings' && m.map) {
+          m.map.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+        }
         if (m.emissiveIntensity && m.emissive) {
           const peak = m.emissiveIntensity * Math.max(m.emissive.r, m.emissive.g, m.emissive.b);
           if (peak > EMISSIVE_PEAK) m.emissiveIntensity *= EMISSIVE_PEAK / peak;

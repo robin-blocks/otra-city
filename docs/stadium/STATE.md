@@ -2,6 +2,46 @@
 
 _Last update: 2026-09-03 (M1 MERGED as PR #30 and live on otra.city; critic pass 1 done, its blocking findings fixed on `claude/stadium-critique-fixes`)_
 
+## Pitchside banners — 2026-09-23
+
+Robin approved the local preview and requested production deployment on
+2026-09-23. Release goes through `main` → Vercel; deployment confirmation
+must include matching the live GLB and `venues.js` to this commit.
+
+Robin reported hard-to-read pitchside text and asked for `OTRA.CITY STADIUM`
+on the centre boards in front of both the blue and yellow stands.
+
+- **Cause:** 1024×56 artwork (18.3:1) was squeezed onto ~7:1 faces. Long
+  slogans became narrow strokes, and four equal touchline panels left a seam
+  at halfway rather than a centre board.
+- **Fix:** each touchline now has an 8.4 m centre name board and two 6.3 m
+  partner boards. The end-wall boards carry `BUILT BY AGENTS` and
+  `OTRA.CITY/CLAIM`; partners read `4DGSX` and `RFL.FOOTBALL`. Bold white text
+  on near-black, with small accent tabs instead of fine coloured frames.
+- **Rendering:** `poc/stadium/hoardings.py` shares layout/copy between the
+  artwork generator and Blender. A dedicated 1024px atlas is rasterised at
+  the actual face proportions, with mipmap gutters. The ring is one unlit
+  mesh; `venues.js` enables up to 8× anisotropic filtering for oblique views.
+  The existing 10 mm backing clearance and collision envelope are unchanged.
+- **Cost:** rebuilt `venue.glb` is 1,361,556 bytes (+32,240 bytes), 23
+  primitives (+1), nine materials; still within all venue budgets. No changes
+  to the publisher's inner RFL arena boards, match code, or live programme.
+- **Verification:** four `node --test scripts/stadium-hoardings-check.mjs`
+  checks inspect the shipped GLB (embedded atlas, UV coverage/aspect, readable
+  type size, gutters, one upright/inward/centred name board per stand).
+  Included in venues CI. `venue-check` additionally checks unlit material
+  and device-capped filtering. Full venue check passed: 600/600 seats reachable
+  and escapable, stable GPU memory over two unload cycles, no page errors,
+  depth-overlap probe within budget.
+- **Visual evidence:** `qa-out/stadium-banners/` holds before/after blue and
+  yellow gantry views, an oblique pitchside view, and both sides with a real
+  s3-m1 replay mounted (SDK ready, no errors). All reviewed in-browser at
+  1280×720. These are local QA files, not public site content.
+
+Rebuild: `python3 poc/stadium/textures.py`, then
+`python3 poc/stadium/run.py --headless`. Run the shipped-asset test above and
+`node scripts/venue-check.mjs --venue stadium` after rebuilding.
+
 ## Milestone
 **M1 — foundations + stadium + match integration.** In progress on branch
 `claude/otra-city-stadium-f817f1`, nothing merged.
