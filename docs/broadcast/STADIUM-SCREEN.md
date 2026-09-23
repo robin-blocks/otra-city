@@ -107,6 +107,50 @@ not have identical graphics. The archive's freshness and first-air limits in
 [CAMERAS.md](CAMERAS.md#post-match-league-table--19-september-first-air-fix-21-september-2026)
 still apply; none are replaced with an unbounded late-join promise.
 
+### Occasional standings between matches
+
+The shared director also reserves a **current-standings segment on every other
+idle cut-list lap**. It uses the same 54-second reading hold, with a 0.7-second
+lead-in. The opening moving helicopter shot is extended from 45 to 54.7 seconds
+on that lap; all the other authored screen, stand, pitchside and gantry shots
+remain, and the next lap is unobstructed. With the current 136-second list,
+that is **54 seconds per 281.7 seconds (19.2% of eligible idle airtime)**.
+No per-frame randomness or page-arrival timer is involved. Period boundaries
+use integer wall-clock milliseconds against the same Unix epoch as idle
+camera direction, so the broadcast and stadium television join the same slot.
+
+Only an `idle`/`countdown` match module with no live programme is eligible.
+Loading, build-up, play, replays and half-time cannot use this graphic. A slot
+is skipped if its complete segment plus a **60-second clear lead-in** does not
+fit before the next programme's `startsAt` (stream start, not kickoff).
+Malformed or overdue next-start metadata also suppresses it. Starting match
+coverage removes the idle table immediately. Explicit cameras/tracks and
+fixed-step capture still bypass automatic cueing. Missing archive evidence
+leaves the reserved aerial unobscured; it does not choose a different cut.
+
+`buildIdleTable` uses the same complete RFL archive, reconciliation, identity,
+chronology and ranking rules, never a fabricated match/HUD score. The archive
+must be at most six hours old, with at most 60 seconds of publication clock
+skew; every included aired result must precede both publication and wall time.
+It prefers the current season, falling back to a correctly labelled earlier
+season only when the newer season validates and has no aired results. A bad
+current ledger is not an excuse to fall back. Future seasons, scheduled and
+skipped results do not contribute. With no confirmed standings it hides.
+
+Idle and post-match share one bounded archive request/cache (at most one
+request per minute, ten-second abort, disposed with the output). Each displayed
+idle segment freezes its validated snapshot; late evidence or a late join gets
+only the remaining slot. Different archive revisions/network arrival can still
+produce different tables on independent clients, as for post-match graphics.
+The idle graphic says **CURRENT STANDINGS / BETWEEN GAMES**, shows static
+positions plus the published leader and season totals, and contains no FT score,
+match highlights, movement arrows or before/after-match animation. Post-match
+cueing and its 54-second result animation are unchanged.
+
+Tests: `npm run league:check`, `npm run stadium-screen:check`, and
+`node scripts/league-idle-browser.mjs` (browser-local fixture/time overrides,
+actual broadcast and visitor render paths; never changes public feeds).
+
 ## Pinned SDK adapter: prevent allocation, not just attachment
 
 `public/js/venue-modules/broadcast-sdk.mjs` loads the same-origin prebuilt

@@ -290,7 +290,11 @@ try {
     for (const phase of phases) await capture(visitor,phase);
     if (visitor && gpu) await benchmark();
     assert.equal(await chrome.evaluate(`${rehearsal}(null)`,{timeoutMs:30000}),true,`${route}: unmount`);
-    await capture(visitor,{name:'unmount-idle',seconds:phases.at(-1).seconds,expectedPhase:'idle',idle:true});
+    // This sample checks a clear idle shot after unmount, not the newly valid
+    // between-match standings slot. The dedicated league-idle browser gate
+    // checks the occupied slot and late joins on these same two routes.
+    const quietIdleMs = Math.ceil((start + phases.at(-1).seconds * 1000) / 281700) * 281700 + 100000;
+    await capture(visitor,{name:'unmount-idle',seconds:(quietIdleMs-start)/1000,expectedPhase:'idle',idle:true});
     const audit = await chrome.evaluate(`({...__stadiumAudit,domVideos:document.querySelectorAll('video').length})`);
     report.audits[route] = audit;
     verify(`${route} no main video or writes`,()=>{
