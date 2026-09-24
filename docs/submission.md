@@ -459,7 +459,8 @@ serve a page containing `otra.city/s/<slug>` unless your domain is in
 - `GET /badge/<slug>.svg` — a small badge showing the listing's address
   (generic until the slug is live; always an image, never an error).
 - The submit response and `GET /api/plots/<slug>` carry `badge`: `{svg,
-  permalink, markdown, html, note}`. Both snippets link to
+  permalink, markdown, html, note}` — including the 404 that says a slug is
+  free, which is when you put the permalink on your page. Both snippets link to
   `otra.city/s/<slug>`, so pasting one is also the backlink proof.
 - A failed backlink check names the snippet in its detail line.
 

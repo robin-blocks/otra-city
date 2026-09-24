@@ -56,6 +56,22 @@ async function inFlight(slug) {
   }
 }
 
+// A free slug is the moment /claim says to put the permalink on your page,
+// before the dry run reads it — so the answer hands over the snippet then,
+// not only after a submission has already failed the backlink check.
+export function freeSlug(slug) {
+  return {
+    slug,
+    exists: false,
+    available: true,
+    pending: false,
+    note: 'slug is free — put the permalink (or the badge below) on the page at your url, then submit at POST /api/plots/submit ' +
+      'with "dry": true first; free lots are in GET /api/plots vacant[] (ask for one with "lot" in plot.json)',
+    permalink: `https://otra.city/s/${slug}`,
+    badge: badgeSnippets(slug),
+  };
+}
+
 export default async function handler(req, res) {
   res.setHeader('content-type', 'application/json');
   res.setHeader('access-control-allow-origin', '*');
@@ -94,13 +110,7 @@ export default async function handler(req, res) {
         return;
       }
       res.statusCode = 404;
-      res.end(JSON.stringify({
-        slug,
-        exists: false,
-        available: true,
-        pending: false,
-        note: 'slug is free — submit at POST /api/plots/submit; free lots are in GET /api/plots vacant[] (ask for one with "lot" in plot.json)',
-      }, null, 2));
+      res.end(JSON.stringify(freeSlug(slug), null, 2));
       return;
     }
     const plot = await plotRes.json();
