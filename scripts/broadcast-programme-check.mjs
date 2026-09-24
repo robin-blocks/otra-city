@@ -87,10 +87,45 @@ test('preroll late join uses programme origin; play uses latest restart', async 
 test('interval and postmatch anchor at latest play-end, including inserted goal holds', async () => {
   const p = await director();
   let out = p.evaluate({ match: match(310, 498), nowMs: 1 });
-  assert.equal(out.state.phase, 'interval'); near(out.state.phaseOrigin, 493); near(out.camera.t, 5);
+  assert.equal(out.state.phase, 'interval'); near(out.state.phaseOrigin, 493);
+  // Inside the half's dead ball the iso has the picture (see the iso test).
+  assert.equal(out.camera.camera, 'iso');
   out = p.evaluate({ match: match(622, 835), nowMs: 2 });
   assert.equal(out.state.phase, 'postmatch'); near(out.state.phaseOrigin, 810); near(out.camera.t, 25);
   assert.notEqual(out.state.phaseOrigin, 493);
+});
+
+test('iso only on a dead ball: play_end_t to restart_t minus the lead, wide before the restart', async () => {
+  // A sampler that moves the ball: the subject is whoever is nearest it.
+  const sampler = (t) => ({ players: [[-2, 0.7, 1], [3, 0.7, -2]], ball: [t < 310 ? -1.5 : 2.5, 0.2, 0] });
+  const p = await director({ samplePlay: sampler }), q = await director({ samplePlay: sampler });
+  // Ball live: never the iso.
+  assert.equal(p.evaluate({ match: match(304, 492), nowMs: 1 }).camera.camera, 'gantry');
+  // Dead ball (305 → 317): the iso, labels off, its own lens, a history integration.
+  const a = p.evaluate({ match: match(306, 494), nowMs: 2 });
+  assert.equal(a.camera.camera, 'iso'); assert.equal(a.camera.labels, false);
+  assert.equal(a.camera.lens.sensor_mm, 24); assert.equal(a.state.iso, 'bounded-history');
+  assert.equal(a.state.priority, 'dead-ball');
+  // A late join computes the same shot as a client that watched throughout.
+  p.evaluate({ match: match(311, 499), nowMs: 3 });
+  const x = p.evaluate({ match: match(312, 500), nowMs: 4 }), y = q.evaluate({ match: match(312, 500), nowMs: 4 });
+  assert.deepEqual(x.camera, y.camera);
+  // The subject follows the ball (player 1 is nearest after 310), eased.
+  assert.ok(x.camera.lookAt[0] > 0, `aim ${x.camera.lookAt}`);
+  // Back on the wide for the last ISO_WIDE_LEAD_S before restart_t.
+  const w = p.evaluate({ match: match(316, 504), nowMs: 5 });
+  assert.equal(w.camera.camera, 'gantry'); assert.equal(w.state.iso, 'wide-before-restart');
+  // Play again: the match cut, no iso.
+  assert.equal(p.evaluate({ match: match(318, 506), nowMs: 6 }).camera.camera, 'gantry');
+  // Full time has no restart: the postmatch programme, never the iso.
+  assert.notEqual(p.evaluate({ match: match(630, 843), nowMs: 7 }).camera.camera, 'iso');
+});
+
+test('a dead ball too short for the iso stays on the authored interval cut', async () => {
+  const short = { buzzers: [{ kind: 'half', t: 300, play_end_t: 305, restart_t: 308 }, { kind: 'full', t: 617, play_end_t: 622 }] };
+  const p = await director();
+  const out = p.evaluate({ match: match(306, 494, { clockPlan: short, bug: { inPlay: false } }), nowMs: 1 });
+  assert.equal(out.state.phase, 'interval'); assert.notEqual(out.camera.camera, 'iso'); assert.equal(out.state.iso, null);
 });
 
 test('headcam outranks goal; goal outranks play and the league aerial', async () => {

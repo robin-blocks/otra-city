@@ -74,6 +74,7 @@ import { buildRoads } from '/js/roads.js';
 import { createVenues } from '/js/venues.js';
 import { createAfterToneMap } from '/js/after-tonemap.js';
 import { createBroadcastLook } from '/js/broadcast-look.js';
+import { createNight } from '/js/broadcast-night.js';
 import { detectHardware } from '/js/quality.js';
 import { createDoorSystem } from '/js/doors.js';
 import { createCrowd } from '/js/crowd.js';
@@ -92,7 +93,7 @@ const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
 // page's behaviour changes. It is reported in `state().build` and on the note
 // line, so "the deployed page still says X" is settled by reading the page,
 // not by comparing memories of deploys.
-const BUILD = '2026-09-24a';
+const BUILD = '2026-09-24b';
 
 // Errors are evidence: a silent failure films a black hour, so every one is
 // kept for `state()`, echoed to the console the harness reads, and shown.
@@ -256,8 +257,14 @@ const look = lookOn ? createBroadcastLook({
   dof: params.get('dof') !== '0',
   lens: params.get('lens') !== '0',
   grain: params.get('grain') === '1',
+  turf: params.get('turf') !== '0',
 }) : null;
 if (look) composer.setSize(look.target.width, look.target.height);
+// A FLOODLIT NIGHT around the pitch (js/broadcast-night.js): a deep-blue sky
+// instead of black, glare and haze at the mast heads, and flood spill that
+// lights the stands. Goes with the look; `?night=0` turns it off, and an
+// explicit `?timeofday=` owns the sky instead.
+const night = look && params.get('night') !== '0' && !params.has('timeofday') ? createNight({ scene, camera }) : null;
 // Where the lens is focused: the distance to what the shot is aimed at.
 let focusM = null;
 // The venue's floodlights, re-read now and then (a venue streams in).
@@ -1077,6 +1084,7 @@ function draw() {
       floodlights = []; scene.traverse((o) => { if (o.isSpotLight) floodlights.push(o); });
       floodlightsAt = frame;
     }
+    night?.update(floodlights);
     look.update({ scene, camera, frame, focus: focusM, lights: floodlights, lens: c?.lens,
       stage: venues?.module?.(wantVenue, 'match-4dgsx')?.afterToneMap?.() ?? null });
     // A close shot carries no floating name plates or bubbles — television
@@ -1317,6 +1325,7 @@ window.rflBroadcast = {
       afterToneMap: after.state(),
       // the broadcast camera: supersampling, pitch shadows, lens — null with ?look=0
       look: look ? { ...look.state(), auto: lookAuto } : null,
+      night: night ? night.state() : null,
       // whether this page will pick up a new build by itself, and whether it
       // has seen one it is waiting for an empty pitch to take
       updater: live ? { ...updater } : null,
