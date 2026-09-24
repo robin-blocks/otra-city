@@ -214,17 +214,35 @@ try {
     const g = s0.match.glass || {};
     check('the publisher\'s glass panels are not drawn', g.shown ? true : (g.found ?? -1) >= 0 && g.hidden === g.found,
       g.shown ? `${g.found} panel(s), drawn because the venue asks for them` : g.found ? `${g.hidden} of ${g.found} panels hidden` : 'this bundle has no glass');
-    // And the pitch at the publisher's own colour, checked against arithmetic
-    // rather than a golden image. Their shader lights a flat surface to a
-    // value the bundle alone predicts: the pitch texture's own texel — read
-    // back from the very image the SDK loaded — through their lighting (sun
-    // (0.25, 0.15, 1); 0.34 + 0.30·hemi + 0.48·dif; a 0.03 specular) and
-    // their gamma (pow 0.9091). That is what 4dgsx.com/watch draws, verified
-    // against their served player on 2026-09-14. If anyone tone maps the
-    // stage again, decodes the texture again, or the publisher changes how a
-    // pitch is lit, this line says so. Sampled at 36 points along whole
-    // stripes and judged by the median error, so a robot standing on a patch
-    // does not fail the run.
+    // And the pitch at the colour its own tile predicts, checked against
+    // arithmetic rather than a golden image. The SDK's shader lights a flat
+    // surface to a value the tile alone predicts: the texel the pitch
+    // material samples, through their lighting (sun (0.25, 0.15, 1); 0.34 +
+    // 0.30·hemi + 0.48·dif; a 0.03 specular) and their gamma (pow 0.9091).
+    // That is what 4dgsx.com/watch draws, verified against their served
+    // player on 2026-09-14. If anyone tone maps the stage again, decodes the
+    // texture again, or the publisher changes how a pitch is lit, this line
+    // says so. Sampled at 36 points along whole stripes and judged by the
+    // median error, so a robot standing on a patch does not fail the run.
+    //
+    // Since build 2026-09-24b the tile is not the publisher's image but
+    // broadcast-turf.js's, generated on the GPU into a render target — no
+    // image to draw into a canvas — so it is read back with
+    // readRenderTargetPixels instead. That tile already carries the pitch
+    // grade (`PITCH_GRADES`, applied before the SDK's lighting), so the
+    // prediction includes it; the tile itself is held to "the publisher's
+    // bands times the grade" separately, below. Its grain is 4 mm blades a
+    // pixel cannot resolve, so a prediction averages the tile over a few
+    // centimetres, as the mipmapped sampler does; the publisher's own tile
+    // (?turf=0) is flat at that scale and reads the same either way.
+    //
+    // The broadcast look (broadcast-look.js) adds two things on top, both on
+    // purpose. Its floodlight shadows darken most of the turf near a player,
+    // four times over, so the pitch is read from a redraw of the same frame
+    // with the shadow receiver out of the camera's layers (draw() is pure in
+    // the frame, so this is frame N without shadows, and a second redraw puts
+    // frame N back as it was). Its vignette dims toward the corners by a
+    // known curve, so the prediction carries it.
     const got = await a.evaluate(`(async () => {
       const THREE = await import('/vendor/three/three.module.js');
       const { scene, camera, renderer } = window.rflBroadcast.three;
@@ -232,50 +250,116 @@ try {
       if (!space) return { error: 'no 4dgsx-match-space in the scene' };
       let pitch = null;
       space.traverse((o) => { const u = o.isMesh && o.material?.uniforms; if (u?.uColor && u.uTurf?.value === 2 && !pitch) pitch = o; });
-      const img = pitch?.material.uniforms.uTex.value?.image;
-      if (!img?.width) return { error: pitch ? 'the pitch texture has not loaded' : 'no textured pitch draw (uTurf 2) in the stage' };
-      const c2 = document.createElement('canvas');
-      c2.width = img.width; c2.height = img.height;
-      const g2 = c2.getContext('2d');
-      g2.drawImage(img, 0, 0);
-      const data = g2.getImageData(0, 0, img.width, img.height).data;
+      const tex = pitch?.material.uniforms.uTex.value;
+      let tw, th, data, flip, source;
+      if (tex?.isRenderTargetTexture && tex.renderTarget) {
+        // GL order: row 0 is v = 0, and a render target is sampled unflipped
+        const rt = tex.renderTarget;
+        tw = rt.width; th = rt.height; flip = false; source = tex.name || 'a render target';
+        data = new Uint8Array(tw * th * 4);
+        renderer.readRenderTargetPixels(rt, 0, 0, tw, th, data);
+      } else {
+        const img = tex?.image;
+        if (!img?.width) return { error: pitch ? 'the pitch texture has not loaded' : 'no textured pitch draw (uTurf 2) in the stage' };
+        const c2 = document.createElement('canvas');
+        c2.width = img.width; c2.height = img.height;
+        const g2 = c2.getContext('2d');
+        g2.drawImage(img, 0, 0);
+        tw = img.width; th = img.height; flip = true; source = 'the publisher\\'s image';
+        data = g2.getImageData(0, 0, tw, th).data;
+      }
       const xf = pitch.material.uniforms.uTexXf.value;      // 1/scale.xy, offset.xy — world-planar tiling
       const sunZ = 1 / Math.hypot(0.25, 0.15, 1);
       const lit = (t) => Math.pow(t / 255 * (0.34 + 0.30 + 0.48 * sunZ) + Math.pow(sunZ, 8) * 0.03, 0.9091) * 255;
-      // the texel their shader samples at match point (mx, my): the same
+      const wrap = (i, n) => ((i % n) + n) % n;
+      // the tile's mean over a (2r)² m box at match point (mx, my): the same
       // mapping, wrapped, and flipped the way both their player and three
-      // upload an image
-      const texel = (mx, my) => {
-        const u = ((mx - xf.z) * xf.x) % 1, v = ((my - xf.w) * xf.y) % 1;
-        const px = Math.min(img.width - 1, Math.floor((u < 0 ? u + 1 : u) * img.width));
-        const py = Math.min(img.height - 1, Math.floor((1 - (v < 0 ? v + 1 : v)) * img.height));
-        const i = (py * img.width + px) * 4;
-        return [data[i], data[i + 1], data[i + 2]].map(lit);
+      // upload an image (a render target is not flipped)
+      const R = 0.015;
+      const tile = (mx, my, r = R) => {
+        const u = (mx - xf.z) * xf.x, v = (my - xf.w) * xf.y;
+        const rx = Math.max(0, Math.round(r * xf.x * tw)), ry = Math.max(0, Math.round(r * xf.y * th));
+        const cx = Math.floor(u * tw), cy = Math.floor(v * th);
+        const sum = [0, 0, 0];
+        for (let dy = -ry; dy <= ry; dy++) {
+          for (let dx = -rx; dx <= rx; dx++) {
+            const px = wrap(cx + dx, tw), py0 = wrap(cy + dy, th), py = flip ? th - 1 - py0 : py0;
+            const i = (py * tw + px) * 4;
+            sum[0] += data[i]; sum[1] += data[i + 1]; sum[2] += data[i + 2];
+          }
+        }
+        const n = (2 * rx + 1) * (2 * ry + 1);
+        return sum.map((c) => c / n);
       };
       const gl = renderer.getContext();
       const W = renderer.domElement.width, H = renderer.domElement.height;
+      // The finish pass's vignette, as broadcast-look.js writes it: uVignette
+      // 0.11 on the output frame, only with the lens on.
+      const B = window.rflBroadcast, look = B.state().look;
+      const vignette = look?.lens ? 0.11 : 0;
+      const falloff = (px, py) => {
+        const a = W / H, qx = ((px + 0.5) / W * 2 - 1) * a, qy = (py + 0.5) / H * 2 - 1;
+        const r2 = (qx * qx + qy * qy) / (1 + a * a);
+        return 1 - vignette * r2 * r2 * 1.6;
+      };
       const buf = new Uint8Array(4);
       const read = (mx, my) => {
         const v = space.localToWorld(new THREE.Vector3(mx, my, 0)).project(camera);
-        gl.readPixels(Math.round((v.x + 1) / 2 * W), Math.round((v.y + 1) / 2 * H), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, buf);
-        return [buf[0], buf[1], buf[2]];
+        const px = Math.round((v.x + 1) / 2 * W), py = Math.round((v.y + 1) / 2 * H);
+        gl.readPixels(px, py, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+        return { have: [buf[0], buf[1], buf[2]], k: falloff(px, py) };
       };
+      const receiver = scene.getObjectByName('otra-pitch-shadows');
+      const layers = receiver?.layers.mask;
+      const frameNow = B.state().frame;
+      if (receiver) { receiver.layers.set(31); await B.step(frameNow); }
       // a stripe runs the length of the pitch (x); 3 and -1 are light bands,
       // 1 and -3 dark ones on a 4 m period — 9 points along each
       const errs = [], samples = [];
-      for (const x of [3, 1, -1, -3]) {
-        for (let y = -3.5; y <= 3.5; y += 0.875) {
-          const want = texel(x, y), have = read(x, y);
-          errs.push(Math.max(...have.map((h, i) => Math.abs(h - want[i]))));
-          samples.push({ at: [x, y], want: want.map(Math.round), have });
+      try {
+        for (const x of [3, 1, -1, -3]) {
+          for (let y = -3.5; y <= 3.5; y += 0.875) {
+            const { have, k } = read(x, y), want = tile(x, y).map((t) => lit(t) * k);
+            const err = Math.max(...have.map((h, i) => Math.abs(h - want[i])));
+            errs.push(err);
+            samples.push({ at: [x, y], want: want.map(Math.round), have, err });
+          }
         }
+      } finally {
+        if (receiver) { receiver.layers.mask = layers; await B.step(frameNow); }
       }
       errs.sort((p, q) => p - q);
-      return { medianError: errs[errs.length >> 1], worst: errs[errs.length - 1], example: samples[0], examples: samples };
+      const example = samples.find((q) => q.err === errs[errs.length >> 1]);   // a typical point, not a robot
+      // The tile's own bands, a whole stripe-width strip each, averaged over
+      // one tile length so the zero-mean grain cancels: what the stripes are
+      // made of before any lighting, for the grade check below.
+      const u = pitch.material.uniforms;
+      const band = (x) => {
+        const sum = [0, 0, 0];
+        for (let y = -2; y < 2; y += 0.125) tile(x, y, 0.06).forEach((c, i) => { sum[i] += c; });
+        return sum.map((c) => c / 32);
+      };
+      return {
+        source, shadowsHidden: !!receiver, vignette, medianError: +errs[errs.length >> 1].toFixed(2), worst: +errs[errs.length - 1].toFixed(2), example, examples: samples,
+        bands: { light: band(3), dark: band(1), g1: u.uG1.value.toArray().map((c) => c * 255), g2: u.uG2.value.toArray().map((c) => c * 255) },
+      };
     })()`);
-    check('the pitch renders at the publisher\'s own colour', !got.error && got.medianError <= 6,
-      got.error || `median error ${got.medianError}/255 over ${got.examples.length} points (worst ${got.worst}); at (${got.example.at}) drew [${got.example.have}] for [${got.example.want}]`);
-    report.pitch = got.error ? { error: got.error } : { medianError: got.medianError, worst: got.worst, examples: got.examples };
+    check('the pitch renders at the colour its tile predicts under the publisher\'s lighting', !got.error && got.medianError <= 6,
+      got.error || `${got.source}${got.shadowsHidden ? ', shadows hidden' : ''}${got.vignette ? `, vignette ${got.vignette}` : ''}: median error ${got.medianError}/255 over ${got.examples.length} points (worst ${got.worst}); at (${got.example.at}) drew [${got.example.have}] for [${got.example.want}]`);
+    // The generated tile is the publisher's two band colours, times the
+    // page's pitch grade — 'turf' by default (docs/broadcast/LOOK.md, "Pitch
+    // hue"), exactly theirs under ?pitch=publisher. With ?turf=0 their own
+    // image is on the pitch and there is no grade to hold it to.
+    const turf = s0.look?.turf;
+    if (!got.error && turf?.replaced > 0) {
+      const gain = turf.gain;
+      const light = got.bands.g1.map((c, i) => c * gain[i]), dark = got.bands.g2.map((c, i) => c * gain[i]);
+      const off = Math.max(...[...got.bands.light.map((c, i) => Math.abs(c - light[i])), ...got.bands.dark.map((c, i) => Math.abs(c - dark[i]))]);
+      const fmt = (v) => `[${v.map(Math.round)}]`;
+      check(`the pitch tile is the publisher's bands under the '${turf.grade}' grade`, off <= 3,
+        `light ${fmt(got.bands.light)} for ${fmt(light)}, dark ${fmt(got.bands.dark)} for ${fmt(dark)} (gain [${gain}]; worst ${off.toFixed(1)}/255)`);
+    }
+    report.pitch = got.error ? { error: got.error } : { source: got.source, shadowsHidden: got.shadowsHidden, vignette: got.vignette, medianError: got.medianError, worst: got.worst, examples: got.examples, bands: got.bands };
   }
   check('drawing buffer matches the contract', ...(await (async () => {
     const d = await a.evaluate('JSON.stringify([window.rflBroadcast.three.renderer.domElement.width, window.rflBroadcast.three.renderer.domElement.height])').then(JSON.parse);
