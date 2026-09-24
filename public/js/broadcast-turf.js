@@ -32,6 +32,19 @@ import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 
 const SIZE = 2048;
 
+// THE PITCH'S HUE. Real broadcast turf is a yellow-green: in Robin's three
+// reference frames (24 September) blue sits at ~0.6x red. The publisher's
+// bands are blue-green (blue above red), which reads as a game. 'turf' moves
+// the on-screen pitch mean from [72,131,76] halfway to the references' mean
+// [96,135,60] — [85,140,66] — Robin's pick ("half-B") over a brighter-only
+// lift or the full, olive-looking hue. The gain is applied in the TILE, before
+// the SDK's lighting and its pow(c, 0.9091), so each channel is the wanted
+// on-screen ratio to the power 1/0.9091. 'publisher' is their colours exactly.
+export const PITCH_GRADES = Object.freeze({
+  publisher: [1, 1, 1],
+  turf: [85 / 72, 140 / 131, 66 / 76].map((r) => +(r ** (1 / 0.9091)).toFixed(4)),
+});
+
 const genMat = new THREE.ShaderMaterial({
   uniforms: {
     uG1: { value: new THREE.Vector3() },
@@ -39,6 +52,7 @@ const genMat = new THREE.ShaderMaterial({
     uMow: { value: new THREE.Vector4() },
     uScale: { value: new THREE.Vector2(4, 4) },
     uOffset: { value: new THREE.Vector2(-2, -2) },
+    uGrade: { value: new THREE.Vector3(1, 1, 1) },
   },
   vertexShader: /* glsl */`
     varying vec2 vUv;
@@ -47,6 +61,7 @@ const genMat = new THREE.ShaderMaterial({
     uniform vec3 uG1, uG2;
     uniform vec4 uMow;          // phase m, 1/period, axis (0 x, 1 y, 2 checker), seam half-width in periods
     uniform vec2 uScale, uOffset;
+    uniform vec3 uGrade;
     varying vec2 vUv;
 
     // The SDK's band(), verbatim (stage.ts fragment shader).
@@ -70,7 +85,7 @@ const genMat = new THREE.ShaderMaterial({
       float k = uMow.z > 1.5
         ? abs(band(m.x, uMow.x, uMow.y, w) - band(m.y, uMow.x, uMow.y, w))
         : band(mix(m.x, m.y, uMow.z), uMow.x, uMow.y, w);
-      vec3 base = mix(uG2, uG1, k);
+      vec3 base = mix(uG2, uG1, k) * uGrade;
 
       // Grass runs WITH the cut: the mower drove along the stripes, so blades
       // and streaks are long in that direction. q.y is along the cut.
@@ -96,11 +111,13 @@ const genQuad = new FullScreenQuad(genMat);
 /**
  * Keeps the mounted stage's pitch dressed in generated turf.
  *
- *   const turf = createTurf(renderer);
+ *   const turf = createTurf(renderer, { grade: 'turf' | 'publisher' });
  *   turf.update(stageGroup);   // every frame; does work only when the stage changes
  */
-export function createTurf(renderer) {
-  const stat = { stage: null, replaced: 0, skipped: null, size: SIZE, generated: 0 };
+export function createTurf(renderer, { grade = 'turf' } = {}) {
+  const gain = PITCH_GRADES[grade] ?? PITCH_GRADES.turf;
+  const stat = { stage: null, replaced: 0, skipped: null, size: SIZE, generated: 0,
+    grade: PITCH_GRADES[grade] ? grade : 'turf', gain };
   let stageGroup = null, rt = null;
 
   function dress(group) {
@@ -145,6 +162,7 @@ export function createTurf(renderer) {
     genMat.uniforms.uMow.value.copy(mow);
     genMat.uniforms.uScale.value.copy(scale);
     genMat.uniforms.uOffset.value.set(xf.z, xf.w);
+    genMat.uniforms.uGrade.value.fromArray(gain);
     const prev = renderer.getRenderTarget();
     renderer.setRenderTarget(rt);
     genQuad.render(renderer);

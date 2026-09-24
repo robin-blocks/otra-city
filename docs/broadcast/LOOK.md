@@ -1,4 +1,4 @@
-# /broadcast — the broadcast camera (builds `2026-09-24a`, `2026-09-24b`)
+# /broadcast — the broadcast camera (builds `2026-09-24a`, `b`, `c`)
 
 What happens to a frame between the scene and the television picture.
 Implementation: `public/js/broadcast-look.js`, `public/js/broadcast-turf.js`,
@@ -40,6 +40,7 @@ Without the flag they render a gamma too dark. The header of
 | `?lens=0` | on | sharpening and vignette |
 | `?grain=1` | off | seeded sensor grain (costs a CBR encoder bits every frame) |
 | `?turf=0` | on | keep RFL's own pitch tile instead of the generated turf |
+| `?pitch=publisher` | `turf` | the generated tile in the publisher's exact band colours, with no hue grade |
 | `?night=0` | on | no sky dome, mast glare, haze or flood spill (also off with `?timeofday=`) |
 
 **No GPU, no supersampling.** On a software rasteriser (`quality.js` tier 0:
@@ -89,6 +90,16 @@ frame-filling pitch). A tile that isn't a whole number of stripe periods is left
 alone and reported in `state().look.turf.skipped`. **Trap:** the SDK holds
 `uG1`/`uG2` as `THREE.Color`. `Vector3.copy(Color)` reads `.x` and gives a
 black pitch, so copy the components instead.
+
+### Pitch hue (build `2026-09-24c`, Robin's pick "half-B")
+
+Measured pitch means:
+- **Robin's references:** ref 1 (Sky) [114,167,72], ref 2 (Wembley) [95,124,58], ref 3 (Copa) [80,114,51]. Real turf is yellow-green, with blue at about 0.6× red.
+- **Ours, and RFL's video:** blue-green. Ours was [72,131,76]; the video is [89,168,96]. Our brightness was already inside the references' range.
+
+So the tile is graded toward the references' hue, halfway: an on-screen target of [85,140,66]. The full hue read olive against the neon bowl, and "brighter only" kept the game-like blue-green. The gain goes into the tile, before the SDK's lighting and `pow 0.9091`, so each channel is the wanted screen ratio to the power 1/0.9091: `[1.2003, 1.0758, 0.8563]` (`PITCH_GRADES.turf`). Rendered on m51 from the gantry it measures [83,139,67]. `state().look.turf.grade` reports it.
+
+This deliberately departs from 4DGSX's player colours, which were the reference from 14 September. `?pitch=publisher` restores them.
 
 ## Night (`broadcast-night.js`, build `2026-09-24b`)
 
@@ -196,8 +207,6 @@ comparisons.
 
 ## Open decisions (Robin)
 
-- **Pitch green.** We match 4DGSX's live player. RFL's video and the
-  reference footage are about 22% brighter. With the finish pass in place, a
-  grade would be one uniform. Not ruled on.
+- **Pitch green:** decided 24 September. Robin picked "half-B" (see Pitch hue).
 - **Night atmosphere:** built in `2026-09-24b` (see above). Not yet done:
   roof-underside lights in the stands and rain.

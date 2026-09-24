@@ -70,7 +70,7 @@ const _lamp = new THREE.Vector3();
  *   after.render(roots, { target: look.target, beforeRoots: look.beforeRoots });
  *   look.finish(camera);                                    // onto the canvas
  */
-export function createBroadcastLook({ renderer, width, height, ss = 2, shadows = true, dof = true, lens = true, grain = false, turf = true }) {
+export function createBroadcastLook({ renderer, width, height, ss = 2, shadows = true, dof = true, lens = true, grain = false, turf = true, pitch = 'turf' }) {
   ss = Math.max(1, Math.min(2, ss));
   const tw = Math.round(width * ss), th = Math.round(height * ss);
   const target = new THREE.WebGLRenderTarget(tw, th, {
@@ -90,7 +90,7 @@ export function createBroadcastLook({ renderer, width, height, ss = 2, shadows =
   // ------------------------------------------------------------------ shadows
   const shadow = shadows ? createPitchShadows(renderer, stat.shadows) : null;
   // The pitch's own tile, regenerated without the 25 cm squares (broadcast-turf.js).
-  const turfer = turf ? createTurf(renderer) : null;
+  const turfer = turf ? createTurf(renderer, { grade: pitch }) : null;
 
   // ------------------------------------------------------------------ finish
   const finishMat = new THREE.ShaderMaterial({
