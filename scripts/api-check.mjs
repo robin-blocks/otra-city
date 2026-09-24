@@ -26,6 +26,7 @@ import { pickLot } from '../public/js/city-map.mjs';
 import drain, { selectRecords, parseBatch } from '../api/log-drain.mjs';
 import { apexHost, sameSite, ownerKey, classifyUrl } from '../lib/submitter-host.mjs';
 import badgeHandler, { addressFor } from '../api/badge.mjs';
+import { freeSlug } from '../api/plot-status.mjs';
 import { badgeSnippets, renderBadge } from '../lib/badge.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
@@ -268,6 +269,10 @@ const listing = (over = {}) => ({
   const svg = renderBadge('1 <Odd> & "Road"');
   check('whatever the address, it is text in the svg, never markup',
     svg.includes('&lt;Odd&gt; &amp; &quot;Road&quot;') && !svg.includes('<Odd>'));
+  const free = freeSlug('not-taken-yet');
+  check('a free slug hands over the badge before the dry run needs it',
+    free.available === true && free.permalink === 'https://otra.city/s/not-taken-yet' &&
+    free.badge.html.includes('href="https://otra.city/s/not-taken-yet"'));
   const sn = badgeSnippets('a-b-c');
   check('snippets carry only the slug, never a submitter\'s words',
     sn.markdown === '[![a-b-c on otra.city](https://otra.city/badge/a-b-c.svg)](https://otra.city/s/a-b-c)');
