@@ -1105,3 +1105,7 @@ the board — season-4 titles are half again as long.
 - Crowd audio of any kind — no audio at all is produced; the venue PA is
   stripped from the module config on this page.
 - A tunnel or behind-goal camera.
+
+## The broadcast camera
+
+Supersampling, pitch shadows, depth of field, lens and the `iso` camera (build `2026-09-24a`): see [LOOK.md](LOOK.md).

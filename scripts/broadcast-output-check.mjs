@@ -26,8 +26,19 @@ assert.match(html, /pagehide[^\n]*cleanOutput\.stop/, 'page exit stops the outpu
 assert.match(html, /renderer\.toneMapping = THREE\.ACESFilmicToneMapping/, 'harness matches broadcast tone mapping');
 assert.match(html, /renderer\.toneMappingExposure = 1\.15/, 'harness matches broadcast exposure');
 
-function checkDrawOrdering() {
+// `withLook`: the broadcast camera (js/broadcast-look.js) composes offscreen
+// and finishes onto the canvas BEFORE the scorebug. Both paths must keep one
+// camera/match/scene evaluation per draw and every graphic after the scene;
+// ?look=0 must keep exactly the order it always had.
+function checkDrawOrdering(withLook = false) {
   const events = [];
+  const stage = { traverse() {} };
+  const look = withLook ? {
+    target: { isTarget: true },
+    beforeRoots() {},
+    update(args) { event('look-update'); assert.equal(args.frame, 271); assert.equal(args.stage, stage); assert.equal(args.focus, 12.5); },
+    finish() { event('look-finish'); },
+  } : null;
   let enabled = false, current = null, cue = null, snapshot;
   const event = (name) => events.push(name);
   const feed = {};
@@ -42,8 +53,13 @@ function checkDrawOrdering() {
       copyFramebufferToTexture(texture) { assert.equal(texture, feed); event('feed'); },
       getContext: () => ({ getError: () => 0, finish() { event('finish'); } }),
     },
-    venues: { afterToneMap() { event('match-stage'); return ['match']; } },
-    after: { render(items) { event('scene'); assert.deepEqual(Array.from(items), ['match']); } },
+    venues: { afterToneMap() { event('match-stage'); return [stage]; }, module: () => ({ afterToneMap: () => stage }) },
+    after: { render(items, options) {
+      event('scene'); assert.equal(items.length, 1); assert.equal(items[0], stage);
+      if (withLook) { assert.equal(options?.target, look.target); assert.equal(options?.beforeRoots, look.beforeRoots); }
+      else assert.equal(options, undefined);
+    } },
+    look, scene: { traverse() {} }, camera: {}, floodlights: [], floodlightsAt: -1, focusM: 12.5, wantVenue: 'stadium',
     matchState() { event('match'); return current; },
     postMatchTable: { update(args) { event('table'); assert.equal(args.match, current); assert.equal(args.time, 5.42); return cue; } },
     scorebug: {
@@ -63,10 +79,10 @@ function checkDrawOrdering() {
     events.length = 0;
     context.runDraw();
     assert.deepEqual(events, [
-      'camera', 'aim', 'crowd', 'reset', 'match-stage', 'scene', 'match', 'table',
+      'camera', 'aim', 'crowd', 'reset', 'match-stage', ...(withLook ? ['look-update', 'scene', 'look-finish'] : ['scene']), 'match', 'table',
       'bug-draw', 'bug-render', 'league-draw', ...(cue ? ['league-render'] : []),
       ...(enabled ? ['copy', 'LIVE'] : []), 'feed', 'finish',
-    ], `${mode}: one camera/match/scene evaluation, copy before LIVE before feed (even on copy failure)`);
+    ], `${withLook ? 'look ' : ''}${mode}: one camera/match/scene evaluation, copy before LIVE before feed (even on copy failure)`);
     assert.equal(context.renderSerial, i + 1);
     if (enabled) assert.deepEqual(JSON.parse(JSON.stringify(snapshot)), {
       serial: i + 1, frame: 271, t: 5.42, camera: 'heli', matchId: current?.match?.id ?? null,
@@ -89,7 +105,7 @@ function checkDrawOrdering() {
   apiContext.live = false;
   assert.throws(() => api.cleanOutput(), /live.*capture=1/, 'capture-mode page cannot opt into live output');
   assert.equal(starts, 1, 'capture-mode guard prevents allocation');
-  console.log('PASS broadcast draw VM: actual source ordering, one scene/camera/match, serial/clock, copy-failure continuation, public API');
+  console.log(`PASS broadcast draw VM${withLook ? ' (broadcast look: offscreen compose, finish before graphics)' : ''}: actual source ordering, one scene/camera/match, serial/clock, copy-failure continuation, public API`);
 }
 
 // Runs in Chrome. Its scope also hosts the unmodified broadcast draw function.
@@ -174,6 +190,9 @@ async function browserChecks(drawSource) {
   const fail = (where, message) => failures.push(`${where}: ${message}`);
   const after = { render() { bgMaterial.uniforms.phase.value = frame * .13; renderer.render(background, camera); } };
   const venues = { afterToneMap: () => [] };
+  // The canvas-direct path: this pixel oracle is about the graphics drawn
+  // AFTER the scene, which both paths share (see checkDrawOrdering(true)).
+  const look = null;
   const cameraAt = () => ({ camera: 'heli' });
   const aim = () => {};
   const matchState = () => currentBug ? { match: { id: 'offline-match' }, bug: currentBug } : null;
@@ -472,6 +491,7 @@ async function browserChecks(drawSource) {
 }
 
 checkDrawOrdering();
+checkDrawOrdering(true);
 const temp = mkdtempSync(join(tmpdir(), 'otra-broadcast-output-'));
 let chrome, server;
 const cleanupTemp = () => rmSync(temp, { recursive: true, force: true });

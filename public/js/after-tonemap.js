@@ -151,26 +151,57 @@ export function createAfterToneMap({ renderer, camera }) {
     console.warn(`after-tonemap: ${stat.error}`);
   }
 
-  function render(roots = []) {
+  // OPT-IN: compose into `target` instead of the canvas. The composer's
+  // finished picture and its scene depth go into the target in one quad, and
+  // the roots are drawn there on top — the same composite, offscreen, so a
+  // caller can finish the WHOLE frame (match included) with a pass of its own
+  // (js/broadcast-look.js). Without a target nothing below changes.
+  const blitMat = new THREE.ShaderMaterial({
+    uniforms: { tColor: { value: null }, tDepth: { value: null } },
+    vertexShader: copyMat.vertexShader,
+    fragmentShader: `
+      uniform sampler2D tColor, tDepth;
+      varying vec2 vUv;
+      void main() {
+        gl_FragDepthEXT = texture2D(tDepth, vUv).r;
+        gl_FragColor = texture2D(tColor, vUv);
+      }`,
+    depthTest: true,
+    depthFunc: THREE.AlwaysDepth,
+    depthWrite: true,
+  });
+  const blit = new FullScreenQuad(blitMat);
+
+  function render(roots = [], { target = null, beforeRoots = null } = {}) {
     const list = roots.filter(Boolean);
     stat.roots = list.length;
-    if (!list.length) { composer.render(); return; }
+    if (!list.length && !target) { composer.render(); return; }
     for (const o of list) prepare(o);
     // The read buffer is what the RenderPass draws into, and the last pass
     // swaps the two — so it is taken now, before the swap moves it.
     const drawn = composer.readBuffer;
     const wasVisible = list.map((o) => o.visible);
+    const toScreen = composer.renderToScreen;
+    if (target) composer.renderToScreen = false;
     for (const o of list) o.visible = false;
     try { composer.render(); }
-    finally { list.forEach((o, i) => { o.visible = wasVisible[i]; }); }
+    finally { list.forEach((o, i) => { o.visible = wasVisible[i]; }); composer.renderToScreen = toScreen; }
 
     const autoClear = renderer.autoClear;
     renderer.autoClear = false;
-    renderer.setRenderTarget(null);
+    renderer.setRenderTarget(target);
     try {
-      copyMat.uniforms.tDepth.value = drawn.depthTexture;
-      copy.render(renderer);
+      if (target) {
+        // After the output pass's swap the finished picture is the READ buffer.
+        blitMat.uniforms.tColor.value = composer.readBuffer.texture;
+        blitMat.uniforms.tDepth.value = drawn.depthTexture;
+        blit.render(renderer);
+      } else {
+        copyMat.uniforms.tDepth.value = drawn.depthTexture;
+        copy.render(renderer);
+      }
       stat.copies += 1;
+      beforeRoots?.();
       for (const o of list) if (o.visible) renderer.render(o, camera);
     } catch (e) {
       stat.error = e.message || String(e);
@@ -184,6 +215,6 @@ export function createAfterToneMap({ renderer, camera }) {
     composer,
     render,
     state: () => ({ ...stat }),
-    dispose() { copyMat.dispose(); copy.dispose(); composer.dispose(); },
+    dispose() { copyMat.dispose(); copy.dispose(); blitMat.dispose(); blit.dispose(); composer.dispose(); },
   };
 }
