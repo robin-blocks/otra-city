@@ -93,7 +93,7 @@ const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
 // page's behaviour changes. It is reported in `state().build` and on the note
 // line, so "the deployed page still says X" is settled by reading the page,
 // not by comparing memories of deploys.
-const BUILD = '2026-09-24b';
+const BUILD = '2026-09-24c';
 
 // Errors are evidence: a silent failure films a black hour, so every one is
 // kept for `state()`, echoed to the console the harness reads, and shown.
@@ -258,6 +258,7 @@ const look = lookOn ? createBroadcastLook({
   lens: params.get('lens') !== '0',
   grain: params.get('grain') === '1',
   turf: params.get('turf') !== '0',
+  pitch: params.get('pitch') === 'publisher' ? 'publisher' : 'turf',
 }) : null;
 if (look) composer.setSize(look.target.width, look.target.height);
 // A FLOODLIT NIGHT around the pitch (js/broadcast-night.js): a deep-blue sky
