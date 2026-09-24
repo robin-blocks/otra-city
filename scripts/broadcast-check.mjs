@@ -349,6 +349,15 @@ try {
   check('stepping backwards is refused, not silently wrong', backwards === 'refused', backwards);
   const hashA = await a.hash();
   const sA = await a.state();
+  // The static world's shadow depth is drawn once per light and reused
+  // (broadcast-look.js). A cache that redrew every frame would still look
+  // right but cost the 220-odd draw calls it exists to save. Needs a mounted
+  // match and shadows on, so --bundle on a GPU (software GL turns shadows off).
+  const sh = sA.look?.shadows;
+  if (sh?.enabled && sh.lights > 0 && sh.statics > 0) {
+    check('the static shadows are drawn once, not every frame', sh.staticDraws <= sh.lights,
+      `${sh.staticDraws} static redraws for ${sh.lights} lights over ${FRAMES} frames`);
+  }
   if (CROWD) {
     // A crowd that hashes the same at two distant frames is a still photograph
     // of a crowd, which is exactly the failure RFL called out by name.
