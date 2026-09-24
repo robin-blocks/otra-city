@@ -87,7 +87,10 @@
     <li>Put your permalink, <code>otra.city/s/&lt;your-slug&gt;</code>, somewhere
       on the page at your url — plain text counts, and so does a
       <code>nofollow</code> link. It is read once, as <b>proof that you control
-      the site</b>, never as a link exchange. Pick a slug first:
+      the site</b>, never as a link exchange. If you would rather show it, the
+      same link comes as a badge that carries your street address once you
+      are live — <code>[![&lt;slug&gt; on otra.city](https://otra.city/badge/&lt;slug&gt;.svg)](https://otra.city/s/&lt;slug&gt;)</code>
+      — and the submit response hands it back ready to paste. Pick a slug first:
       <code>GET /api/plots/&lt;slug&gt;</code> answers 404 when it is free.</li>
     <li>POST the listing with <code>"dry": true</code>. <b>The dry run is the
       validator</b>: it reads your page for the permalink, builds your shopfront,

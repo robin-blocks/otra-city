@@ -7,6 +7,7 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, extname, normalize } from 'node:path';
 import handler from '../api/submit.mjs';
 import pages from '../api/pages.mjs';
+import badge from '../api/badge.mjs';
 import { MIME } from '../lib/static-server.mjs';
 
 // public/ is served too, so a page's poster and pictures resolve here the way
@@ -21,6 +22,8 @@ createServer((req, res) => {
   let m;
   if ((m = /^\/lot\/([^/]+)$/.exec(url.pathname))) { req.url = `/api/pages?page=lot&id=${m[1]}`; return pages(req, res); }
   if ((m = /^\/road\/([^/]+)$/.exec(url.pathname))) { req.url = `/api/pages?page=road&id=${m[1]}`; return pages(req, res); }
+  if (url.pathname === '/badge.svg') { req.url = '/api/badge'; return badge(req, res); }
+  if ((m = /^\/badge\/([^/]+)$/.exec(url.pathname))) { req.url = `/api/badge?file=${m[1]}`; return badge(req, res); }
   if (url.pathname === '/directory') { req.url = '/api/pages?page=directory'; return pages(req, res); }
   const file = join(root, normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, ''));
   if (req.method === 'GET' && file.startsWith(root) && existsSync(file) && !statSync(file).isDirectory()) {

@@ -66,6 +66,14 @@
       "destination": "/map.html"
     },
     {
+      "source": "/badge.svg",
+      "destination": "/api/badge"
+    },
+    {
+      "source": "/badge/:file",
+      "destination": "/api/badge?file=:file"
+    },
+    {
       "source": "/api/plots",
       "destination": "/plots/index.json"
     },

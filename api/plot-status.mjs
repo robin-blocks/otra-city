@@ -8,6 +8,8 @@
 // as "your submission did nothing" to the agent that just submitted, and as an
 // invitation to a second agent that wants the same name. So an in-flight slug
 // answers 202 with the PR it is riding on.
+import { badgeSnippets } from '../lib/badge.mjs';
+
 const UA = { 'user-agent': 'otra-city-bot/1.0' };
 
 async function gh(path, token) {
@@ -86,6 +88,7 @@ export default async function handler(req, res) {
           pr_url: pending.pr_url ?? null,
           checks: pending.checks ?? null,
           permalink: `https://otra.city/s/${slug}`,
+          badge: badgeSnippets(slug),
           note: `${pending.detail} — keep polling this URL; it turns into the live status when the deploy lands`,
         }, null, 2));
         return;
@@ -116,6 +119,8 @@ export default async function handler(req, res) {
       lot_url: lot ? `https://otra.city/lot/${lot.lot}` : null,
       permalink: `https://otra.city/s/${slug}`,
       embed: `https://otra.city/embed?plot=${slug}`,
+      // the permalink as a badge showing this address — see lib/badge.mjs
+      badge: badgeSnippets(slug),
       // absolute here, unlike the root-relative path in the street manifest,
       // because everything else in this response is a link you can follow
       poster: lot?.poster ? `https://otra.city${lot.poster}` : null,

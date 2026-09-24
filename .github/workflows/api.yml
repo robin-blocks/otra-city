@@ -14,6 +14,7 @@ on:
     paths:
       - 'api/**'
       - 'lib/submitter-host.mjs'
+      - 'lib/badge.mjs'
       - 'lib/validate-plot.mjs'
       - 'lib/fetch-asset.mjs'
       - 'scripts/api-check.mjs'
@@ -29,6 +30,7 @@ on:
     paths:
       - 'api/**'
       - 'lib/submitter-host.mjs'
+      - 'lib/badge.mjs'
       - 'lib/validate-plot.mjs'
       - 'lib/fetch-asset.mjs'
       - 'scripts/api-check.mjs'
