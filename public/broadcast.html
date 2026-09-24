@@ -74,6 +74,7 @@ import { buildRoads } from '/js/roads.js';
 import { createVenues } from '/js/venues.js';
 import { createAfterToneMap } from '/js/after-tonemap.js';
 import { createBroadcastLook } from '/js/broadcast-look.js';
+import { detectHardware } from '/js/quality.js';
 import { createDoorSystem } from '/js/doors.js';
 import { createCrowd } from '/js/crowd.js';
 import { CAMERAS, createTrack, framePlay, GANTRY_AIM_LAG_S, GANTRY_FOV_LAG_S,
@@ -237,10 +238,21 @@ composer.addPass(new OutputPass());
 // `?shadows=0`, `?dof=0`, `?lens=0`, `?grain=1` switch the parts for a harness or a
 // slower capture machine. All of it is deterministic under ?capture=1.
 const lookOn = params.get('look') !== '0';
+// NO GPU, NO SUPERSAMPLING. A software rasteriser (quality.js tier 0:
+// SwiftShader, llvmpipe) pays for every pixel on the CPU: 2x supersampling is
+// four times the fill, and each floodlight shadow is another pass. Measured on
+// CI's SwiftShader, the full look doubled the idle-standings harness (91 s ->
+// 193 s) and took the pre-roll harness past its 450 s budget. So with no GPU
+// the look defaults to ss 1 and no shadows; the offscreen compose, finish,
+// turf and night still run. An explicit ?ss= / ?shadows= always wins, and the
+// capture host (a GPU) is unaffected. Reported in state().look.auto.
+const hw = detectHardware(renderer.getContext());
+const softwareGL = hw.gpuTier === 0;
+const lookAuto = softwareGL ? `no GPU (${hw.gpuLabel}): ss 1, no shadows unless asked` : null;
 const look = lookOn ? createBroadcastLook({
   renderer, width: W, height: H,
-  ss: [1, 1.5, 2].includes(num('ss', 2)) ? num('ss', 2) : 2,
-  shadows: params.get('shadows') !== '0',
+  ss: [1, 1.5, 2].includes(num('ss', NaN)) ? num('ss', NaN) : (softwareGL ? 1 : 2),
+  shadows: params.has('shadows') ? params.get('shadows') !== '0' : !softwareGL,
   dof: params.get('dof') !== '0',
   lens: params.get('lens') !== '0',
   grain: params.get('grain') === '1',
@@ -1304,7 +1316,7 @@ window.rflBroadcast = {
       // match mounted) — the difference between their look and a washed one
       afterToneMap: after.state(),
       // the broadcast camera: supersampling, pitch shadows, lens — null with ?look=0
-      look: look ? look.state() : null,
+      look: look ? { ...look.state(), auto: lookAuto } : null,
       // whether this page will pick up a new build by itself, and whether it
       // has seen one it is waiting for an empty pitch to take
       updater: live ? { ...updater } : null,

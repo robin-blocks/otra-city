@@ -39,6 +39,14 @@ Without the flag they render a gamma too dark. The header of
 | `?lens=0` | on | sharpening and vignette |
 | `?grain=1` | off | seeded sensor grain (costs a CBR encoder bits every frame) |
 
+**No GPU, no supersampling.** On a software rasteriser (`quality.js` tier 0:
+SwiftShader, llvmpipe) `ss` defaults to 1 and shadows to off, because every
+pixel is paid for on the CPU. On CI's SwiftShader the full look doubled the
+idle-standings harness (91 s → 193 s) and took the pre-roll harness past its
+450 s budget. Explicit `?ss=` / `?shadows=` still win, and `state().look.auto`
+says when the rule applied. The capture host has a GPU and gets the full look.
+Local gates with `--gpu`, or with explicit parameters, exercise `ss=2`.
+
 `state().look` reports each part, the shadow rig (`floodlights` or `sun`),
 caster counts, focus distance and the maximum circle of confusion.
 
