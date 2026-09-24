@@ -73,9 +73,12 @@ import { loadWorld } from '/js/world.js';
 import { buildRoads } from '/js/roads.js';
 import { createVenues } from '/js/venues.js';
 import { createAfterToneMap } from '/js/after-tonemap.js';
+import { createBroadcastLook } from '/js/broadcast-look.js';
+import { detectHardware } from '/js/quality.js';
 import { createDoorSystem } from '/js/doors.js';
 import { createCrowd } from '/js/crowd.js';
-import { CAMERAS, createTrack, framePlay, GANTRY_AIM_LAG_S, GANTRY_FOV_LAG_S } from '/js/broadcast-cameras.js';
+import { CAMERAS, createTrack, framePlay, GANTRY_AIM_LAG_S, GANTRY_FOV_LAG_S,
+  frameIso, ISO_IDLE, ISO_LENS, ISO_AIM_LAG_S, ISO_RAIL_LAG_S, ISO_FOV_LAG_S } from '/js/broadcast-cameras.js';
 import { createScorebug } from '/js/scorebug.js';
 import { createLeagueOverlay } from '/js/league-overlay.js';
 import { createPostMatchTable } from '/js/post-match-table.mjs';
@@ -89,7 +92,7 @@ const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
 // page's behaviour changes. It is reported in `state().build` and on the note
 // line, so "the deployed page still says X" is settled by reading the page,
 // not by comparing memories of deploys.
-const BUILD = '2026-09-23b';
+const BUILD = '2026-09-24a';
 
 // Errors are evidence: a silent failure films a black hour, so every one is
 // kept for `state()`, echoed to the console the harness reads, and shown.
@@ -225,6 +228,40 @@ const composer = after.composer;
 composer.addPass(new RenderPass(scene, camera));
 composer.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.12, 0.3, 1.0));
 composer.addPass(new OutputPass());
+// THE BROADCAST CAMERA (js/broadcast-look.js): the frame is composed offscreen
+// at `ss` x the output size — city, match and pitch shadows — and finished by
+// one pass onto the canvas: downsample (the anti-aliasing), depth of field on
+// long lenses, a camera's sharpening and lens falloff (seeded grain opt-in). The
+// canvas is still exactly 1280 x 720 and everything downstream of it — the
+// scorebug, LIVE, clean output, the stadium screen's copy, frame(), pixels()
+// — is unchanged. `?look=0` is the page as it was; `?ss=1|1.5|2`,
+// `?shadows=0`, `?dof=0`, `?lens=0`, `?grain=1` switch the parts for a harness or a
+// slower capture machine. All of it is deterministic under ?capture=1.
+const lookOn = params.get('look') !== '0';
+// NO GPU, NO SUPERSAMPLING. A software rasteriser (quality.js tier 0:
+// SwiftShader, llvmpipe) pays for every pixel on the CPU: 2x supersampling is
+// four times the fill, and each floodlight shadow is another pass. Measured on
+// CI's SwiftShader, the full look doubled the idle-standings harness (91 s ->
+// 193 s) and took the pre-roll harness past its 450 s budget. So with no GPU
+// the look defaults to ss 1 and no shadows; the offscreen compose, finish,
+// turf and night still run. An explicit ?ss= / ?shadows= always wins, and the
+// capture host (a GPU) is unaffected. Reported in state().look.auto.
+const hw = detectHardware(renderer.getContext());
+const softwareGL = hw.gpuTier === 0;
+const lookAuto = softwareGL ? `no GPU (${hw.gpuLabel}): ss 1, no shadows unless asked` : null;
+const look = lookOn ? createBroadcastLook({
+  renderer, width: W, height: H,
+  ss: [1, 1.5, 2].includes(num('ss', NaN)) ? num('ss', NaN) : (softwareGL ? 1 : 2),
+  shadows: params.has('shadows') ? params.get('shadows') !== '0' : !softwareGL,
+  dof: params.get('dof') !== '0',
+  lens: params.get('lens') !== '0',
+  grain: params.get('grain') === '1',
+}) : null;
+if (look) composer.setSize(look.target.width, look.target.height);
+// Where the lens is focused: the distance to what the shot is aimed at.
+let focusM = null;
+// The venue's floodlights, re-read now and then (a venue streams in).
+let floodlights = [], floodlightsAt = -1;
 
 const loader = new GLTFLoader().setDRACOLoader(new DRACOLoader().setDecoderPath('/vendor/three/jsm/libs/draco/gltf/'));
 const media = createMediaSystem(camera);
@@ -509,6 +546,7 @@ function aim({ pos, lookAt, fov, roll }) {
   const t = world.toWorld(def, { x: lookAt[0], z: lookAt[2] });
   camera.position.set(p.x, pos[1], p.z);
   camera.lookAt(t.x, lookAt[1], t.z);
+  focusM = Math.hypot(p.x - t.x, pos[1] - lookAt[1], p.z - t.z);
   // lookAt can never tilt the horizon — it always levels the camera against
   // its up vector — so roll is applied afterwards, about the view axis.
   if (roll) camera.rotateZ(roll);
@@ -873,6 +911,32 @@ function easeGantry(dt, m) {
   gantryFov += (want.fov - gantryFov) * kf;
 }
 
+/**
+ * The iso (see `frameIso`), eased like an operator on a long lens: the pan
+ * answers quickly, the rail and the zoom slowly. State advances with the
+ * frame number, so stepping a capture forward reproduces it; a frame drawn
+ * twice is the same frame, and a rewind starts the operator afresh.
+ */
+let iso = null;
+function isoShot(frameNo) {
+  const want = frameIso(matchState()?.play || {}, iso?.subject ?? -1)
+    ?? { subject: -1, pos: ISO_IDLE.pos, aim: ISO_IDLE.aim, fov: ISO_IDLE.fov };
+  const dt = iso ? (frameNo - iso.frame) / FPS : -1;
+  // A seek, a rewind, a first subject or one 2.5 m away is a cut, not a pan.
+  const jump = iso ? Math.hypot(...want.aim.map((v, i) => v - iso.aim[i])) : 0;
+  if (!iso || dt < 0 || dt > 1 || jump > 2.5 || (iso.subject < 0 && want.subject >= 0)) {
+    iso = { frame: frameNo, subject: want.subject, pos: want.pos.slice(), aim: want.aim.slice(), fov: want.fov };
+  } else if (dt > 0) {
+    const k = (lag) => 1 - Math.exp(-dt / lag);
+    const ka = k(ISO_AIM_LAG_S), kr = k(ISO_RAIL_LAG_S), kf = k(ISO_FOV_LAG_S);
+    for (let i = 0; i < 3; i++) { iso.aim[i] += (want.aim[i] - iso.aim[i]) * ka; iso.pos[i] += (want.pos[i] - iso.pos[i]) * kr; }
+    iso.fov += (want.fov - iso.fov) * kf;
+    iso.frame = frameNo;
+    iso.subject = want.subject;
+  }
+  return { pos: iso.pos.slice(), lookAt: iso.aim.slice(), fov: iso.fov, camera: 'iso', lens: ISO_LENS, labels: false };
+}
+
 /** Follow the city's decision about sound. Called on the same tick as the director. */
 function applySound() {
   const want = wantSound();
@@ -937,6 +1001,7 @@ function cameraAt(name, frameNo) {
     if (c) { const d = track ? c : directed(c); lastTrackCam = d; return d; }
     if (lastTrackCam) return lastTrackCam;
   }
+  if (key === 'iso') return isoShot(frameNo);
   if (ANIMATED.has(key)) return CAMERAS[key](t, seed, {});
   // Authored names are lower-case in venue.json and RFL's brief writes every
   // camera in capitals, so an authored camera answers to either.
@@ -980,7 +1045,7 @@ function useCamera(name) {
   if (!c) {
     fail('camera', String(name).toLowerCase() === 'track'
       ? 'TRACK is the camera a track file supplies — add camtrack=<https url>'
-      : `unknown camera "${name}" — one of ${[...new Set([...Object.keys(def?.cameras || {}), ...Object.keys(CAMERAS)])].join(', ')}`);
+      : `unknown camera "${name}" — one of ${[...new Set([...Object.keys(def?.cameras || {}), ...Object.keys(CAMERAS), 'iso'])].join(', ')}`);
     return false;
   }
   aim(c);
@@ -1006,7 +1071,28 @@ function draw() {
   renderer.info.reset();
   // The city through the composer, then the match on top of it, with the
   // scene's depth — a player behind the near stand stays behind it.
-  after.render([...(venues?.afterToneMap() ?? []), ...(typeof feedSurface !== 'undefined' && feedSurface ? [feedSurface.mesh] : [])]);
+  const roots = [...(venues?.afterToneMap() ?? []), ...(typeof feedSurface !== 'undefined' && feedSurface ? [feedSurface.mesh] : [])];
+  if (look) {
+    if (frame - floodlightsAt >= 50 || floodlightsAt < 0 || frame < floodlightsAt) {
+      floodlights = []; scene.traverse((o) => { if (o.isSpotLight) floodlights.push(o); });
+      floodlightsAt = frame;
+    }
+    look.update({ scene, camera, frame, focus: focusM, lights: floodlights, lens: c?.lens,
+      stage: venues?.module?.(wantVenue, 'match-4dgsx')?.afterToneMap?.() ?? null });
+    // A close shot carries no floating name plates or bubbles — television
+    // puts names in a lower third, not over heads filling the frame. The
+    // SDK's labels are its sprites at renderOrder 10000; its attribution
+    // mark (10001) always stays.
+    const hidden = [];
+    if (c?.labels === false) {
+      for (const r of roots) r.traverse((o) => { if (o.isSprite && o.renderOrder === 10000 && o.visible) { o.visible = false; hidden.push(o); } });
+    }
+    try { after.render(roots, { target: look.target, beforeRoots: look.beforeRoots }); }
+    finally { for (const o of hidden) o.visible = true; }
+    look.finish();
+  } else {
+    after.render(roots);
+  }
   // The graphics go on before the screen takes its copy, so the big screen
   // carries the broadcast as broadcast — scorebug and all — which is what a
   // ground's screen actually shows. It nests, because the feed camera can see
@@ -1113,7 +1199,7 @@ window.rflBroadcast = {
   /** A harness's way to play RFL's schedule: see the module's `rehearseLive`. Live feed only. */
   rehearseLive: (opts) => (live ? (venues?.module?.(wantVenue, 'match-4dgsx')?.rehearseLive?.(opts) ?? null) : null),
   // every name `camera=` accepts: the venue's authored views and the director's shots
-  cameras: () => [...new Set([...Object.keys(def?.cameras || {}), ...Object.keys(CAMERAS)])],
+  cameras: () => [...new Set([...Object.keys(def?.cameras || {}), ...Object.keys(CAMERAS), 'iso'])],
 
   state() {
     const r = renderer.info.render;
@@ -1229,6 +1315,8 @@ window.rflBroadcast = {
       // whether the match was drawn after the tone mapping (roots: 1 with a
       // match mounted) — the difference between their look and a washed one
       afterToneMap: after.state(),
+      // the broadcast camera: supersampling, pitch shadows, lens — null with ?look=0
+      look: look ? { ...look.state(), auto: lookAuto } : null,
       // whether this page will pick up a new build by itself, and whether it
       // has seen one it is waiting for an empty pitch to take
       updater: live ? { ...updater } : null,

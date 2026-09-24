@@ -181,6 +181,49 @@ export const CAMERAS = {
  * trade to them in REPLY-9 §3 and they said yes. That is the only reason the
  * one shot in the match cut-list is allowed to move at all.
  */
+/**
+ * THE ISO: a long lens at the touchline, held on one player.
+ *
+ * Television's second camera. Where the gantry holds the whole play, the iso
+ * sits low on the near side and fills the frame with the player on the ball,
+ * the stand behind them thrown out of focus — the shot a broadcast cuts to at
+ * a restart, a stoppage or a replay. Reference: a pitchside frame Robin
+ * supplied on 2026-09-24 (a player head to boots, crowd and hoardings a soft
+ * wash behind).
+ *
+ * The subject is the player nearest the ball, with `hold_m` of hysteresis so
+ * the shot does not flick between two robots contesting it. The camera slides
+ * a little along its rail with the subject (`pan`) and sits at `height_m`,
+ * high enough to see boots over the arena wall. The lens is sized so
+ * `frame_m` metres of height fill the frame at the subject's distance.
+ *
+ * Pure: the subject it would choose and the framing it is reaching for. The
+ * easing carries state and belongs to the caller, as with `framePlay`.
+ * Returns null with no players; the caller holds a default framing.
+ */
+export function frameIso({ players = [], ball = null } = {}, prevSubject = -1, p = {}) {
+  if (!players.length) return null;
+  const ref = ball || [0, 0, 0];
+  const dist2 = (q) => Math.hypot(q[0] - ref[0], q[2] - ref[2]);
+  let best = 0;
+  for (let i = 1; i < players.length; i++) if (dist2(players[i]) < dist2(players[best])) best = i;
+  if (prevSubject >= 0 && prevSubject < players.length && dist2(players[prevSubject]) < dist2(players[best]) + (p.hold_m ?? 0.8)) best = prevSubject;
+  const s = players[best];
+  const pos = [s[0] * (p.pan ?? 0.35), p.height_m ?? 2.2, p.z ?? -8.4];
+  const aim = [s[0], (s[1] ?? 0.65) + (p.aim_lift_m ?? 0.02), s[2]];
+  const d = Math.hypot(aim[0] - pos[0], aim[1] - pos[1], aim[2] - pos[2]);
+  const fov = Math.min(30, Math.max(6, (2 * Math.atan((p.frame_m ?? 1.9) / 2 / d) * 180) / Math.PI));
+  return { subject: best, pos, aim, fov: +fov.toFixed(3) };
+}
+
+/** The iso's framing with nothing on the pitch: the centre spot, on the long lens. */
+export const ISO_IDLE = { pos: [0, 2.2, -8.4], aim: [0, 0.65, 0], fov: 16 };
+/** A full-frame stills body at f/2.8 — what gives the reference its soft stand. */
+export const ISO_LENS = { sensor_mm: 24, fstop: 2.8 };
+export const ISO_AIM_LAG_S = 0.22;
+export const ISO_RAIL_LAG_S = 0.8;
+export const ISO_FOV_LAG_S = 0.6;
+
 export const GANTRY_AIM_LAG_S = 0.32;    // football.py: 0.06 per frame at 50 fps
 export const GANTRY_FOV_LAG_S = 0.39;    // football.py: 0.05 per frame at 50 fps
 
