@@ -139,8 +139,21 @@ A seek, a rewind, a first subject or a jump of more than 2.5 m is a cut.
 Floating name plates and bubbles (SDK sprites at renderOrder 10000) are hidden
 on this shot; the 4DGSX attribution (10001) stays.
 
-The iso is **not in the live cut-list yet**. REPLY-14 §3 asks RFL whether it
-may cut to it on dead balls.
+**On dead balls, in the live director** (build `2026-09-24b`, agreed by RFL on
+24 September in reply to REPLY-14 §3). `broadcast-programme.js` cuts to the iso
+only inside the latest buzzer's `play_end_t` → `restart_t − 2 s`
+(`ISO_WIDE_LEAD_S`), and only when that dead ball lasts at least 4 s
+(`ISO_MIN_WINDOW_S`). It is never used while the ball is live. For the last 2 s
+it is on the tracking wide, so play restarts on the wide. Head-cam replays,
+celebrations and the GOAL board still outrank it, and full time has no
+`restart_t`, so post-match is unchanged.
+
+The director's iso is pure: `frameIso` over the sampled bodies at 50 Hz from
+the window's start (capped at 8 s), eased with the iso's lags. Every client,
+late joiners included, computes the same shot. `state().director` reports
+`priority: 'dead-ball'` and `iso: 'bounded-history' | 'unsmoothed' |
+'wide-before-restart'`. The page's own stateful `isoShot()` serves only an
+explicit `?camera=iso`.
 
 ## Cost
 
@@ -159,6 +172,27 @@ steps each:
 Turf and night are within run-to-run noise.
 
 **Not measured on RFL's capture machine.** Watch `state().pace` after deploy.
+
+## Upstream: 4DGSX's answer (not yet in our pinned SDK)
+
+On 24 September, 4DGSX answered `docs/4dgsx/GRAPHICS.md` and shipped the
+following in the **unpinned** `https://4dgsx.com/sdk/v1/three.js`. We vendor a
+reviewed copy (`public/vendor/4dgsx/broadcast-factory.js`), so **none of it is
+live here until we re-pin**:
+- `stage.setShadow({ map, matrix, strength, bias, bodies })`. It applies our
+  depth map inside their lighting, before the display curve. On re-pin it
+  replaces our receiver quad. `bodies` stays false for our stand-in map,
+  which would blotch the real meshes.
+- `stage.setLighting({ sun, sunColor, sunIntensity, sky, ground, exposure, output })`.
+  `output: 'linear'` is an exact sRGB decode, meant for our offscreen pass.
+- A view-dependent highlight (exponent 32, Fresnel; the turf keeps a fixed
+  sheen), bubbles that clear name plates, and Catmull-Rom positions.
+- Pitch tiles are no longer sRGB-tagged. Our re-tag becomes a no-op; our
+  generated turf is untagged either way.
+
+Re-pinning changes the look for every page, so it's its own build with its own
+evidence: provenance, `broadcast-sdk-check`, and the pitch-colour and shadow
+comparisons.
 
 ## Open decisions (Robin)
 

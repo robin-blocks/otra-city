@@ -1,6 +1,7 @@
 // Shared automatic television direction. No renderer, scene, stage, audio or
 // page-arrival clock lives here. Explicit cameras/capture must bypass this API.
-import { CAMERAS, createTrack, framePlay, GANTRY_AIM_LAG_S, GANTRY_FOV_LAG_S } from './broadcast-cameras.js';
+import { CAMERAS, createTrack, framePlay, GANTRY_AIM_LAG_S, GANTRY_FOV_LAG_S,
+  frameIso, ISO_LENS, ISO_AIM_LAG_S, ISO_RAIL_LAG_S, ISO_FOV_LAG_S } from './broadcast-cameras.js';
 import { beforeTime } from './goal-celebration.mjs';
 import { createPostMatchTable, TABLE_DURATION_S } from './post-match-table.mjs';
 import { PREROLL_TABLE_DURATION_S } from './league-timing.mjs';
@@ -26,6 +27,16 @@ export const PREROLL_TABLE_STARTS_S = Object.freeze([22, 112]);
 export const PREROLL_TABLE_LEAD_IN_S = 30;
 const HISTORY_S = 4;
 const HISTORY_FPS = 50;
+// THE ISO ON DEAD BALLS (RFL, 2026-09-24, answering REPLY-14 §3): only inside
+// a buzzer's play_end_t → restart_t, never while the ball is live, and back
+// on the wide before restart_t. A dead ball shorter than ISO_MIN_WINDOW_S
+// stays on the wide; the last ISO_WIDE_LEAD_S before the restart is the wide.
+export const ISO_MIN_WINDOW_S = 4;
+export const ISO_WIDE_LEAD_S = 2;
+// The iso's operator lag is integrated from the window's start, capped here:
+// every client computes the same pose from the same history, whenever it
+// joined, and at the iso's lags (<= 0.8 s) 8 s has converged.
+const ISO_HISTORY_S = 8;
 const finite = Number.isFinite;
 const seconds = (value) => finite(value) ? value : null;
 const frameOf = (t, fps) => Math.floor(Math.max(0, t) * fps + 1e-7);
@@ -94,6 +105,47 @@ function ease(previous, target, dt) {
   const kf = 1 - Math.exp(-Math.max(0, dt) / GANTRY_FOV_LAG_S);
   return { aim: previous.aim.map((v, i) => v + (target.aim[i] - v) * ka),
     fov: previous.fov + (target.fov - previous.fov) * kf };
+}
+
+function easeIso(prev, want, dt) {
+  const k = (lag) => 1 - Math.exp(-Math.max(0, dt) / lag);
+  const ka = k(ISO_AIM_LAG_S), kr = k(ISO_RAIL_LAG_S), kf = k(ISO_FOV_LAG_S);
+  return { subject: want.subject,
+    aim: prev.aim.map((v, i) => v + (want.aim[i] - v) * ka),
+    pos: prev.pos.map((v, i) => v + (want.pos[i] - v) * kr),
+    fov: prev.fov + (want.fov - prev.fov) * kf };
+}
+/** The dead-ball window around the latest buzzer, or null. Match seconds. */
+function isoWindow(latest) {
+  if (!latest || !finite(latest.play_end_t) || !finite(latest.restart_t)) return null;
+  if (latest.restart_t - latest.play_end_t < ISO_MIN_WINDOW_S) return null;
+  return { from: latest.play_end_t, to: latest.restart_t - ISO_WIDE_LEAD_S, restart: latest.restart_t };
+}
+/**
+ * The iso's pose at the programme clock: `frameIso` on sampled bodies at
+ * 50 Hz from the window's start (at most ISO_HISTORY_S back), eased with the
+ * iso's lags. Pure in (history, clock) — the first sample is the cut. Without
+ * a sampler it is the unsmoothed framing of the current play, disclosed.
+ */
+function isoAt(m, clock, sampler, fromP) {
+  if (typeof sampler === 'function') {
+    try {
+      const end = Math.floor(clock.p * HISTORY_FPS + 1e-7);
+      const begin = Math.max(Math.ceil(fromP * HISTORY_FPS - 1e-7), end - ISO_HISTORY_S * HISTORY_FPS);
+      let pose = null, last = 0;
+      for (let f = begin; f <= end; f++) {
+        const p = f / HISTORY_FPS;
+        const sample = sampler(unmapAt(clock.map, p), { programmeT: p, match: m });
+        const want = sample && frameIso(sample, pose?.subject ?? -1);
+        if (!want) { pose = null; break; }
+        pose = pose ? easeIso(pose, want, p - last) : { subject: want.subject, aim: want.aim.slice(), pos: want.pos.slice(), fov: want.fov };
+        last = p;
+      }
+      if (pose) return { pose, mode: 'bounded-history' };
+    } catch { /* unverified history: the disclosed fallback below */ }
+  }
+  const want = frameIso(m?.play || {}, -1);
+  return want ? { pose: want, mode: 'unsmoothed' } : { pose: null, mode: 'no-players' };
 }
 
 /**
@@ -290,10 +342,24 @@ export async function createBroadcastProgramme({ venue, fetcher = globalThis.fet
         };
       }
     }
+    // The iso on a dead ball, then the wide for the restart (see ISO_*).
+    let isoMode = null;
+    const dead = phase === 'interval' && clock.t !== null ? isoWindow(latest) : null;
+    if (dead && !beforeTime(clock.t, dead.from) && beforeTime(clock.t, dead.restart)) {
+      const iso = beforeTime(clock.t, dead.to) ? isoAt(m, clock, sampler, mapAt(clock.map, dead.from)) : null;
+      if (iso?.pose) {
+        c = { pos: iso.pose.pos.map((v) => +v.toFixed(3)), lookAt: iso.pose.aim.map((v) => +v.toFixed(3)),
+          fov: +iso.pose.fov.toFixed(3), camera: 'iso', segment: -1, lens: ISO_LENS, labels: false };
+        isoMode = iso.mode;
+      } else {
+        c = { ...(named('gantry') || CAMERAS.gantry(0, 0, {})), camera: 'gantry', segment: -1 };
+        isoMode = iso ? iso.mode : 'wide-before-restart';
+      }
+    }
     const tracking = gantryAt(m, clock, dt, sampler);
     if (c?.camera === 'gantry' && tracking.pose) c = { ...c,
       lookAt: tracking.pose.aim.map((v) => +v.toFixed(3)), fov: +tracking.pose.fov.toFixed(3) };
-    let priority = inPlay ? 'play' : phase;
+    let priority = inPlay ? 'play' : isoMode ? 'dead-ball' : phase;
     if (onAir && m?.headcam?.pos && m.headcam.lookAt) {
       c = { ...m.headcam, fov: m.headcam.fov || DEFAULT_FOV, segment: -1, camera: 'headcam' }; priority = 'headcam';
     } else if (onAir && bug?.celebrating === true) {
@@ -352,7 +418,7 @@ export async function createBroadcastProgramme({ venue, fetcher = globalThis.fet
       phase, priority, clock: clock.source, programmeT: clock.p, phaseOrigin: origin, phaseElapsed: elapsed,
       cutFrame: frameOf(elapsed, cut?.fps || 50), matchKey: key, settling: !!settling,
       goalCut: priority === 'goal', headcam: priority === 'headcam', camera: c.camera,
-      gantry: tracking.mode, gantryHistorySeconds: tracking.mode === 'bounded-history' ? HISTORY_S : null,
+      iso: isoMode, gantry: tracking.mode, gantryHistorySeconds: tracking.mode === 'bounded-history' ? HISTORY_S : null,
       table: { ...(table?.state?.() || { status: 'disabled' }), visible: !!tableCue,
         elapsed: tableCue?.elapsed ?? null, slotElapsed: hasSlot ? postElapsed : null,
         duration: preroll ? PREROLL_TABLE_DURATION_S : TABLE_DURATION_S, held, expired: hasSlot && postElapsed >= slotEnd,
