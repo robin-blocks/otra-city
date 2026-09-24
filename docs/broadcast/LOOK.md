@@ -1,4 +1,4 @@
-# /broadcast — the broadcast camera (builds `2026-09-24a`, `b`, `c`)
+# /broadcast — the broadcast camera (builds `2026-09-24a` to `d`)
 
 What happens to a frame between the scene and the television picture.
 Implementation: `public/js/broadcast-look.js`, `public/js/broadcast-turf.js`,
@@ -52,7 +52,9 @@ says when the rule applied. The capture host has a GPU and gets the full look.
 Local gates with `--gpu`, or with explicit parameters, exercise `ss=2`.
 
 `state().look` reports each part, the shadow rig (`floodlights` or `sun`),
-caster counts, focus distance and the maximum circle of confusion.
+caster counts, how many times the static shadows were drawn (`staticDraws`),
+focus distance, the maximum circle of confusion and whether depth of field ran
+(`dof.active`).
 
 ## Shadows
 
@@ -62,6 +64,15 @@ caster counts, focus distance and the maximum circle of confusion.
   and `computeBoundingBox` would measure the whole bundle. All ellipsoids go
   in one instanced draw per light. The static world casts with its real
   geometry. On m51 that is 180 stand-ins and 56 static meshes.
+- **Static cache** (build `2026-09-24d`). The static world doesn't move, so
+  each light draws it once into a depth map of its own. Every frame that map
+  is blitted into the light's shadow map and only the stand-ins are drawn on
+  top. That is 4 draws a frame instead of 228, and on m51 it cut the frame
+  from 662 to 438 calls. The cache is redrawn when a light's view, a static
+  part's world matrix or visibility, or the stage changes. Frames are
+  byte-identical to drawing it every frame (gantry, heli and iso on m51; the
+  big screen varies between any two runs). `broadcast-check --gpu --bundle`
+  asserts `staticDraws <= lights`.
 - **Lights.** The venue's SpotLights (the four masts), keeping each mast's
   bearing but cast from 55° elevation. The modelled masts sit about 17 m up at
   about 32°, which threw two-metre shadows. Each mast darkens by 0.84,
@@ -128,7 +139,13 @@ correct. What was missing was everything around it:
   `lens: { sensor_mm, fstop }`; the iso uses full-frame 24 mm at f/2.8. The
   circle of confusion is capped at 12 output pixels. A sample counts only if
   its own circle reaches back to the pixel, so a sharp subject does not bleed
-  into the blurred background.
+  into the blurred background. When the far-field blur is under 0.6 px (the
+  shader's own threshold), the pass is skipped for the whole shot
+  (`dof.active: false`). On m51 that is the gantry at 0.12 px and the heli at
+  0.03 px; their frames are byte-identical either way. The iso keeps it.
+- **Lens ghosts** test each lamp's visibility once per frame, in a 4×1 pass,
+  instead of in every output pixel. That was 36 depth reads per pixel with all
+  four masts in shot (the heli). The output is identical.
 - **Sharpen** 0.22 against the four neighbouring output pixels.
 - **Vignette** 0.11.
 - **Grain**, opt-in (`?grain=1`): 1.6/255, weighted to the mid-tones and hashed
@@ -181,6 +198,28 @@ steps each:
 | build `b`, heli: `look=0` / `night=0&turf=0` / default | 1.58 / 3.21 / 3.01 |
 
 Turf and night are within run-to-run noise.
+
+**Build `d` (static shadow cache, DoF skip, per-lamp ghost test).** Same
+machine, m51, 2–3 browsers × 120 frames, median (p90) ms per frame:
+
+| Shot | build `c` | build `d` | draw calls |
+|---|---|---|---|
+| heli | 4.10 (6.60) | 2.90 (5.90) | 759 → 537 |
+| gantry | 2.40 (5.70) | 2.40 (5.70) | 662 → 438 |
+
+This GPU isn't limited by draw calls, so the gantry doesn't move here. On an
+integrated GPU, where each draw call costs more, the 34% cut should count for
+more. Where the rest of the 438 calls go on the gantry: the 4DGSX match is
+366 (and 2.24 M of the 2.40 M triangles; RFL's decimation from m61 is the fix
+for that), the composer and bloom about 20, street and roads 25. Street,
+roads and crowd are already instanced.
+
+**Supersampling stays at 2.** `ss=1.5` breaks thin lines unevenly (the
+halfway line and the centre circle), because 1.5 source pixels don't map onto
+one output pixel cleanly. `ss=1` stair-steps the goal frame and the markings.
+A post-process AA at `ss=1` (FXAA) can't bring back sub-pixel lines, which
+then crawl in motion and cost the encoder bits. If the capture host still
+can't hold pace, `?ss=1.5` on its URL is the fallback, with no deploy needed.
 
 **Not measured on RFL's capture machine.** Watch `state().pace` after deploy.
 

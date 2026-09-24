@@ -60,6 +60,10 @@ const FLOOD_SHADOW = 0.84;
 const FLOOD_ELEVATION = 55;
 
 const MAX_LIGHTS = 4;
+// The finish pass's own threshold: a pixel whose circle of confusion is under
+// 0.6 output pixels is left sharp. A shot whose far-field blur is under it
+// skips depth of field altogether (see update()).
+const DOF_MIN_PX = 0.6;
 const _lamp = new THREE.Vector3();
 
 /**
@@ -93,10 +97,20 @@ export function createBroadcastLook({ renderer, width, height, ss = 2, shadows =
   const turfer = turf ? createTurf(renderer, { grade: pitch }) : null;
 
   // ------------------------------------------------------------------ finish
+  // Lamp visibility for the lens ghosts: one texel per lamp, holding how many
+  // of nine depth taps around the lamp's head see it (0..9, exact in half
+  // float). Made once per frame here instead of in every output pixel, which
+  // was 36 depth reads a pixel on a shot with all four masts in it.
+  const visTarget = new THREE.WebGLRenderTarget(MAX_LIGHTS, 1, {
+    type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false,
+  });
+  visTarget.texture.generateMipmaps = false;
+  visTarget.texture.name = 'broadcast-look.lamps';
   const finishMat = new THREE.ShaderMaterial({
     uniforms: {
       tFrame: { value: target.texture },
       tDepth: { value: target.depthTexture },
+      tVis: { value: visTarget.texture },
       uSrc: { value: new THREE.Vector2(tw, th) },
       uDst: { value: new THREE.Vector2(width, height) },
       uNearFar: { value: new THREE.Vector2(0.1, 220) },
@@ -118,7 +132,7 @@ export function createBroadcastLook({ renderer, width, height, ss = 2, shadows =
       varying vec2 vUv;
       void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
     fragmentShader: /* glsl */`
-      uniform sampler2D tFrame, tDepth;
+      uniform sampler2D tFrame, tDepth, tVis;
       uniform vec2 uSrc, uDst, uNearFar;
       uniform vec3 uCoc;
       uniform float uFrame, uLens, uSharpen, uVignette, uGrain, uAspect;
@@ -151,15 +165,15 @@ export function createBroadcastLook({ renderer, width, height, ss = 2, shadows =
       // the source through the centre of frame — the rings in the
       // behind-the-goal reference. Only a lamp the frame can actually SEE
       // throws them: its depth is tested against the frame's own, so a mast
-      // behind a stand roof does not flare through it.
+      // behind a stand roof does not flare through it. That test is the same
+      // for every pixel, so it is made once per lamp (visMat, below) and read
+      // here as a count of the nine taps that see the lamp.
       vec3 ghosts(vec2 uv) {
         vec3 acc = vec3(0.0);
         for (int i = 0; i < 4; i++) {
           if (i >= uLamps) break;
           vec4 L = uLamp[i];
-          float vis = 0.0;
-          for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++)
-            vis += step(L.z - 2.0, linDepth(L.xy + vec2(float(x), float(y)) * 2.0 / uSrc));
+          float vis = texture2D(tVis, vec2((float(i) + 0.5) / 4.0, 0.5)).r;
           float s = L.w * vis / 9.0;
           if (s <= 0.0) continue;
           vec2 axis = vec2(0.5) - L.xy;
@@ -224,6 +238,36 @@ export function createBroadcastLook({ renderer, width, height, ss = 2, shadows =
     depthWrite: false,
   });
   const finishQuad = new FullScreenQuad(finishMat);
+  const visMat = new THREE.ShaderMaterial({
+    uniforms: finishMat.uniforms,   // shared, by reference
+    vertexShader: /* glsl */`
+      void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+    fragmentShader: /* glsl */`
+      uniform sampler2D tDepth;
+      uniform vec2 uSrc, uNearFar;
+      uniform vec4 uLamp[${MAX_LIGHTS}];
+      uniform int uLamps;
+      out highp vec4 visOut;
+      float linDepth(vec2 uv) {
+        float z = texture(tDepth, uv).r * 2.0 - 1.0;
+        float n = uNearFar.x, f = uNearFar.y;
+        return 2.0 * n * f / (f + n - z * (f - n));
+      }
+      void main() {
+        int i = int(gl_FragCoord.x);
+        float vis = 0.0;
+        if (i < uLamps) {
+          vec4 L = uLamp[i];
+          for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++)
+            vis += step(L.z - 2.0, linDepth(L.xy + vec2(float(x), float(y)) * 2.0 / uSrc));
+        }
+        visOut = vec4(vis, 0.0, 0.0, 1.0);
+      }`,
+    glslVersion: THREE.GLSL3,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const visQuad = new FullScreenQuad(visMat);
 
   // ------------------------------------------------------------ anisotropy
   // A hoarding seen along the touchline is a texture at a grazing angle: at
@@ -262,12 +306,22 @@ export function createBroadcastLook({ renderer, width, height, ss = 2, shadows =
       // 2/3-inch sensor (16:9, 5.39 mm tall) at f/2.8 unless the shot names
       // its own lens — the iso is a full-frame stills body, which is where
       // the reference's soft stand comes from. Only a long lens gets blur.
+      //
+      // `scale` is the blur of anything far behind the focus. When that is
+      // under DOF_MIN_PX the shot has no depth of field worth a texture read
+      // — the gantry's is 0.12 px, the heli's 0.03 — and the shader skips it
+      // outright rather than testing every pixel's depth to find so. Only
+      // something within a sixth of the focus distance of the lens could
+      // still have blurred; on m51 the gantry and heli frames came out
+      // byte-identical with and without the pass, so nothing does.
+      stat.dof.active = false;
       if (dof && focus && focus > 0.5) {
         const sensorH = lens?.sensor_mm ?? 5.39, fNum = lens?.fstop ?? 2.8;
         const fmm = (sensorH / 2) / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
         const s = focus * 1000;
         const scale = (fmm / fNum) * fmm / Math.max(1, s - fmm) / sensorH * height;  // px per unit |d-s|/d
-        finishMat.uniforms.uCoc.value.set(focus, scale, 12);
+        stat.dof.active = scale >= DOF_MIN_PX;
+        finishMat.uniforms.uCoc.value.set(focus, stat.dof.active ? scale : 0, 12);
         stat.dof.focus = +focus.toFixed(2);
         stat.dof.maxCocPx = +Math.min(12, scale).toFixed(2);
       } else {
@@ -310,12 +364,16 @@ export function createBroadcastLook({ renderer, width, height, ss = 2, shadows =
      * INVALID_OPERATION (half float into RGBA8), caught by broadcast-check.
      */
     finish() {
+      if (finishMat.uniforms.uLamps.value > 0) {
+        renderer.setRenderTarget(visTarget);
+        visQuad.render(renderer);
+      }
       renderer.setRenderTarget(null);
       finishQuad.render(renderer);
       stat.finishes += 1;
     },
     state: () => JSON.parse(JSON.stringify({ ...stat, turf: turfer ? turfer.state() : null, frame: frameNo })),
-    dispose() { target.dispose(); finishMat.dispose(); finishQuad.dispose(); shadow?.dispose(); turfer?.dispose(); },
+    dispose() { target.dispose(); finishMat.dispose(); finishQuad.dispose(); visTarget.dispose(); visMat.dispose(); visQuad.dispose(); shadow?.dispose(); turfer?.dispose(); },
   };
 }
 
@@ -341,16 +399,33 @@ export function createBroadcastLook({ renderer, width, height, ss = 2, shadows =
  * sources and four shadows per player, as under any floodlit match — else
  * the SDK's sun. Either way the lit surface keeps the SDK's shading; only the
  * occlusion is added.
+ *
+ * The static world's depth is CACHED per light. Walls, goals and hoardings
+ * do not move, so they are drawn once into a map of their own and blitted
+ * into the frame's map, which then takes only the moving stand-ins: on m51
+ * that is 4 draws a frame instead of 228. The cache is redrawn whenever a
+ * light's view, a static part's world matrix or its visibility changes, or
+ * the stage is replaced — so the picture is exactly the one drawing it every
+ * frame gave. `stat.staticDraws` counts the redraws.
  */
 function createPitchShadows(renderer, stat) {
   const MAP = 1024;
-  const maps = [];
-  for (let i = 0; i < MAX_LIGHTS; i++) {
+  const depthTarget = () => {
     const rt = new THREE.WebGLRenderTarget(MAP, MAP, { depthTexture: new THREE.DepthTexture(MAP, MAP), type: THREE.UnsignedByteType });
     rt.texture.generateMipmaps = false;
     rt.depthTexture.minFilter = rt.depthTexture.magFilter = THREE.NearestFilter;
-    maps.push({ rt, cam: null, strength: 1 });
+    renderer.initRenderTarget(rt);   // a blit needs both framebuffers to exist
+    return rt;
+  };
+  const maps = [];
+  for (let i = 0; i < MAX_LIGHTS; i++) {
+    // `rt` is what the receiver samples; `still` holds the static world alone,
+    // drawn with the light's view in `view` (see the header).
+    maps.push({ rt: depthTarget(), still: depthTarget(), view: new THREE.Matrix4(), valid: false });
   }
+  // What the static world looked like when the caches were drawn.
+  let staticSig = null;
+  stat.staticDraws = 0;
   const depthMat = new THREE.MeshBasicMaterial({ colorWrite: false });
   const depthMatInst = new THREE.MeshBasicMaterial({ colorWrite: false });
 
@@ -454,7 +529,8 @@ function createPitchShadows(renderer, stat) {
     stageGroup = group;
     matchRoot = group?.getObjectByName?.('4dgsx-match-space') || group?.children?.[0] || null;
     if (proxies) { proxyScene.remove(proxies); proxies.dispose(); proxies = null; }
-    records = []; statics = []; world = null;
+    records = []; statics = []; world = null; staticSig = null;
+    for (const m of maps) m.valid = false;
     if (!matchRoot) { staticSet = new Set(); return; }
     const [first, ...bodies] = matchRoot.children.filter((c) => !c.userData?.otraLook);
     world = first ?? null;
@@ -525,7 +601,38 @@ function createPitchShadows(renderer, stat) {
     return out;
   }
 
+  /**
+   * True when a static part has moved, shown or hidden since the caches were
+   * drawn (and records the new state). 56 parts on m51: a few hundred
+   * compares a frame, nothing next to a draw.
+   */
+  function staticsChanged() {
+    const n = statics.length;
+    if (!staticSig || staticSig.length !== n * 17) { staticSig = new Float64Array(n * 17); staticSig.fill(NaN); }
+    let changed = false;
+    for (let i = 0; i < n; i++) {
+      const o = statics[i], e = o.matrixWorld.elements, k = i * 17;
+      let shown = 1;
+      for (let p = o; p && p !== world; p = p.parent) if (!p.visible) { shown = 0; break; }
+      if (staticSig[k] !== shown) { staticSig[k] = shown; changed = true; }
+      for (let j = 0; j < 16; j++) if (staticSig[k + 1 + j] !== e[j]) { staticSig[k + 1 + j] = e[j]; changed = true; }
+    }
+    return changed;
+  }
+
   const swapped = [];
+  /** The static world, depth only, from one light — the cache's contents. */
+  function drawStatics(cam) {
+    world.traverse((o) => {
+      if (o === world) return;
+      if (staticSet.has(o)) { swapped.push([o, o.material, o.visible]); o.material = depthMat; }
+      else if (o.isMesh || o.isSprite || o.isPoints || o.isLine) { swapped.push([o, o.material, o.visible]); o.visible = false; }
+    });
+    try { renderer.render(world, cam); }
+    finally { for (const [o, mat, vis] of swapped) { o.material = mat; o.visible = vis; } swapped.length = 0; }
+  }
+
+  const viewNow = new THREE.Matrix4();
   function update({ stage, lights }) {
     const group = stage ?? null;
     if (group !== stageGroup) rebuild(group);
@@ -543,30 +650,37 @@ function createPitchShadows(renderer, stat) {
     proxies?.updateMatrixWorld(true);
 
     const lightsNow = rig(lights);
+    if (world && staticsChanged()) for (const m of maps) m.valid = false;
     const prevTarget = renderer.getRenderTarget();
     const autoClear = renderer.autoClear;
     renderer.autoClear = true;
     try {
       lightsNow.forEach((L, i) => {
         const m = maps[i];
-        renderer.setRenderTarget(m.rt);
-        renderer.clear(true, true, false);
+        viewNow.multiplyMatrices(L.cam.projectionMatrix, L.cam.matrixWorldInverse);
+        if (world) {
+          // The static world from this light: redrawn only when it or the
+          // light's view changed, then copied in whole as the frame's start.
+          if (!m.valid || !m.view.equals(viewNow)) {
+            renderer.setRenderTarget(m.still);
+            renderer.clear(true, true, false);
+            renderer.autoClear = false;
+            drawStatics(L.cam);
+            renderer.autoClear = true;
+            m.view.copy(viewNow);
+            m.valid = true;
+            stat.staticDraws += 1;
+          }
+          renderer.copyTextureToTexture(m.still.depthTexture, m.rt.depthTexture);
+          renderer.setRenderTarget(m.rt);
+        } else {
+          renderer.setRenderTarget(m.rt);
+          renderer.clear(true, true, false);
+        }
         renderer.autoClear = false;
         renderer.render(proxyScene, L.cam);
-        // The static world with its own geometry, drawn depth-only in ONE
-        // render: opaque parts get the depth material, everything else
-        // (markings, glass, sprites, panels) is hidden for the pass.
-        if (world) {
-          world.traverse((o) => {
-            if (o === world) return;
-            if (staticSet.has(o)) { swapped.push([o, o.material, o.visible]); o.material = depthMat; }
-            else if (o.isMesh || o.isSprite || o.isPoints || o.isLine) { swapped.push([o, o.material, o.visible]); o.visible = false; }
-          });
-          try { renderer.render(world, L.cam); }
-          finally { for (const [o, mat, vis] of swapped) { o.material = mat; o.visible = vis; } swapped.length = 0; }
-        }
         renderer.autoClear = true;
-        recvMat.uniforms.uMat.value[i].multiplyMatrices(L.cam.projectionMatrix, L.cam.matrixWorldInverse);
+        recvMat.uniforms.uMat.value[i].copy(viewNow);
         recvMat.uniforms.uLightPos.value[i].copy(L.cam.position);
         recvMat.uniforms.uDir.value[i].copy(L.ortho ? L.dir : new THREE.Vector3());
         recvMat.uniforms.uStrength.value[i] = L.strength;
@@ -588,7 +702,7 @@ function createPitchShadows(renderer, stat) {
     },
     dispose() {
       receiver.removeFromParent(); receiver.geometry.dispose(); recvMat.dispose();
-      for (const m of maps) m.rt.dispose();
+      for (const m of maps) { m.rt.dispose(); m.still.dispose(); }
       proxies?.dispose(); depthMat.dispose(); depthMatInst.dispose();
     },
   };
