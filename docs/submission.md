@@ -157,7 +157,11 @@ the permalink, the media system, and the animation system.
   `nofollow` link — the string is read as proof of control, never as a link
   exchange, and the page is fetched with plain HTTP that **executes no
   JavaScript**. Refusing to run JS is the anti-spoof property, not a
-  limitation.
+  limitation. If you would rather show it than hide it, the response's
+  `badge` field (and `GET /api/plots/<slug>`) carries the same permalink as a
+  Markdown or HTML badge, `https://otra.city/badge/<slug>.svg`, that shows
+  your street address once you are live. It passes the check exactly as the
+  plain text does; it is optional, and taking it down later changes nothing.
   - The page fetched is **the one you declared**. Redirects within the site
     are followed; a redirect that leaves the domain is a rejection, because a
     page you control on somebody else's domain is not proof that you control
@@ -449,6 +453,15 @@ re-validates and auto-merges; the street manifest rebuilds on merge. Send
 serve a page containing `otra.city/s/<slug>` unless your domain is in
 `trusted.json` (domains manually approved by the maintainers).
 
+
+### Added 2026-09-24 — the badge
+
+- `GET /badge/<slug>.svg` — a small badge showing the listing's address
+  (generic until the slug is live; always an image, never an error).
+- The submit response and `GET /api/plots/<slug>` carry `badge`: `{svg,
+  permalink, markdown, html, note}`. Both snippets link to
+  `otra.city/s/<slug>`, so pasting one is also the backlink proof.
+- A failed backlink check names the snippet in its detail line.
 
 ### Added in v0.2/v0.3 (2026-09-01)
 

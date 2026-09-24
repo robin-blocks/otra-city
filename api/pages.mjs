@@ -15,6 +15,7 @@
 // would put markup in, and a plain link is the one thing a listing is for.
 import { readFileSync } from 'node:fs';
 import { CATEGORIES, categoryOf, categoryColor, DEFAULT_CATEGORY } from '../public/js/categories.mjs';
+import { badgeSnippets } from '../lib/badge.mjs';
 
 const MANIFEST = () => JSON.parse(readFileSync(new URL('../public/plots/index.json', import.meta.url), 'utf8'));
 const PLAT = () => JSON.parse(readFileSync(new URL('../public/city/lots.json', import.meta.url), 'utf8'));
@@ -183,6 +184,7 @@ export function renderLot(id, manifest, plat) {
   const host = hostOf(p.url);
   const cat = p.category || (isCity(p) ? null : DEFAULT_CATEGORY);
   const img = pictureOf(p);
+  const badge = badgeSnippets(p.slug);
   const embed = `<iframe src="${ORIGIN}/embed?plot=${p.slug}" width="100%" height="420" style="border:0;border-radius:12px" loading="lazy" allow="autoplay" title="${p.name} in otra.city"></iframe>`;
   const body = `<div class="crumbs"><a href="/directory">directory</a> › <a href="/road/${esc(lot.road)}">${esc(road?.name || lot.road)}</a> › ${esc(lot.address)}</div>
 <h1>${esc(p.name)}</h1>
@@ -195,6 +197,12 @@ ${p.description ? `<p>${esc(p.description)}</p>` : ''}
 <p class="meta"><b>Built by</b> ${esc(p.builder || 'unknown')}${p.template ? ` · shopfront by the city (${esc(p.template.id)}/${esc(p.template.variant)} v${esc(p.template.version)})` : ''}</p>
 <p class="meta"><b>Licence</b> ${p.license ? `${esc(p.license)} — the submitter's terms for these files` : 'all rights reserved by the submitter'} · otra.city hosts and displays them, it does not own them (<a href="/docs/submission.md">terms</a>)</p>
 <a class="cta" href="${walk}">Walk there</a> <a class="cta alt" href="/embed?plot=${esc(p.slug)}">Frontage only</a>
+<h2>Show it on your site</h2>
+<p><img src="/badge/${esc(p.slug)}.svg" alt="${esc(p.slug)} on otra.city" height="28" style="vertical-align:middle"></p>
+<p class="meta">A badge with your address, linking here. It carries the same permalink as your ownership proof, so it can stand in for the plain-text one. Optional; taking it down changes nothing. Markdown, for a README:</p>
+<pre>${esc(badge.markdown)}</pre>
+<p class="meta">HTML:</p>
+<pre>${esc(badge.html)}</pre>
 <h2>Embed this shopfront</h2>
 <pre>${esc(embed)}</pre>
 <h2>For agents</h2>

@@ -14,6 +14,7 @@ import { pickLot } from '../public/js/city-map.mjs';
 import { DEFAULT_CATEGORY } from '../public/js/categories.mjs';
 import { hostOf, apexHost, sameSite, ownerKey, classifyUrl } from '../lib/submitter-host.mjs';
 import { buildTemplate, TEMPLATE_ID, TEMPLATE_VERSION, PICTURE_NODES } from '../lib/template-shop.mjs';
+import { badgeSnippets, SLUG_RE } from '../lib/badge.mjs';
 import { fetchSiteMeta, imageKind } from '../lib/site-meta.mjs';
 import { readFileSync } from 'node:fs';
 
@@ -222,7 +223,8 @@ async function checkBacklink(url, slug) {
     return {
       ok: found,
       mode: 'fetched',
-      detail: found ? `backlink to ${needle} found` : `page does not contain ${needle} — add your plot permalink first`,
+      detail: found ? `backlink to ${needle} found` : `page does not contain ${needle} — add your plot permalink first ` +
+        `(plain text passes; the \`badge\` snippet in this response is the same link as a badge showing your address)`,
     };
   } catch (e) {
     return { ok: false, mode: 'fetched', detail: `could not fetch ${url}: ${e.name}` };
@@ -902,6 +904,8 @@ export default async function handler(req, res) {
       map: 'https://otra.city/map',
       status_url: `https://otra.city/api/plots/${plot.slug}`,
       embed_url: `https://otra.city/embed?plot=${plot.slug}`,
+      // the permalink the backlink check wants, ready to paste as a badge
+      badge: SLUG_RE.test(plot.slug || '') ? badgeSnippets(plot.slug) : null,
       preview: 'https://otra.city/preview — drop your glb to see it in the real pipeline',
       report,
       result,

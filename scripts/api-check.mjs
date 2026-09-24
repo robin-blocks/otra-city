@@ -25,6 +25,8 @@ import { renderLot, renderRoad, renderDirectory, esc } from '../api/pages.mjs';
 import { pickLot } from '../public/js/city-map.mjs';
 import drain, { selectRecords, parseBatch } from '../api/log-drain.mjs';
 import { apexHost, sameSite, ownerKey, classifyUrl } from '../lib/submitter-host.mjs';
+import badgeHandler, { addressFor } from '../api/badge.mjs';
+import { badgeSnippets, renderBadge } from '../lib/badge.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
 const GLB = readFileSync(join(root, 'public/plots/archive-9/plot.glb')).toString('base64');
@@ -65,6 +67,8 @@ const api = await listen('localhost', (req, res) => handler(req, res));
 const SLUG = 'api-check-fixture';
 writeFileSync(join(pages, 'backlink.html'), `<!doctype html><a href="https://otra.city/s/${SLUG}">my plot</a>`);
 writeFileSync(join(pages, 'bare.html'), '<!doctype html><p>nothing here</p>');
+// the badge snippet, pasted as-is, and nothing else: it has to be the proof too
+writeFileSync(join(pages, 'badge.html'), `<!doctype html><p>${badgeSnippets(SLUG).html}</p>`);
 // a listing's page: the permalink for proof, and an og:image the way a site
 // declares one (the fixture host is http, so the fetch of it fails honestly)
 writeFileSync(join(pages, 'listing.html'), `<!doctype html><head><meta property="og:image" content="/og.png"></head>` +
@@ -113,10 +117,19 @@ check('a real domain passes', classifyUrl('https://4dgsx.com').ok);
     urlLines.map((l) => l.slice(0, 22)).join(' / '));
   check('it hands back a permalink and a status url',
     json.permalink === `https://otra.city/s/${SLUG}` && !!json.status_url);
+  check('it hands back the badge, linking to that permalink',
+    json.badge?.svg === `https://otra.city/badge/${SLUG}.svg` &&
+    json.badge.markdown.endsWith(`](${json.permalink})`) && json.badge.html.includes(`href="${json.permalink}"`));
 }
 {
   const { json } = await post(bundle({ url: `${site.origin}/bare.html` }));
   check('no permalink on the page is a rejection', json.accepted === false && json.result.backlink.ok === false);
+  check('...and the rejection points at the badge snippet', /badge/.test(json.result.backlink.detail));
+}
+{
+  const { json } = await post(bundle({ url: `${site.origin}/badge.html` }));
+  check('the badge snippet alone is the backlink proof', json.accepted === true && json.result.backlink.ok === true,
+    json.result?.backlink?.detail);
 }
 {
   const { json } = await post(bundle({ url: `${site.origin}/moved` }));
@@ -229,6 +242,36 @@ const listing = (over = {}) => ({
   check('a non-image url is skipped with a note, not an error', built.notes.length === 1 && /not a png/.test(built.notes[0]));
   check('images[] is consumed, not published', plot.images === undefined);
 }
+// --- the badge --------------------------------------------------------------
+{
+  const manifest = JSON.parse(readFileSync(join(root, 'public/plots/index.json')));
+  const demo = manifest.lots.find((l) => l.slug === 'listing-demo');
+  const b = await listen('localhost', (req, res) => badgeHandler(req, res));
+  const get = async (file) => {
+    const r = await fetch(`${b.origin}/api/badge${file === null ? '' : `?file=${encodeURIComponent(file)}`}`);
+    return { status: r.status, type: r.headers.get('content-type'), cache: r.headers.get('cache-control'), body: await r.text() };
+  };
+  const live = await get(`${demo.slug}.svg`);
+  check('a live listing\'s badge shows its address',
+    live.status === 200 && /^image\/svg\+xml/.test(live.type) && live.body.includes(demo.address), live.type);
+  check('the badge is cached briefly downstream, long at the CDN', /max-age=300/.test(live.cache) && /s-maxage/.test(live.cache));
+  const unknown = await get('not-a-listing-yet.svg');
+  check('an unknown slug is the generic badge, never an error',
+    unknown.status === 200 && unknown.body.includes('AI directory') && !unknown.body.includes('Boulevard'));
+  const odd = await get('../../etc/passwd');
+  check('a malformed name is the generic badge too', odd.status === 200 && odd.body.includes('AI directory'));
+  const bare = await get(null);
+  check('/badge.svg is the generic badge', bare.status === 200 && bare.body.startsWith('<svg'));
+  b.server.close();
+  check('addressFor reads only the manifest', addressFor(demo.slug, manifest) === demo.address &&
+    addressFor('Listing-Demo', manifest) === null);
+  const svg = renderBadge('1 <Odd> & "Road"');
+  check('whatever the address, it is text in the svg, never markup',
+    svg.includes('&lt;Odd&gt; &amp; &quot;Road&quot;') && !svg.includes('<Odd>'));
+  const sn = badgeSnippets('a-b-c');
+  check('snippets carry only the slug, never a submitter\'s words',
+    sn.markdown === '[![a-b-c on otra.city](https://otra.city/badge/a-b-c.svg)](https://otra.city/s/a-b-c)');
+}
 // --- the readable pages -------------------------------------------------------
 {
   const manifest = JSON.parse(readFileSync(join(root, 'public/plots/index.json')));
@@ -239,6 +282,8 @@ const listing = (over = {}) => ({
     html.includes(`<a href="${esc(demo.url)}">`) && html.includes('application/ld+json'), demo.url);
   check('the page names the address and the walk path',
     html.includes(demo.address) && html.includes(`/lot/${demo.lot}/walk`));
+  check('the page offers the badge, ready to paste',
+    html.includes(`src="/badge/${demo.slug}.svg"`) && html.includes(esc(badgeSnippets(demo.slug).markdown)));
   // what an attacker would send as a name: it must come out as text
   const hostile = { ...manifest, lots: manifest.lots.map((l) => (l.slug === 'listing-demo'
     ? { ...l, name: '<script>alert(1)</script>', description: '"><img src=x onerror=alert(1)>', url: 'javascript:alert(1)', tags: ['<b>'] } : l)) };
