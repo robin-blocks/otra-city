@@ -36,6 +36,7 @@
 // Math.random, and nothing reads a clock.
 import * as THREE from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
+import { createTurf } from './broadcast-turf.js';
 
 // The receiver sits 12 mm above the SDK pitch (z = 0): above its markings
 // (z = 0.011) so a shadow darkens the lines too, and far too thin to see from
@@ -59,6 +60,7 @@ const FLOOD_SHADOW = 0.84;
 const FLOOD_ELEVATION = 55;
 
 const MAX_LIGHTS = 4;
+const _lamp = new THREE.Vector3();
 
 /**
  * A broadcast camera for one renderer.
@@ -68,7 +70,7 @@ const MAX_LIGHTS = 4;
  *   after.render(roots, { target: look.target, beforeRoots: look.beforeRoots });
  *   look.finish(camera);                                    // onto the canvas
  */
-export function createBroadcastLook({ renderer, width, height, ss = 2, shadows = true, dof = true, lens = true, grain = false }) {
+export function createBroadcastLook({ renderer, width, height, ss = 2, shadows = true, dof = true, lens = true, grain = false, turf = true }) {
   ss = Math.max(1, Math.min(2, ss));
   const tw = Math.round(width * ss), th = Math.round(height * ss);
   const target = new THREE.WebGLRenderTarget(tw, th, {
@@ -87,6 +89,8 @@ export function createBroadcastLook({ renderer, width, height, ss = 2, shadows =
 
   // ------------------------------------------------------------------ shadows
   const shadow = shadows ? createPitchShadows(renderer, stat.shadows) : null;
+  // The pitch's own tile, regenerated without the 25 cm squares (broadcast-turf.js).
+  const turfer = turf ? createTurf(renderer) : null;
 
   // ------------------------------------------------------------------ finish
   const finishMat = new THREE.ShaderMaterial({
@@ -105,6 +109,10 @@ export function createBroadcastLook({ renderer, width, height, ss = 2, shadows =
       // a CBR encoder spends its bits on, and at stream bitrates it is mostly
       // smeared away anyway (RFL asked for encoder-friendly pictures, §2).
       uGrain: { value: grain ? 1.6 / 255 : 0 },
+      // Floodlight heads in frame: uv.xy, window depth, strength. See ghosts().
+      uLamp: { value: Array.from({ length: 4 }, () => new THREE.Vector4()) },
+      uLamps: { value: 0 },
+      uAspect: { value: width / height },
     },
     vertexShader: /* glsl */`
       varying vec2 vUv;
@@ -113,8 +121,12 @@ export function createBroadcastLook({ renderer, width, height, ss = 2, shadows =
       uniform sampler2D tFrame, tDepth;
       uniform vec2 uSrc, uDst, uNearFar;
       uniform vec3 uCoc;
-      uniform float uFrame, uLens, uSharpen, uVignette, uGrain;
+      uniform float uFrame, uLens, uSharpen, uVignette, uGrain, uAspect;
+      uniform vec4 uLamp[4];
+      uniform int uLamps;
       varying vec2 vUv;
+
+
 
       // One output pixel from the ss× frame: four bilinear taps a quarter of
       // an output pixel off centre — a box over 2×2 source pixels at ss = 2,
@@ -134,6 +146,36 @@ export function createBroadcastLook({ renderer, width, height, ss = 2, shadows =
       // page computes from the real field of view. A wide gantry lens gives
       // well under a pixel everywhere — physically, not by a switch.
       float coc(float d) { return min(uCoc.z, uCoc.y * abs(d - uCoc.x) / max(d, 1e-3)); }
+      // LENS GHOSTS. A bright source in shot is reflected between a zoom
+      // lens's elements into a string of faint, tinted discs on the line from
+      // the source through the centre of frame — the rings in the
+      // behind-the-goal reference. Only a lamp the frame can actually SEE
+      // throws them: its depth is tested against the frame's own, so a mast
+      // behind a stand roof does not flare through it.
+      vec3 ghosts(vec2 uv) {
+        vec3 acc = vec3(0.0);
+        for (int i = 0; i < 4; i++) {
+          if (i >= uLamps) break;
+          vec4 L = uLamp[i];
+          float vis = 0.0;
+          for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++)
+            vis += step(L.z - 2.0, linDepth(L.xy + vec2(float(x), float(y)) * 2.0 / uSrc));
+          float s = L.w * vis / 9.0;
+          if (s <= 0.0) continue;
+          vec2 axis = vec2(0.5) - L.xy;
+          vec2 asp = vec2(uAspect, 1.0);
+          // position along the axis, radius (frame heights), tint, gain
+          vec2 c0 = L.xy + axis * 0.55; float d0 = length((uv - c0) * asp);
+          vec2 c1 = L.xy + axis * 1.30; float d1 = length((uv - c1) * asp);
+          vec2 c2 = L.xy + axis * 1.75; float d2 = length((uv - c2) * asp);
+          vec2 c3 = L.xy + axis * 2.40; float d3 = length((uv - c3) * asp);
+          acc += s * vec3(0.55, 1.0, 0.70) * 0.030 * smoothstep(0.045, 0.036, d0);
+          acc += s * vec3(1.0, 0.60, 0.90) * 0.022 * smoothstep(0.090, 0.075, d1);
+          acc += s * vec3(0.60, 0.85, 1.0) * 0.016 * smoothstep(0.030, 0.022, d2);
+          acc += s * vec3(0.90, 0.80, 1.0) * 0.018 * (smoothstep(0.26, 0.24, d3) - smoothstep(0.235, 0.20, d3));
+        }
+        return acc;
+      }
       float hash(vec2 p) { p = fract(p * vec2(443.897, 441.423)); p += dot(p, p.yx + 19.19); return fract((p.x + p.y) * p.x); }
 
       void main() {
@@ -165,6 +207,7 @@ export function createBroadcastLook({ renderer, width, height, ss = 2, shadows =
           }
         }
         if (uLens > 0.5) {
+          if (uLamps > 0) c += ghosts(vUv);
           // Optical falloff toward the corners, gentle.
           vec2 q = vUv * 2.0 - 1.0; q.x *= uDst.x / uDst.y;
           float r2 = dot(q, q) / (1.0 + (uDst.x / uDst.y) * (uDst.x / uDst.y));
@@ -210,6 +253,7 @@ export function createBroadcastLook({ renderer, width, height, ss = 2, shadows =
     update({ scene, camera, stage, frame, focus, lights, lens }) {
       frameNo = frame;
       if (frame % 50 === 0) raiseAnisotropy(scene);
+      turfer?.update(stage);
       if (shadow) {
         try { shadow.update({ stage, lights }); }
         catch (e) { stat.error = `shadows: ${e.message || e}`; throw e; }
@@ -231,6 +275,28 @@ export function createBroadcastLook({ renderer, width, height, ss = 2, shadows =
         stat.dof.focus = null; stat.dof.maxCocPx = 0;
       }
       finishMat.uniforms.uNearFar.value.set(camera.near, camera.far);
+      // Floodlight heads for the lens ghosts: projected into the frame, with
+      // their distance from the camera in metres. The finish pass calls a lamp
+      // visible when the frame's own depth there is no nearer than 2 m in
+      // front of it — the lamp's housing is itself geometry a little in front
+      // of the light, and a window-depth test read every lamp as hidden behind
+      // its own casing. A lamp just off the edge still flares a little.
+      let n = 0;
+      if (stat.lens) {   // the page's lens switch — `lens` here is the SHOT's optics
+        for (const l of (lights || [])) {
+          if (!l.isSpotLight || n >= 4) continue;
+          l.getWorldPosition(_lamp);
+          const dist = -_lamp.clone().applyMatrix4(camera.matrixWorldInverse).z;
+          const p = _lamp.project(camera);
+          if (dist <= camera.near || p.z > 1) continue;   // behind the camera or past the far plane
+          const edge = Math.max(Math.abs(p.x), Math.abs(p.y));
+          const s = THREE.MathUtils.clamp((1.25 - edge) / 0.25, 0, 1);
+          if (s <= 0) continue;
+          finishMat.uniforms.uLamp.value[n++].set(p.x * 0.5 + 0.5, p.y * 0.5 + 0.5, dist, s);
+        }
+      }
+      finishMat.uniforms.uLamps.value = n;
+      stat.ghosts = n;
       finishMat.uniforms.uFrame.value = frame % 997;
     },
     /** Runs inside after.render(), with the frame target bound and the city's depth in it. */
@@ -248,8 +314,8 @@ export function createBroadcastLook({ renderer, width, height, ss = 2, shadows =
       finishQuad.render(renderer);
       stat.finishes += 1;
     },
-    state: () => JSON.parse(JSON.stringify({ ...stat, frame: frameNo })),
-    dispose() { target.dispose(); finishMat.dispose(); finishQuad.dispose(); shadow?.dispose(); },
+    state: () => JSON.parse(JSON.stringify({ ...stat, turf: turfer ? turfer.state() : null, frame: frameNo })),
+    dispose() { target.dispose(); finishMat.dispose(); finishQuad.dispose(); shadow?.dispose(); turfer?.dispose(); },
   };
 }
 
@@ -356,6 +422,7 @@ function createPitchShadows(renderer, stat) {
   receiver.userData.otraLook = true;
   receiver.renderOrder = 9000;                // after markings, before the SDK's labels (10000)
   receiver.frustumCulled = false;
+  receiver.raycast = () => {};              // a shadow is not a surface: never a pick or a sightline hit
 
   let stageGroup = null, matchRoot = null;
   const tmpM = new THREE.Matrix4(), tmpS = new THREE.Matrix4();

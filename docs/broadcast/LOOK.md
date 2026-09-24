@@ -1,7 +1,8 @@
-# /broadcast — the broadcast camera (build `2026-09-24a`)
+# /broadcast — the broadcast camera (builds `2026-09-24a`, `2026-09-24b`)
 
 What happens to a frame between the scene and the television picture.
-Implementation: `public/js/broadcast-look.js`, the opt-in `target` path in
+Implementation: `public/js/broadcast-look.js`, `public/js/broadcast-turf.js`,
+`public/js/broadcast-night.js`, the opt-in `target` path in
 `public/js/after-tonemap.js`, and `draw()` in `public/broadcast.html`.
 Background: the graphics audit of 24 September 2026, the reference frames
 Robin supplied (gantry, pitchside, behind-goal, floodlit grounds), and the
@@ -38,6 +39,8 @@ Without the flag they render a gamma too dark. The header of
 | `?dof=0` | on | depth of field (only a long lens produces visible blur) |
 | `?lens=0` | on | sharpening and vignette |
 | `?grain=1` | off | seeded sensor grain (costs a CBR encoder bits every frame) |
+| `?turf=0` | on | keep RFL's own pitch tile instead of the generated turf |
+| `?night=0` | on | no sky dome, mast glare, haze or flood spill (also off with `?timeofday=`) |
 
 **No GPU, no supersampling.** On a software rasteriser (`quality.js` tier 0:
 SwiftShader, llvmpipe) `ss` defaults to 1 and shadows to off, because every
@@ -66,6 +69,45 @@ caster counts, focus distance and the maximum circle of confusion.
 - **Receiver.** A quad at match z = 0.012 (above the markings), renderOrder
   9000 (after the markings, before the SDK labels at 10000), multiplying the
   turf. Depth-tested, so a robot in front of its own shadow still occludes it.
+
+## Turf (`broadcast-turf.js`, build `2026-09-24b`)
+
+RFL's pitch tile (`textures/pitchgrass.png`, 512² over 4 m, from
+`_stripe_texture` in football.py) carries its "noise" as 32-pixel squares,
+each a random shade: a 25 cm chequerboard in every shot. That was the
+pixelated pitch. Once per mounted stage, the pitch material's `uTex` is
+swapped for a 2048² tile generated on the GPU:
+- **Stripes:** the SDK's own `band()`, fed from the material's own `uG1`,
+  `uG2` and `uMow`, so colours, phase, period and seam match the publisher's.
+- **Grain:** zero-mean, tile-periodic noise at four scales, aligned with the
+  mowing direction. Blades are 4 mm × 3 cm, streaks 2.5 × 35 cm, clumps
+  25–50 cm with a slight yellow/blue drift.
+
+The tile is written raw (NoColorSpace), as their player samples the original,
+with anisotropy 8, the SDK's own value (16 cost about a millisecond more on a
+frame-filling pitch). A tile that isn't a whole number of stripe periods is left
+alone and reported in `state().look.turf.skipped`. **Trap:** the SDK holds
+`uG1`/`uG2` as `THREE.Color`. `Vector3.copy(Color)` reads `.x` and gives a
+black pitch, so copy the components instead.
+
+## Night (`broadcast-night.js`, build `2026-09-24b`)
+
+Robin's floodlit references showed that a bright, even pitch in a dark bowl is
+correct. What was missing was everything around it:
+- **Sky dome:** zenith `#03050d`, horizon `#142043`, plus a low violet
+  light-pollution band. Fog and background are set to the horizon colour so
+  the city fades into it. The dome sits on the far plane.
+- **Masts:** a bright core sprite (gain 6, which bloom spreads) and a 9 m
+  halo per floodlight, plus an additive haze cone toward the pitch (0.1,
+  brightest at the lamp and along its axis). **Trap:** GLTF spot targets sit
+  one metre down the beam, so they give a direction and never a length.
+- **Spill:** floodlight cones widened from 0.8 to 1.15 rad, penumbra 0.75, so
+  the stands and concourse are lit. Only uniforms change; no light is added,
+  so nothing recompiles.
+- **Lens ghosts** (in the finish pass, under `?lens`): four tinted discs and
+  a ring on the line from each visible lamp through the centre of frame.
+  Visibility is tested against the frame's depth in metres with 2 m of
+  tolerance, because the lamp's own housing sits in front of the light.
 
 ## Lens
 
@@ -111,6 +153,10 @@ steps each:
 | default (ss 2, shadows, lens) | 3.81 |
 | `ss=1.5` | 2.79 |
 | `shadows=0` | 2.03 |
+| build `b` (turf and night added), gantry: `look=0` / `night=0&turf=0` / default | 1.68 / 2.65 / 2.37 |
+| build `b`, heli: `look=0` / `night=0&turf=0` / default | 1.58 / 3.21 / 3.01 |
+
+Turf and night are within run-to-run noise.
 
 **Not measured on RFL's capture machine.** Watch `state().pace` after deploy.
 
@@ -119,6 +165,5 @@ steps each:
 - **Pitch green.** We match 4DGSX's live player. RFL's video and the
   reference footage are about 22% brighter. With the finish pass in place, a
   grade would be one uniform. Not ruled on.
-- **Night atmosphere** from the floodlit references: lit lower tiers, haze
-  around the mast heads, a deep-blue dusk sky instead of black, and lens
-  ghosts on low angles. These are stadium and art changes, not yet made.
+- **Night atmosphere:** built in `2026-09-24b` (see above). Not yet done:
+  roof-underside lights in the stands and rain.

@@ -10,9 +10,9 @@ your own offline render of m51. The biggest differences:
 - **Flat surfaces.** In the bundle everything except the turf is a single
   colour.
 
-We have fixed the first three on our side, as described below. Nothing
+We have fixed the first three on our side, as described below, along with the pitch tile's 25 cm chequerboard (R7). Nothing
 changes in how you capture. The fourth needs your exporter, and we're asking
-for six changes, in order of importance.
+for seven changes, in order of importance.
 
 ## 1. What changes on the page (build `2026-09-24a`)
 
@@ -44,7 +44,7 @@ for six changes, in order of importance.
 
   `state().look` reports what is on.
 
-## 2. Six exporter changes (`gauntlet/volumetric.py`)
+## 2. Seven exporter changes (`gauntlet/volumetric.py`)
 
 **R4, first: decimate the robot and ball meshes.** The G1 parts come straight
 from their STL files: about 510k triangles per robot, and one pelvis part alone
@@ -79,6 +79,15 @@ the ball's body at 50 Hz costs very little data.
 directional light, the light that follows the camera, and the gradient sky.
 4DGSX needs a field for it first, and we have asked for one. With it, every
 player would light the match the way your video does.
+
+**R7: generate the turf tile without the squares.** `_stripe_texture`
+(`football.py:259-296`) adds its noise as 32-pixel blocks: 25 cm squares of
+random shade across a 512² tile covering 4 m. Every shot, in every host, shows
+a chequerboard under the players. We now regenerate the tile on our side
+(2048², the same stripes from the material's own uniforms, with blade, streak
+and clump noise instead of blocks), so there's no hurry. But fixing it in the
+exporter fixes it for everyone, and our generator in
+`public/js/broadcast-turf.js` is a working reference.
 
 ## 3. On the director, for your view
 

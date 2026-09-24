@@ -59,7 +59,8 @@ function checkDrawOrdering(withLook = false) {
       if (withLook) { assert.equal(options?.target, look.target); assert.equal(options?.beforeRoots, look.beforeRoots); }
       else assert.equal(options, undefined);
     } },
-    look, scene: { traverse() {} }, camera: {}, floodlights: [], floodlightsAt: -1, focusM: 12.5, wantVenue: 'stadium',
+    look, night: withLook ? { update(lights) { event('night'); assert.equal(lights.length, 0); } } : null,
+    scene: { traverse() {} }, camera: {}, floodlights: [], floodlightsAt: -1, focusM: 12.5, wantVenue: 'stadium',
     matchState() { event('match'); return current; },
     postMatchTable: { update(args) { event('table'); assert.equal(args.match, current); assert.equal(args.time, 5.42); return cue; } },
     scorebug: {
@@ -79,7 +80,7 @@ function checkDrawOrdering(withLook = false) {
     events.length = 0;
     context.runDraw();
     assert.deepEqual(events, [
-      'camera', 'aim', 'crowd', 'reset', 'match-stage', ...(withLook ? ['look-update', 'scene', 'look-finish'] : ['scene']), 'match', 'table',
+      'camera', 'aim', 'crowd', 'reset', 'match-stage', ...(withLook ? ['night', 'look-update', 'scene', 'look-finish'] : ['scene']), 'match', 'table',
       'bug-draw', 'bug-render', 'league-draw', ...(cue ? ['league-render'] : []),
       ...(enabled ? ['copy', 'LIVE'] : []), 'feed', 'finish',
     ], `${withLook ? 'look ' : ''}${mode}: one camera/match/scene evaluation, copy before LIVE before feed (even on copy failure)`);
