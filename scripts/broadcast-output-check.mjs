@@ -44,6 +44,10 @@ function checkDrawOrdering(withLook = false) {
   const feed = {};
   const context = vm.createContext({
     frame: 271, simT: 5.42, FPS: 50, wantCam: 'heli', settleUntil: 0,
+    // Clean output exists only on the live page, so the modes that enable it
+    // are live; the first ('default') stands for ?capture=1, the only mode
+    // that still calls finish().
+    get live() { return enabled; },
     renderSerial: 0, leagueAerial: null,
     cameraAt(name, frame) { event('camera'); assert.equal(name, 'heli'); assert.equal(frame, 271); return { camera: 'heli' }; },
     aim() { event('aim'); },
@@ -82,7 +86,7 @@ function checkDrawOrdering(withLook = false) {
     assert.deepEqual(events, [
       'camera', 'aim', 'crowd', 'reset', 'match-stage', ...(withLook ? ['night', 'look-update', 'scene', 'look-finish'] : ['scene']), 'match', 'table',
       'bug-draw', 'bug-render', 'league-draw', ...(cue ? ['league-render'] : []),
-      ...(enabled ? ['copy', 'LIVE'] : []), 'feed', 'finish',
+      ...(enabled ? ['copy', 'LIVE'] : []), 'feed', ...(enabled ? [] : ['finish']),
     ], `${withLook ? 'look ' : ''}${mode}: one camera/match/scene evaluation, copy before LIVE before feed (even on copy failure)`);
     assert.equal(context.renderSerial, i + 1);
     if (enabled) assert.deepEqual(JSON.parse(JSON.stringify(snapshot)), {
@@ -187,6 +191,7 @@ async function browserChecks(drawSource) {
   const cleanOutput = createCleanOutput({ source: renderer.domElement, onError: (message) => failures.push(message) });
   let frame = 0, simT = 0, renderSerial = 0, leagueAerial = null, currentBug = baseBug, tableCue = null;
   const wantCam = 'heli', settleUntil = 0, crowd = null, feedTex = null, feedMesh = null;
+  const live = true;   // clean output only exists on the live page
   const errors = ['skip diagnostic text'];
   const fail = (where, message) => failures.push(`${where}: ${message}`);
   const after = { render() { bgMaterial.uniforms.phase.value = frame * .13; renderer.render(background, camera); } };

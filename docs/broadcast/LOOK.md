@@ -1,4 +1,4 @@
-# /broadcast — the broadcast camera (builds `2026-09-24a` to `2026-09-25a`)
+# /broadcast — the broadcast camera (builds `2026-09-24a` to `2026-09-25b`)
 
 What happens to a frame between the scene and the television picture.
 Implementation: `public/js/broadcast-look.js`, `public/js/broadcast-turf.js`,
@@ -260,7 +260,20 @@ A post-process AA at `ss=1` (FXAA) can't bring back sub-pixel lines, which
 then crawl in motion and cost the encoder bits. If the capture host still
 can't hold pace, `?ss=1.5` on its URL is the fallback, with no deploy needed.
 
-**Not measured on RFL's capture machine.** Watch `state().pace` after deploy.
+**Measured on RFL's capture machine** (Intel NUC, i3-8109U + Iris Plus 655,
+28 W shared with two x264 encodes; RFL, 25 September, delivered fps):
+
+| Build | Setting | idle stadium | in play |
+|---|---|---|---|
+| `2026-09-23b` | no look | 59.8 | – |
+| `2026-09-24d`/`25a` | `ss=2` | 21.8–23.7 | 10.7–11.8 (m54) |
+| `2026-09-25a` | `ss=1.5` | 34.8–35.1 | 14.2–16.5 (m55, after a mid-match reload) |
+
+The capture URL is `?ss=1.5` since then. `?cityss=1` should cost less and draw
+the match's lines at ss 2 (REPLY-16 asks RFL to measure it).
+`state().delivered` (build `2026-09-25b`) reports the painted frame rate
+directly: fps, p50/p90 frame spacing over the last 5 s. `null` under
+`?capture=1`.
 
 ## Upstream: 4DGSX's answer (not yet in our pinned SDK)
 
