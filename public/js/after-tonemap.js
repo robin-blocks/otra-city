@@ -157,13 +157,29 @@ export function createAfterToneMap({ renderer, camera }) {
   // caller can finish the WHOLE frame (match included) with a pass of its own
   // (js/broadcast-look.js). Without a target nothing below changes.
   const blitMat = new THREE.ShaderMaterial({
-    uniforms: { tColor: { value: null }, tDepth: { value: null } },
+    uniforms: { tColor: { value: null }, tDepth: { value: null }, uUp: { value: new THREE.Vector2() } },
     vertexShader: copyMat.vertexShader,
+    // A composer smaller than the target (the city at 720p under a 2x match)
+    // hands over depth from pixel centres the target does not sample at, and
+    // on a grazing plane that error is more than the 5 mm between the 4DGSX
+    // pitch and the venue's turf: the venue's own markings would print
+    // through the match. So the upsampled depth is the FARTHEST of the four
+    // composer texels around the sample: a surface of the stage within a
+    // texel's slope of a city surface wins. The price is a one-texel margin
+    // where city geometry stands in front of the stage. uUp is the
+    // composer's texel size, zero when the sizes match (the exact copy).
     fragmentShader: `
       uniform sampler2D tColor, tDepth;
+      uniform vec2 uUp;
       varying vec2 vUv;
       void main() {
-        gl_FragDepthEXT = texture2D(tDepth, vUv).r;
+        float d = texture2D(tDepth, vUv).r;
+        if (uUp.x > 0.0) {
+          vec2 h = 0.5 * uUp;
+          d = max(max(texture2D(tDepth, vUv + vec2(-h.x, -h.y)).r, texture2D(tDepth, vUv + vec2(h.x, -h.y)).r),
+                  max(texture2D(tDepth, vUv + vec2(-h.x, h.y)).r, texture2D(tDepth, vUv + vec2(h.x, h.y)).r));
+        }
+        gl_FragDepthEXT = d;
         gl_FragColor = texture2D(tColor, vUv);
       }`,
     depthTest: true,
@@ -195,6 +211,8 @@ export function createAfterToneMap({ renderer, camera }) {
         // After the output pass's swap the finished picture is the READ buffer.
         blitMat.uniforms.tColor.value = composer.readBuffer.texture;
         blitMat.uniforms.tDepth.value = drawn.depthTexture;
+        if (drawn.width !== target.width || drawn.height !== target.height) blitMat.uniforms.uUp.value.set(1 / drawn.width, 1 / drawn.height);
+        else blitMat.uniforms.uUp.value.set(0, 0);
         blit.render(renderer);
       } else {
         copyMat.uniforms.tDepth.value = drawn.depthTexture;

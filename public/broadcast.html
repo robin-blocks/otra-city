@@ -93,7 +93,7 @@ const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
 // page's behaviour changes. It is reported in `state().build` and on the note
 // line, so "the deployed page still says X" is settled by reading the page,
 // not by comparing memories of deploys.
-const BUILD = '2026-09-24d';
+const BUILD = '2026-09-25a';
 
 // Errors are evidence: a silent failure films a black hour, so every one is
 // kept for `state()`, echoed to the console the harness reads, and shown.
@@ -235,7 +235,7 @@ composer.addPass(new OutputPass());
 // long lenses, a camera's sharpening and lens falloff (seeded grain opt-in). The
 // canvas is still exactly 1280 x 720 and everything downstream of it — the
 // scorebug, LIVE, clean output, the stadium screen's copy, frame(), pixels()
-// — is unchanged. `?look=0` is the page as it was; `?ss=1|1.5|2`,
+// — is unchanged. `?look=0` is the page as it was; `?ss=1|1.5|2`, `?cityss=`,
 // `?shadows=0`, `?dof=0`, `?lens=0`, `?grain=1` switch the parts for a harness or a
 // slower capture machine. All of it is deterministic under ?capture=1.
 const lookOn = params.get('look') !== '0';
@@ -260,7 +260,22 @@ const look = lookOn ? createBroadcastLook({
   turf: params.get('turf') !== '0',
   pitch: params.get('pitch') === 'publisher' ? 'publisher' : 'turf',
 }) : null;
-if (look) composer.setSize(look.target.width, look.target.height);
+// THE CITY CAN BE SUPERSAMPLED LESS THAN THE MATCH. `?cityss=1|1.5|2` sizes
+// the composer (city, bloom, ACES) apart from the frame target; the match is
+// still drawn at `ss`. Nearly all of the look's cost at ss 2 is the composer
+// at 2560x1440: on RFL's capture box the EMPTY stadium ran 22-24 fps at
+// build 24d against 60 before the look. Measured on software GL (a proxy for
+// a fill-bound GPU), per frame, empty / with m51 mounted:
+//   ss 2           812 / 789 ms
+//   cityss 1.5     425 / 622
+//   cityss 1       199 / 442
+//   ss 1           175 / 356
+// The match keeps its ss-2 edges at any city scale; the stands take the
+// city's (1.5 is hard to tell from 2, 1 shows stepped seat rows). The depth
+// handover for mismatched sizes is in after-tonemap.js. Defaults to `ss`, the
+// look as it was; never above it. Reported as state().look.city.
+const citySs = look ? Math.min(look.state().ss, [1, 1.5, 2].includes(num('cityss', NaN)) ? num('cityss', NaN) : Infinity) : null;
+if (look) composer.setSize(Math.round(W * citySs), Math.round(H * citySs));
 // A FLOODLIT NIGHT around the pitch (js/broadcast-night.js): a deep-blue sky
 // instead of black, glare and haze at the mast heads, and flood spill that
 // lights the stands. Goes with the look; `?night=0` turns it off, and an
@@ -1325,7 +1340,7 @@ window.rflBroadcast = {
       // match mounted) — the difference between their look and a washed one
       afterToneMap: after.state(),
       // the broadcast camera: supersampling, pitch shadows, lens — null with ?look=0
-      look: look ? { ...look.state(), auto: lookAuto } : null,
+      look: look ? { ...look.state(), auto: lookAuto, city: { ss: citySs, width: composer.readBuffer.width, height: composer.readBuffer.height } } : null,
       night: night ? night.state() : null,
       // whether this page will pick up a new build by itself, and whether it
       // has seen one it is waiting for an empty pitch to take

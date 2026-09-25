@@ -1,4 +1,4 @@
-# /broadcast — the broadcast camera (builds `2026-09-24a` to `d`)
+# /broadcast — the broadcast camera (builds `2026-09-24a` to `2026-09-25a`)
 
 What happens to a frame between the scene and the television picture.
 Implementation: `public/js/broadcast-look.js`, `public/js/broadcast-turf.js`,
@@ -35,6 +35,7 @@ Without the flag they render a gamma too dark. The header of
 |---|---|---|
 | `?look=0` | on | the page exactly as before (canvas-direct) |
 | `?ss=1\|1.5\|2` | 2 | supersampling factor; this is the anti-aliasing |
+| `?cityss=1\|1.5\|2` | `ss` | supersampling of the city alone (composer, bloom, ACES); the match stays at `ss` (build `2026-09-25a`) |
 | `?shadows=0` | on | pitch shadows |
 | `?dof=0` | on | depth of field (only a long lens produces visible blur) |
 | `?lens=0` | on | sharpening and vignette |
@@ -200,7 +201,12 @@ steps each:
 Turf and night are within run-to-run noise.
 
 **Build `d` (static shadow cache, DoF skip, per-lamp ghost test).** Same
-machine, m51, 2–3 browsers × 120 frames, median (p90) ms per frame:
+machine, m51, 2–3 browsers × 120 frames, median (p90) ms per frame. **These
+are CPU times.** In Chrome `gl.finish()` returns without waiting for the GPU,
+so `step()` timings measure submission only. They show the draw-call saving
+and say nothing about fill. To time the GPU, read one pixel back after each
+step (`gl.readPixels(0,0,1,1,…)`). All the rows above were taken the same
+way, so treat them as CPU cost too.
 
 | Shot | build `c` | build `d` | draw calls |
 |---|---|---|---|
@@ -213,6 +219,39 @@ more. Where the rest of the 438 calls go on the gantry: the 4DGSX match is
 366 (and 2.24 M of the 2.40 M triangles; RFL's decimation from m61 is the fix
 for that), the composer and bloom about 20, street and roads 25. Street,
 roads and crowd are already instanced.
+
+**What RFL measured after build `d`** (25 September, their Intel iGPU capture
+box): the EMPTY stadium ran 21.8–23.7 fps with the GPU 78% busy. Before the
+look it was 60. Draw calls were never the limit there; pixels are. At ss 2
+the composer shades 2560×1440 for the city, runs bloom and ACES, and hands
+over that many pixels, before any match is added.
+
+**`?cityss=` (build `2026-09-25a`).** The composer can be sized apart from the
+frame target, so the city is supersampled less while the match keeps `ss`.
+The frame target's blit already samples colour and depth by UV. The one
+catch is depth: the composer's texel centres are not the target's, and on a
+grazing plane that error is more than the 5 mm between the 4DGSX pitch and
+the venue's turf, so the venue's own markings print through as pale blocks.
+With mismatched sizes the blit therefore writes the farthest of the four
+composer depth texels around each sample. The cost is a one-texel margin
+where city geometry stands in front of the stage. At matching sizes it is
+the exact copy it always was: build `2026-09-25a` at default settings is
+byte-identical to `d`.
+
+GPU-inclusive cost on software GL (SwiftShader: a CPU rasteriser, so a proxy
+for a fill-bound chip, not a prediction of fps), gantry, median ms per frame:
+
+| | empty stadium | m51 mounted |
+|---|---|---|
+| `ss=2` (default) | 812 | 789 |
+| `ss=2&cityss=1.5` | 425 | 622 |
+| `ss=2&cityss=1` | 199 | 442 |
+| `ss=1` | 175 | 356 |
+
+Quality: the match is identical at every city scale. On the stands,
+`cityss=1.5` is hard to tell from 2; `cityss=1` shows stepped seat rows and a
+rougher pitchside banner, most visibly on the heli, where the bowl fills the
+frame. The default is unchanged until RFL measure these on the capture box.
 
 **Supersampling stays at 2.** `ss=1.5` breaks thin lines unevenly (the
 halfway line and the centre circle), because 1.5 source pixels don't map onto
