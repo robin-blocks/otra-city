@@ -15,6 +15,7 @@
     "mews-7": "northwest-7",
     "museverse": "boulevard-9",
     "pasteguard": "boulevard-2",
+    "photogenerai": "east-4",
     "promptfrenzy": "boulevard-7",
     "promptops": "east-3",
     "signal": "boulevard-3"
@@ -83,6 +84,11 @@
     "east-3": {
       "x": 151.5,
       "z": 6,
+      "yaw": -1.5707963267948966
+    },
+    "east-4": {
+      "x": 151.5,
+      "z": -6,
       "yaw": -1.5707963267948966
     },
     "northwest-1": {
