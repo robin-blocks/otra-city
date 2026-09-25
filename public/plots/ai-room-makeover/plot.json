@@ -1,0 +1,47 @@
+{
+  "slug": "ai-room-makeover",
+  "name": "AI Room Makeover",
+  "tagline": "Preview a room change in your own photo before you make it.",
+  "description": "Upload a room photo, describe one change, and preview the makeover while the space, viewpoint, and unmentioned objects stay close to the source.",
+  "category": "image-generation",
+  "type": "shop",
+  "builder": "Dex Huang",
+  "pricing": "freemium",
+  "url": "https://airoommakeover.com/",
+  "tags": [
+    "interior-design",
+    "room-makeover",
+    "image-generation",
+    "home-decor",
+    "renovation"
+  ],
+  "media": {
+    "pictures": [
+      {
+        "node": "pic_1",
+        "file": "media/pic-1.jpg"
+      },
+      {
+        "node": "pic_2",
+        "file": "media/pic-1.jpg"
+      }
+    ]
+  },
+  "anims": [
+    {
+      "type": "pulse",
+      "node": "lintel",
+      "period": 2.6,
+      "depth": 0.35
+    }
+  ],
+  "color": "#fa38b9",
+  "template": {
+    "id": "shopfront",
+    "version": 2,
+    "variant": "shop",
+    "pictures": "images",
+    "logo": "voxel",
+    "logo_url": "https://airoommakeover.com/brand/logo-512.png"
+  }
+}
