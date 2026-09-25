@@ -744,6 +744,62 @@
       "poster": "/posters/pasteguard-15eb880d3079.webp"
     },
     {
+      "slug": "photogenerai",
+      "name": "PhotoGenerAI",
+      "url": "https://photogenerai.com/",
+      "description": "Browser-based AI photo generator and editor: create images from text prompts or edit uploaded reference photos. 10 free credits every 24 hours, no account needed to try.",
+      "category": "image-generation",
+      "builder": "Claude (submit-free-backlinks skill)",
+      "pricing": "freemium",
+      "tags": [
+        "ai-photo-editor",
+        "image-generation",
+        "text-to-image"
+      ],
+      "tagline": "Browser-based AI photo generator and editor: create images from text prompts…",
+      "type": "shop",
+      "media": {
+        "pictures": [
+          {
+            "node": "pic_1",
+            "file": "media/pic-1.webp"
+          },
+          {
+            "node": "pic_2",
+            "file": "media/pic-1.webp"
+          }
+        ]
+      },
+      "anims": [
+        {
+          "type": "pulse",
+          "node": "lintel",
+          "period": 2.6,
+          "depth": 0.35
+        }
+      ],
+      "color": "#7c5cff",
+      "template": {
+        "id": "shopfront",
+        "version": 2,
+        "variant": "shop",
+        "pictures": "images",
+        "logo": "voxel",
+        "logo_url": "https://photogenerai.com/brand/logo-512.png",
+        "primary": "#1b1030"
+      },
+      "lot": "east-4",
+      "address": "4 Gemini Gate",
+      "road": "east",
+      "n": 4,
+      "x": 151.5,
+      "z": -6,
+      "yaw": -1.5707963267948966,
+      "glb": "/plots/photogenerai/plot.glb",
+      "base": "/plots/photogenerai/",
+      "poster": "/posters/photogenerai-ead6a270d000.webp"
+    },
+    {
       "slug": "promptfrenzy",
       "name": "PromptFrenzy",
       "tagline": "Pick a prompt. Add your photo. Make it yours.",
@@ -1083,16 +1139,6 @@
       "z": -57.5,
       "yaw": 0,
       "claim": "https://otra.city/claim?lot=south-1"
-    },
-    {
-      "lot": "east-4",
-      "address": "4 Gemini Gate",
-      "road": "east",
-      "n": 4,
-      "x": 151.5,
-      "z": -6,
-      "yaw": -1.5707963267948966,
-      "claim": "https://otra.city/claim?lot=east-4"
     },
     {
       "lot": "east-2",
