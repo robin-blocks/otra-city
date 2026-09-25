@@ -93,7 +93,7 @@ const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
 // page's behaviour changes. It is reported in `state().build` and on the note
 // line, so "the deployed page still says X" is settled by reading the page,
 // not by comparing memories of deploys.
-const BUILD = '2026-09-25a';
+const BUILD = '2026-09-25b';
 
 // Errors are evidence: a silent failure films a black hour, so every one is
 // kept for `state()`, echoed to the console the harness reads, and shown.
@@ -330,6 +330,12 @@ let leagueAerial = null;
 // Where the live feed started counting, so `state().pace` can say whether
 // simulated time is keeping up with the wall. See the comment on the loop.
 let livePaceFrom = null;
+// When the live loop drew its recent frames (performance.now), for
+// `state().delivered`. `fps` in state() is the TIMEBASE, 50 at any speed;
+// this is what the page actually painted. RFL counted rAF callbacks on the
+// capture box to find it (2026-09-25) because nothing reported it.
+const DELIVERED_WINDOW_MS = 5000;
+const drawnAt = [];
 // A capture that has been up for days is running the page it loaded on the day
 // it started. See `watchForNewBuild()`.
 const updater = { armed: false, etag: null, changed: false, checks: 0, reloading: false, heldSince: null, holding: null };
@@ -511,6 +517,10 @@ async function startLive() {
     applySound();
     updateFeedScreen();
     draw();
+    drawnAt.push(now);
+    // Keep two frames at least, so a machine slower than one frame per window
+    // still reports what it manages.
+    while (drawnAt.length > 2 && drawnAt[0] < now - DELIVERED_WINDOW_MS) drawnAt.shift();
   });
 }
 
@@ -1159,9 +1169,14 @@ function draw() {
     }
     catch (e) { feedStat.error = e.message || String(e); fail('feed', e); feedTex = null; }
   }
-  // finish() blocks until the driver has actually drawn: without it `frame()`
-  // can read a buffer the GPU has not finished writing.
-  renderer.getContext().finish();
+  // Capture only. It was here so `frame()` never read a half-drawn buffer,
+  // but toDataURL and readPixels wait for the GPU by themselves, and in
+  // Chrome finish() is a flush that does not wait anyway (measured: a
+  // step() with it returned in 0.3 ms on software GL, where the frame took
+  // 200). The live loop has no reader that needs it, and on RFL's capture box,
+  // where the CPU and GPU share one power budget, a per-frame sync point is
+  // the last thing to leave in. So the live feed no longer calls it.
+  if (!live) renderer.getContext().finish();
   if (!errors.length) {
     const r = renderer.info.render;
     note.textContent = `otra.city broadcast · ${wantVenue} · camera ${wantCam} · frame ${frame} `
@@ -1252,6 +1267,16 @@ window.rflBroadcast = {
       // the programme's clock — so this reads as a rough picture, not a slow
       // match. A replay mounted from `now.json` does run slow: it is played on
       // this dt.
+      // Frames the live loop actually painted over the last 5 s, and the
+      // spacing between them. null under ?capture=1, where step() is the clock.
+      delivered: (() => {
+        if (!live || drawnAt.length < 2) return null;
+        const gaps = drawnAt.slice(1).map((t, i) => t - drawnAt[i]).sort((a, b) => a - b);
+        const q = (p) => +gaps[Math.min(gaps.length - 1, Math.floor(p * gaps.length))].toFixed(1);
+        const span = drawnAt[drawnAt.length - 1] - drawnAt[0];
+        return { fps: +((drawnAt.length - 1) / (span / 1000)).toFixed(1), frameMsP50: q(0.5), frameMsP90: q(0.9),
+                 frames: drawnAt.length, windowS: +(span / 1000).toFixed(2) };
+      })(),
       pace: livePaceFrom
         ? +((simT - livePaceFrom.sim) / Math.max(0.001, (performance.now() - livePaceFrom.wall) / 1000)).toFixed(3)
         : null,

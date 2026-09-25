@@ -537,6 +537,14 @@ try {
     check('the screens count down to the whistle, not to the stream start',
       !sL.match?.next, `no fixture listed, and none reported: next ${JSON.stringify(sL.match?.next?.startsAt ?? null)}`);
   }
+  // `fps` is the timebase; `delivered` is what the live loop painted. RFL had
+  // to count rAF callbacks themselves to learn their box ran at 11 fps.
+  let dl = sL.delivered;
+  for (const until = Date.now() + 30000; Date.now() < until && !dl;) { await sleep(500); dl = (await lv.state()).delivered; }
+  check('the live feed reports the frame rate it actually delivers',
+    !!dl && dl.fps > 0 && dl.frameMsP50 > 0,
+    dl ? `${dl.fps} fps over ${dl.windowS}s, p50 ${dl.frameMsP50} ms, p90 ${dl.frameMsP90} ms` : 'no delivered rate after 30 s of live frames');
+  check('deterministic capture reports no delivered rate', s0.delivered === null);
   check('the director is running', !!sL.director, sL.director ? `${sL.director.list} list, shot ${sL.director.shot}` : 'no director — a locked-off frame');
   // THE LIVE STREAM IS EXACTLY WHAT IS IN THE STADIUM, and this is the line
   // that keeps it so. Going to otra.city puts you on the broadcast; the people
