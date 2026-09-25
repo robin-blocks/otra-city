@@ -222,6 +222,63 @@
       "poster": "/posters/4dgsx-4ec16606c8ab.webp"
     },
     {
+      "slug": "ai-room-makeover",
+      "name": "AI Room Makeover",
+      "tagline": "Preview a room change in your own photo before you make it.",
+      "description": "Upload a room photo, describe one change, and preview the makeover while the space, viewpoint, and unmentioned objects stay close to the source.",
+      "category": "image-generation",
+      "type": "shop",
+      "builder": "Dex Huang",
+      "pricing": "freemium",
+      "url": "https://airoommakeover.com/",
+      "tags": [
+        "interior-design",
+        "room-makeover",
+        "image-generation",
+        "home-decor",
+        "renovation"
+      ],
+      "media": {
+        "pictures": [
+          {
+            "node": "pic_1",
+            "file": "media/pic-1.jpg"
+          },
+          {
+            "node": "pic_2",
+            "file": "media/pic-1.jpg"
+          }
+        ]
+      },
+      "anims": [
+        {
+          "type": "pulse",
+          "node": "lintel",
+          "period": 2.6,
+          "depth": 0.35
+        }
+      ],
+      "color": "#fa38b9",
+      "template": {
+        "id": "shopfront",
+        "version": 2,
+        "variant": "shop",
+        "pictures": "images",
+        "logo": "voxel",
+        "logo_url": "https://airoommakeover.com/brand/logo-512.png"
+      },
+      "lot": "east-2",
+      "address": "2 Gemini Gate",
+      "road": "east",
+      "n": 2,
+      "x": 151.5,
+      "z": 18,
+      "yaw": -1.5707963267948966,
+      "glb": "/plots/ai-room-makeover/plot.glb",
+      "base": "/plots/ai-room-makeover/",
+      "poster": "/posters/ai-room-makeover-846d2f1e1dc3.webp"
+    },
+    {
       "slug": "archive-9",
       "name": "ARCHIVE-9",
       "tagline": "every packet remembered",
@@ -1139,16 +1196,6 @@
       "z": -57.5,
       "yaw": 0,
       "claim": "https://otra.city/claim?lot=south-1"
-    },
-    {
-      "lot": "east-2",
-      "address": "2 Gemini Gate",
-      "road": "east",
-      "n": 2,
-      "x": 151.5,
-      "z": 18,
-      "yaw": -1.5707963267948966,
-      "claim": "https://otra.city/claim?lot=east-2"
     },
     {
       "lot": "east-5",
