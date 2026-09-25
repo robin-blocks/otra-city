@@ -33,10 +33,18 @@ const HISTORY_FPS = 50;
 // stays on the wide; the last ISO_WIDE_LEAD_S before the restart is the wide.
 export const ISO_MIN_WINDOW_S = 4;
 export const ISO_WIDE_LEAD_S = 2;
+// The first ISO_ENTRY_S of the dead ball is still the wide. RFL's bundles
+// reset every body to its kick-off spot in the first few frames after
+// play_end_t (s3-m54, s3-m55: all four moved 2.4-2.7 m inside 0.06 s), and an
+// iso cut in on the whistle whip-pans after its subject across that reset.
+export const ISO_ENTRY_S = 1;
 // The iso's operator lag is integrated from the window's start, capped here:
 // every client computes the same pose from the same history, whenever it
 // joined, and at the iso's lags (<= 0.8 s) 8 s has converged.
 const ISO_HISTORY_S = 8;
+// Faster than any robot runs: between two 50 Hz samples, a subject that moves
+// this far was put there by the publisher, and the iso cuts rather than pans.
+const ISO_CUT_M = 1;
 const finite = Number.isFinite;
 const seconds = (value) => finite(value) ? value : null;
 const frameOf = (t, fps) => Math.floor(Math.max(0, t) * fps + 1e-7);
@@ -119,26 +127,42 @@ function easeIso(prev, want, dt) {
 function isoWindow(latest) {
   if (!latest || !finite(latest.play_end_t) || !finite(latest.restart_t)) return null;
   if (latest.restart_t - latest.play_end_t < ISO_MIN_WINDOW_S) return null;
-  return { from: latest.play_end_t, to: latest.restart_t - ISO_WIDE_LEAD_S, restart: latest.restart_t };
+  return { from: latest.play_end_t, show: latest.play_end_t + ISO_ENTRY_S,
+    to: latest.restart_t - ISO_WIDE_LEAD_S, restart: latest.restart_t };
 }
 /**
  * The iso's pose at the programme clock: `frameIso` on sampled bodies at
  * 50 Hz from the window's start (at most ISO_HISTORY_S back), eased with the
  * iso's lags. Pure in (history, clock) — the first sample is the cut. Without
  * a sampler it is the unsmoothed framing of the current play, disclosed.
+ *
+ * ONE PLAYER FOR THE WHOLE DEAD BALL: the one nearest the ball at the
+ * whistle. After RFL's reset the four bodies stand symmetrically about the
+ * centre spot, so "nearest the ball" is a tie between two of them, and a
+ * history that starts somewhere new every frame broke that tie differently
+ * frame to frame — on s3-m55 the shot snapped 2.4 m between two players six
+ * times in its last two seconds. Nothing is happening at half time that a
+ * change of subject would follow, so the iso does what its name says.
  */
-function isoAt(m, clock, sampler, fromP) {
+function isoAt(m, clock, sampler, fromP, showP) {
   if (typeof sampler === 'function') {
     try {
+      const whistle = sampler(unmapAt(clock.map, fromP), { programmeT: fromP, match: m });
+      let subject = whistle ? frameIso(whistle)?.subject ?? -1 : -1;
+      const hold = { hold_m: Infinity };
       const end = Math.floor(clock.p * HISTORY_FPS + 1e-7);
-      const begin = Math.max(Math.ceil(fromP * HISTORY_FPS - 1e-7), end - ISO_HISTORY_S * HISTORY_FPS);
+      const begin = Math.max(Math.ceil(showP * HISTORY_FPS - 1e-7), end - ISO_HISTORY_S * HISTORY_FPS);
       let pose = null, last = 0;
       for (let f = begin; f <= end; f++) {
         const p = f / HISTORY_FPS;
         const sample = sampler(unmapAt(clock.map, p), { programmeT: p, match: m });
-        const want = sample && frameIso(sample, pose?.subject ?? -1);
+        const want = sample && frameIso(sample, subject, hold);
         if (!want) { pose = null; break; }
-        pose = pose ? easeIso(pose, want, p - last) : { subject: want.subject, aim: want.aim.slice(), pos: want.pos.slice(), fov: want.fov };
+        if (subject < 0) subject = want.subject;
+        const cut = !pose || Math.hypot(...want.aim.map((v, i) => v - pose.want[i])) > ISO_CUT_M;
+        pose = cut ? { subject: want.subject, aim: want.aim.slice(), pos: want.pos.slice(), fov: want.fov }
+          : easeIso(pose, want, p - last);
+        pose.want = want.aim;
         last = p;
       }
       if (pose) return { pose, mode: 'bounded-history' };
@@ -342,18 +366,20 @@ export async function createBroadcastProgramme({ venue, fetcher = globalThis.fet
         };
       }
     }
-    // The iso on a dead ball, then the wide for the restart (see ISO_*).
+    // A dead ball: the wide through the whistle, the iso, then the wide for the restart (see ISO_*).
     let isoMode = null;
     const dead = phase === 'interval' && clock.t !== null ? isoWindow(latest) : null;
     if (dead && !beforeTime(clock.t, dead.from) && beforeTime(clock.t, dead.restart)) {
-      const iso = beforeTime(clock.t, dead.to) ? isoAt(m, clock, sampler, mapAt(clock.map, dead.from)) : null;
+      const entering = beforeTime(clock.t, dead.show);
+      const iso = !entering && beforeTime(clock.t, dead.to)
+        ? isoAt(m, clock, sampler, mapAt(clock.map, dead.from), mapAt(clock.map, dead.show)) : null;
       if (iso?.pose) {
         c = { pos: iso.pose.pos.map((v) => +v.toFixed(3)), lookAt: iso.pose.aim.map((v) => +v.toFixed(3)),
           fov: +iso.pose.fov.toFixed(3), camera: 'iso', segment: -1, lens: ISO_LENS, labels: false };
         isoMode = iso.mode;
       } else {
         c = { ...(named('gantry') || CAMERAS.gantry(0, 0, {})), camera: 'gantry', segment: -1 };
-        isoMode = iso ? iso.mode : 'wide-before-restart';
+        isoMode = iso ? iso.mode : entering ? 'wide-after-whistle' : 'wide-before-restart';
       }
     }
     const tracking = gantryAt(m, clock, dt, sampler);

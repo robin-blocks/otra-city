@@ -1,4 +1,4 @@
-# /broadcast — the broadcast camera (builds `2026-09-24a` to `2026-09-25b`)
+# /broadcast — the broadcast camera (builds `2026-09-24a` to `2026-09-25c`)
 
 What happens to a frame between the scene and the television picture.
 Implementation: `public/js/broadcast-look.js`, `public/js/broadcast-turf.js`,
@@ -181,8 +181,20 @@ The director's iso is pure: `frameIso` over the sampled bodies at 50 Hz from
 the window's start (capped at 8 s), eased with the iso's lags. Every client,
 late joiners included, computes the same shot. `state().director` reports
 `priority: 'dead-ball'` and `iso: 'bounded-history' | 'unsmoothed' |
-'wide-before-restart'`. The page's own stateful `isoShot()` serves only an
-explicit `?camera=iso`.
+'wide-after-whistle' | 'wide-before-restart'`. The page's own stateful
+`isoShot()` serves only an explicit `?camera=iso`.
+
+**One player per dead ball** (build `2026-09-25c`). Up to 25b the half-time iso
+flicked between players. RFL resets every body to its kick-off spot within
+0.06 s of `play_end_t`, and the iso, which cut in on the whistle, whip-panned
+after its subject. The four then stand symmetrically around the centre spot,
+so two of them tie for "nearest the ball". Once the 8 s history cap began to
+slide, each frame broke that tie afresh: on s3-m54, seven snaps of 2.4–4.8 m in
+the last 2 s. Now the first second (`ISO_ENTRY_S`) stays on the wide. The iso
+holds the player who was nearest the ball at the whistle for the whole window,
+and a subject that moves more than 1 m between 50 Hz samples is cut to, not
+panned to. On the same bundle this leaves no jumps; the largest frame-to-frame
+aim move is 2 mm.
 
 ## Cost
 
