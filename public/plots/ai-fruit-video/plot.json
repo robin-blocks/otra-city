@@ -1,0 +1,46 @@
+{
+  "slug": "ai-fruit-video",
+  "name": "AI Fruit Video",
+  "url": "https://aifruitvideo.com",
+  "description": "AI Fruit Video creates funny talking-fruit videos from short story ideas. Pick a story, add optional visual references, generate a single-scene clip, preview and download. Freemium.",
+  "category": "video-generation",
+  "builder": "Sawana Huang",
+  "pricing": "freemium",
+  "tags": [
+    "ai-video",
+    "talking-fruit",
+    "short-video",
+    "video-generator"
+  ],
+  "tagline": "AI Fruit Video creates funny talking-fruit videos from short story ideas",
+  "type": "shop",
+  "media": {
+    "pictures": [
+      {
+        "node": "pic_1",
+        "file": "media/pic-1.jpg"
+      },
+      {
+        "node": "pic_2",
+        "file": "media/pic-1.jpg"
+      }
+    ]
+  },
+  "anims": [
+    {
+      "type": "pulse",
+      "node": "lintel",
+      "period": 2.6,
+      "depth": 0.35
+    }
+  ],
+  "color": "#fa7938",
+  "template": {
+    "id": "shopfront",
+    "version": 2,
+    "variant": "tower",
+    "pictures": "og:image",
+    "logo": "voxel",
+    "logo_url": "https://aifruitvideo.com/_next/static/media/logo-mark-compact-transparent.3j691t8v7mefb.png"
+  }
+}
