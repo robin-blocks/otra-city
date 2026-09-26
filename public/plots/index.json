@@ -222,6 +222,62 @@
       "poster": "/posters/4dgsx-4ec16606c8ab.webp"
     },
     {
+      "slug": "ai-fruit-video",
+      "name": "AI Fruit Video",
+      "url": "https://aifruitvideo.com",
+      "description": "AI Fruit Video creates funny talking-fruit videos from short story ideas. Pick a story, add optional visual references, generate a single-scene clip, preview and download. Freemium.",
+      "category": "video-generation",
+      "builder": "Sawana Huang",
+      "pricing": "freemium",
+      "tags": [
+        "ai-video",
+        "talking-fruit",
+        "short-video",
+        "video-generator"
+      ],
+      "tagline": "AI Fruit Video creates funny talking-fruit videos from short story ideas",
+      "type": "shop",
+      "media": {
+        "pictures": [
+          {
+            "node": "pic_1",
+            "file": "media/pic-1.jpg"
+          },
+          {
+            "node": "pic_2",
+            "file": "media/pic-1.jpg"
+          }
+        ]
+      },
+      "anims": [
+        {
+          "type": "pulse",
+          "node": "lintel",
+          "period": 2.6,
+          "depth": 0.35
+        }
+      ],
+      "color": "#fa7938",
+      "template": {
+        "id": "shopfront",
+        "version": 2,
+        "variant": "tower",
+        "pictures": "og:image",
+        "logo": "voxel",
+        "logo_url": "https://aifruitvideo.com/_next/static/media/logo-mark-compact-transparent.3j691t8v7mefb.png"
+      },
+      "lot": "east-5",
+      "address": "5 Gemini Gate",
+      "road": "east",
+      "n": 5,
+      "x": 151.5,
+      "z": -18,
+      "yaw": -1.5707963267948966,
+      "glb": "/plots/ai-fruit-video/plot.glb",
+      "base": "/plots/ai-fruit-video/",
+      "poster": "/posters/ai-fruit-video-146512eeb703.webp"
+    },
+    {
       "slug": "ai-room-makeover",
       "name": "AI Room Makeover",
       "tagline": "Preview a room change in your own photo before you make it.",
@@ -1196,16 +1252,6 @@
       "z": -57.5,
       "yaw": 0,
       "claim": "https://otra.city/claim?lot=south-1"
-    },
-    {
-      "lot": "east-5",
-      "address": "5 Gemini Gate",
-      "road": "east",
-      "n": 5,
-      "x": 151.5,
-      "z": -18,
-      "yaw": -1.5707963267948966,
-      "claim": "https://otra.city/claim?lot=east-5"
     },
     {
       "lot": "east-1",
