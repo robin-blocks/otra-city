@@ -75,6 +75,7 @@ function checkDrawOrdering(withLook = false) {
     cleanOutput: { get enabled() { return enabled; }, copy(frame) { event('copy'); snapshot = frame; return false; } },
     feedTex: feed, feedMesh: { material: { map: feed } }, feedStat: { copies: 0 },
     errors: ['skip diagnostic text'], fail() { assert.fail('unexpected feed failure'); },
+    replayPlayer: null, sharedProgramme: null,
   });
   vm.runInContext(`${drawSource}\nglobalThis.runDraw = draw;`, context, { timeout: 1000 });
   for (const [i, mode] of ['default', 'LIVE', 'REPLAY', 'LIVE', 'null'].entries()) {
@@ -84,7 +85,7 @@ function checkDrawOrdering(withLook = false) {
     events.length = 0;
     context.runDraw();
     assert.deepEqual(events, [
-      'camera', 'aim', 'crowd', 'reset', 'match-stage', ...(withLook ? ['night', 'look-update', 'scene', 'look-finish'] : ['scene']), 'match', 'table',
+      'camera', 'aim', 'crowd', 'reset', 'match', 'match-stage', ...(withLook ? ['night', 'look-update', 'scene', 'look-finish'] : ['scene']), 'table',
       'bug-draw', 'bug-render', 'league-draw', ...(cue ? ['league-render'] : []),
       ...(enabled ? ['copy', 'LIVE'] : []), 'feed', ...(enabled ? [] : ['finish']),
     ], `${withLook ? 'look ' : ''}${mode}: one camera/match/scene evaluation, copy before LIVE before feed (even on copy failure)`);
@@ -94,6 +95,28 @@ function checkDrawOrdering(withLook = false) {
       clock: current?.bug.clock ?? null, audioOffset: current?.bug.audioOffset ?? null,
     }, 'copy snapshot uses this draw, not a second clock/match lookup');
   }
+  // A goal's replay as a media cut (m76 on): the file replaces the stadium
+  // for the frame — no stage, look or scene — and every graphic, the clean
+  // copy and the stadium screen's feed still follow, with REPLAY on the bug.
+  const window = { src: 'https://cdn.example/b/media/replays/goal_03.mp4', t: 162.4, elapsed: 1.5 };
+  let replayArgs = null;
+  context.sharedProgramme = { state: () => ({ replay: window }) };
+  context.replayPlayer = {
+    update(args) { event('replay-update'); replayArgs = args; return true; },
+    render() { event('replay-render'); },
+  };
+  context.scorebug.draw = (bug, options) => {
+    event('bug-draw'); assert.equal(bug.replay, true, 'REPLAY on the bug over the file');
+    assert.equal(bug.clock, current.bug.clock); assert.equal(options.separateLive, enabled);
+  };
+  enabled = true; cue = null;
+  current = { match: { id: 'offline-match' }, replays: [window], bug: { live: true, replay: false, t: 163.9, clock: '02:23', audioOffset: 1 } };
+  events.length = 0;
+  context.runDraw();
+  assert.deepEqual(events, ['camera', 'aim', 'crowd', 'reset', 'match', 'replay-update', 'replay-render', 'table',
+    'bug-draw', 'bug-render', 'league-draw', 'copy', 'LIVE', 'feed'], `${withLook ? 'look ' : ''}replay media cut`);
+  assert.equal(replayArgs.window, window); assert.equal(replayArgs.t, 163.9); assert.equal(replayArgs.replays, current.replays);
+  context.replayPlayer = null; context.sharedProgramme = null;
   const cleanMethod = html.match(/  cleanOutput\(\) \{[\s\S]*?\n  \},/);
   const frameMethod = html.match(/  frame\(\) \{[^\n]+\},/);
   assert.ok(cleanMethod && frameMethod, 'find actual public output/frame methods');
@@ -191,6 +214,7 @@ async function browserChecks(drawSource) {
   const cleanOutput = createCleanOutput({ source: renderer.domElement, onError: (message) => failures.push(message) });
   let frame = 0, simT = 0, renderSerial = 0, leagueAerial = null, currentBug = baseBug, tableCue = null;
   const wantCam = 'heli', settleUntil = 0, crowd = null, feedTex = null, feedMesh = null;
+  const replayPlayer = null, sharedProgramme = null;
   const live = true;   // clean output only exists on the live page
   const errors = ['skip diagnostic text'];
   const fail = (where, message) => failures.push(`${where}: ${message}`);

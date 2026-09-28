@@ -23,19 +23,35 @@ function celebrationEnd(goal) {
   return Number.isFinite(end) && end > goal.t ? end : null;
 }
 
-/** Union of celebration seconds inside [start, t]; never count overlaps twice.
+/** The clock's published stoppages (`hud.clock.stoppages`, restart_phase
+ * bundles from m76): the clock stands still on [t, restart_t), in exactly the
+ * sense a buzzer's [t, restart_t) has. RFL's "restart" is the walk-back after
+ * a goal. Malformed entries are ignored rather than guessed at.
+ */
+export function clockStoppages(stoppages) {
+  return (Array.isArray(stoppages) ? stoppages : []).filter((s) =>
+    finiteTime(s?.t) && Number.isFinite(s?.restart_t) && s.restart_t > s.t);
+}
+
+/** Union of celebration and stoppage seconds inside [start, t]; never count
+ * overlaps twice (a goal's 1.6 s explosion sits inside its own walk-back).
  * A half's start is its restart_t, so its preceding buzzer interval is already
  * excluded. Clipping here also handles a celebration straddling that restart.
  */
-export function celebrationPause(events, start, t) {
-  if (!Number.isFinite(start) || !Number.isFinite(t) || t < start) return { elapsed: 0, celebrating: false };
+export function celebrationPause(events, start, t, stoppages = null) {
+  if (!Number.isFinite(start) || !Number.isFinite(t) || t < start) return { elapsed: 0, celebrating: false, stoppage: null };
   const intervals = [];
-  let celebrating = false;
+  let celebrating = false, stoppage = null;
   for (const goal of goalsOnly(events)) {
     const end = celebrationEnd(goal);
     if (end === null) continue;
     if (t >= goal.t && beforeTime(t, end)) celebrating = true;
     const lo = Math.max(start, goal.t), hi = Math.min(t, end);
+    if (hi > lo) intervals.push([lo, hi]);
+  }
+  for (const s of clockStoppages(stoppages)) {
+    if (t >= s.t && beforeTime(t, s.restart_t)) stoppage = s;
+    const lo = Math.max(start, s.t), hi = Math.min(t, s.restart_t);
     if (hi > lo) intervals.push([lo, hi]);
   }
   intervals.sort((a, b) => a[0] - b[0]);
@@ -44,7 +60,7 @@ export function celebrationPause(events, start, t) {
     elapsed += Math.max(0, hi - Math.max(lo, edge));
     edge = Math.max(edge, hi);
   }
-  return { elapsed, celebrating };
+  return { elapsed, celebrating, stoppage };
 }
 
 /** The programme hold containing p, if its endpoints are valid. */

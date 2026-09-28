@@ -17,6 +17,7 @@ const { createBroadcastProgramme, PROGRAMME_TRACK_URLS } = await import(data(
     .replace("'./broadcast-cameras.js'", JSON.stringify(camerasURL))
     .replace("'./league-timing.mjs'", JSON.stringify(new URL('../public/js/league-timing.mjs', import.meta.url).href))
     .replace("'./goal-celebration.mjs'", JSON.stringify(new URL('../public/js/goal-celebration.mjs', import.meta.url).href))
+    .replace("'./replay-media.mjs'", JSON.stringify(new URL('../public/js/replay-media.mjs', import.meta.url).href))
     .replace("'./post-match-table.mjs'", JSON.stringify(new URL('../public/js/post-match-table.mjs', import.meta.url).href))));
 const venue = { cameras: {
   gantry: [[0, 8.7, -10.6], [0, 0.6, 0]],
@@ -618,4 +619,131 @@ test('a supplied pre-roll map cannot silently fall back to the default duration 
   const wall=p.evaluate({match:standard,nowMs:Date.parse(standard.match.startsAt)+118000});
   assert.ok(wall.tableCue,'valid map plus explicit wall-clock drive remains supported');
   near(wall.tableCue.elapsed,5.3);
+});
+
+// ---- restart_phase bundles (RFL, 2026-09-27; from m76) ---------------------
+// No programme hold at a goal: the 1.6 s explosion, the scorer's live
+// celebration to t_end, everyone walking back, and the replay as a video over
+// the walk-back. The example is the letter's own: goal 157.1, corner flag to
+// 162.1, replay 162.4 for 9.6 s.
+const { replayWindowAt, replayToLoad, replayNeedsSeek } = await import('../public/js/replay-media.mjs');
+const walkMap = [[-180, 0], [700, 880]];
+const walkGoal = { type: 'goal', t: 157.1, team: 'A', player: 'r2', celebration_s: 1.6, replay_s: 0 };
+const walkCel = { t: 157.1, t_end: 162.1, player: 'r2', kind: 'corner_flag' };
+const walkReplay = { t: 162.4, dur_s: 9.6, goal_t: 157.1, player: 'r2',
+  src: 'https://cdn.example/b/media/replays/goal_03.mp4', source: [152.1, 157.3] };
+// The scorer runs from beside the goal toward the corner flag (venue x along, z across).
+const scorerAt = (t) => { const k = Math.min(1, Math.max(0, (t - 158.7) / 3)); return [6.2 + 0.6 * k, 0.62, -1 - 3.2 * k]; };
+const walkPlay = (t) => ({ players: [scorerAt(t), [5, 0.4, 1], [-3, 0.4, 1], [-4, 0.4, -1]], ball: [0, -30, 0],
+  anchors: [{ id: 'r2', pos: scorerAt(t) }, { id: 'r1', pos: [5, 0.62, 1] }] });
+const walkSampler = (t) => walkPlay(t);
+function walking(t, changes = {}) {
+  return match(t, t + 180, { programme: { map: walkMap }, goals: [walkGoal], celebrations: [walkCel],
+    replays: [walkReplay], play: walkPlay(t), board: t >= 157.1 && t < 161.1 ? 'GOAL' : '', ...changes,
+    bug: { inPlay: true, celebrating: t >= 157.1 && t < 158.7, stoppage: t >= 157.1 && t < 176.9 ? 'restart' : null, ...changes.bug } });
+}
+
+test('restart phase: the explosion framing for its burst, then the gantry follows the scorer to t_end', async () => {
+  const p = await director();
+  const at = (t) => p.evaluate({ match: walking(t), samplePlay: walkSampler });
+  for (const t of [157.1, 158, 158.68]) {
+    const out = at(t);
+    assert.equal(out.state.priority, 'celebration', `t=${t}`);
+    assert.deepEqual(out.camera.lookAt, [7, 0.45, 0]);
+  }
+  // The first follow frame is still the explosion's framing: a pan, not a cut.
+  const first = at(158.7);
+  assert.equal(first.state.priority, 'follow'); assert.equal(first.camera.camera, 'follow');
+  assert.deepEqual(first.camera.pos, venue.cameras.gantry[0]);
+  assert.ok(Math.hypot(first.camera.lookAt[0] - 7, first.camera.lookAt[2]) < 0.05, JSON.stringify(first.camera));
+  assert.ok(Math.abs(first.camera.fov - 50) < 0.5);
+  // ... which converges on the scorer and zooms in, over the GOAL board.
+  const late = at(162.0), s = scorerAt(162.0);
+  assert.equal(late.state.priority, 'follow'); assert.equal(late.state.goalCut, false);
+  assert.deepEqual(late.state.follow, { player: 'r2', kind: 'corner_flag', mode: 'bounded-history' });
+  assert.ok(Math.hypot(late.camera.lookAt[0] - s[0], late.camera.lookAt[2] - s[2]) < 0.3, JSON.stringify(late.camera));
+  assert.ok(late.camera.fov < 25 && late.camera.fov >= 12, `fov ${late.camera.fov}`);
+  // t_end hands back to the ordinary gantry on the walk-back.
+  const after = at(162.1);
+  assert.equal(after.state.priority, 'play'); assert.equal(after.camera.camera, 'gantry'); assert.equal(after.state.follow, null);
+});
+
+test('the follow pose is the same for a late join, any render cadence and a reverse seek', async () => {
+  const fresh = async (t, dt) => (await director()).evaluate({ match: walking(t), dt, samplePlay: walkSampler });
+  const continuous = await director();
+  for (let t = 158.7; t < 162.1; t += 0.37) {
+    const a = continuous.evaluate({ match: walking(t), dt: 0.37, samplePlay: walkSampler });
+    const b = await fresh(t, 0.016);
+    assert.deepEqual(a.camera, b.camera, `t=${t}`);
+  }
+  const back = continuous.evaluate({ match: walking(159.2), dt: 0, samplePlay: walkSampler });
+  assert.deepEqual(back.camera, (await fresh(159.2, 1)).camera);
+});
+
+test('a follow without a sampler is disclosed; a scorer who cannot be found keeps the wide', async () => {
+  const p = await director();
+  const out = p.evaluate({ match: walking(160), samplePlay: null });
+  assert.equal(out.state.follow.mode, 'unsmoothed');
+  const s = scorerAt(160);
+  assert.ok(Math.hypot(out.camera.lookAt[0] - s[0], out.camera.lookAt[2] - s[2]) < 1e-3);
+  const lost = p.evaluate({ match: walking(160, { celebrations: [{ ...walkCel, player: 'nobody' }] }), samplePlay: walkSampler });
+  assert.equal(lost.state.follow, null); assert.notEqual(lost.camera.camera, 'follow');
+  // A celebration with no goal beside it follows from its own start.
+  const bare = p.evaluate({ match: walking(157.5, { goals: [], bug: { celebrating: false } }), samplePlay: walkSampler });
+  assert.equal(bare.state.priority, 'follow');
+});
+
+test('the replay window is shared state; the live camera stays underneath it', async () => {
+  const p = await director();
+  for (const [t, on] of [[162.39, false], [162.4, true], [168, true], [171.99, true], [172.0, false], [176.8, false]]) {
+    const out = p.evaluate({ match: walking(t), samplePlay: walkSampler });
+    assert.equal(!!out.state.replay, on, `t=${t}`);
+    if (on) {
+      near(out.state.replay.elapsed, t - 162.4);
+      assert.equal(out.state.replay.src, walkReplay.src);
+      assert.equal(out.camera.camera, 'gantry', 'the stadium screen keeps the walk-back');
+    }
+  }
+  // No file in the bundle: the live stadium, never a re-run on the pitch.
+  const none = p.evaluate({ match: walking(165, { replays: [{ ...walkReplay, src: null }] }), samplePlay: walkSampler });
+  assert.equal(none.state.replay, null); assert.equal(none.camera.camera, 'gantry');
+});
+
+test('a bundle with none of this directs exactly as before', async () => {
+  const p = await director(), q = await director();
+  for (const t of [157.5, 160, 165]) {
+    const plain = walking(t, { celebrations: undefined, replays: undefined });
+    delete plain.celebrations; delete plain.replays;
+    const a = p.evaluate({ match: plain, samplePlay: walkSampler });
+    assert.equal(a.state.follow, null); assert.equal(a.state.replay, null);
+    assert.notEqual(a.camera.camera, 'follow');
+    assert.deepEqual(a.camera, q.evaluate({ match: { ...plain, celebrations: [], replays: [] }, samplePlay: walkSampler }).camera);
+  }
+});
+
+test('replay media timing: window edges, the pre-fetch lead and the seek tolerance', () => {
+  const replays = [walkReplay, { ...walkReplay, t: 300, src: 'b.mp4' }, { t: 400, dur_s: 5 }, null, { t: NaN, dur_s: 1, src: 'x' }];
+  assert.equal(replayWindowAt(replays, 162.39), null);
+  assert.equal(replayWindowAt(replays, 162.4).elapsed, 0);
+  assert.equal(replayWindowAt(replays, 172), null);
+  assert.equal(replayWindowAt(replays, 401), null, 'no src, never on air');
+  assert.equal(replayWindowAt(null, 1), null); assert.equal(replayWindowAt(replays, NaN), null);
+  assert.equal(replayToLoad(replays, 140), null, 'not yet');
+  assert.equal(replayToLoad(replays, 157.1).src, walkReplay.src, 'fetch from the goal');
+  near(replayToLoad(replays, 170).elapsed, 7.6);
+  assert.equal(replayToLoad(replays, 290).src, 'b.mp4');
+  assert.equal(replayNeedsSeek(1.0, 1.2), false);
+  assert.equal(replayNeedsSeek(1.0, 1.3), true);
+  assert.equal(replayNeedsSeek(NaN, 1), true);
+});
+
+test('a ball parked below the pitch is out of play for the gantry and the iso', async () => {
+  const { framePlay, frameIso, onPitch } = await import(camerasURL);
+  const players = [[-2, 0.5, 1], [3, 0.5, -2], [5, 0.5, 2]];
+  const base = { pos: venue.cameras.gantry[0] };
+  assert.deepEqual(framePlay(base, { players, ball: [0, -30, 0] }), framePlay(base, { players, ball: null }));
+  assert.notDeepEqual(framePlay(base, { players, ball: [1, 0.2, 1] }), framePlay(base, { players, ball: null }));
+  assert.ok(framePlay(base, { players, ball: [0, -30, 0] }).fov < 52, 'not swung to the widest');
+  assert.deepEqual(frameIso({ players, ball: [4.9, -30, 2] }), frameIso({ players, ball: null }));
+  assert.equal(onPitch([0, -30, 0]), null); assert.deepEqual(onPitch([0, 0.2, 0]), [0, 0.2, 0]); assert.equal(onPitch(null), null);
 });

@@ -28,6 +28,11 @@ export const HALF_NAMES = ['First Half', 'Second Half', 'Third Period', 'Fourth 
  * And the clock runs on PLAYING time: it stops at the buzzer and does not move
  * again until play restarts. The break is therefore a period of its own, from
  * `buzzers[i].t` to `restart_t`, during which the clock reads nothing left.
+ *
+ * From m76 the block also carries `stoppages`, [t, restart_t) spans inside a
+ * half where the clock stands still without the half ending: the walk-back
+ * after a goal. They are subtracted like a celebration; the period stays the
+ * half, and `stoppage` names the kind ("restart") while one is running.
  */
 export function matchPeriod(hud, t) {
   const p = periodOf(hud, t);
@@ -66,12 +71,14 @@ export function periodOf(hud, t) {
     const start = i === 0 ? 0 : (breaks[i - 1]?.restart_t ?? 0);
     const end = breaks[i]?.t ?? (full?.t ?? Infinity);
     if (t < end) {
-      // Celebrations extend presentation time, not playing time. Keep playing
-      // true: false means HALF TIME to the board and the director.
-      const pause = celebrationPause(hud?.events, start, t);
+      // Celebrations extend presentation time, not playing time, and so does
+      // a published stoppage (the walk-back after a goal, from m76). Keep
+      // playing true: false means HALF TIME to the board and the director.
+      const pause = celebrationPause(hud?.events, start, t, c.stoppages);
       const elapsed = Math.max(0, t - start - pause.elapsed);
       return { tag: HALF_NAMES[i] || `Period ${i + 1}`, remain: Math.max(0, halfLen - elapsed),
-               half: i + 1, over: false, playing: true, celebrating: pause.celebrating };
+               half: i + 1, over: false, playing: true, celebrating: pause.celebrating,
+               stoppage: pause.stoppage ? (pause.stoppage.kind ?? 'stoppage') : null };
     }
     // between the buzzer and the restart: the interval
     const restart = breaks[i]?.restart_t;

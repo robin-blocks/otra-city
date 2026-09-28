@@ -156,3 +156,67 @@ test('malformed celebration fields and clock metadata cannot poison the remainin
   assert.equal(matchPeriod(HUD, NaN), null);
   assert.equal(matchPeriod(HUD, Infinity), null);
 });
+
+// restart_phase bundles (m76 on): each goal's walk-back is a published
+// stoppage, [t, restart_t), and the goal keeps its 1.6 s explosion inside it.
+// RFL's letter of 2026-09-27: goal at 157.1, kick-off whistle at 176.9.
+const near = (a, b, label) => assert.ok(Math.abs(a - b) < 1e-9, `${label ?? ''} ${a} != ${b}`);
+function walkback(goals, shift = goals.reduce((s, [t, r]) => s + (r - t), 0), fullShift = shift) {
+  return { events: goals.map(([t]) => ({ ...goal(t, 1.6), replay_s: 0 })),
+    clock: { ...HUD.clock,
+      stoppages: goals.map(([t, restart_t]) => ({ kind: 'restart', goal_t: t, t, restart_t })),
+      buzzers: [{ ...HUD.clock.buzzers[0], t: 300 + shift, play_end_t: 305 + shift, restart_t: 317 + shift },
+        { ...HUD.clock.buzzers[1], t: 617 + fullShift, play_end_t: 622 + fullShift }] } };
+}
+
+test('a restart stoppage stands the clock still from the goal to the kick-off whistle', () => {
+  const hud = walkback([[157.1, 176.9]]);
+  const at = (t) => matchPeriod(hud, t);
+  near(at(157.1).remain, 300 - 157.1);
+  for (const t of [157.1, 158, 158.7, 165, 176.8]) {
+    near(at(t).remain, 300 - 157.1);
+    assert.equal(at(t).stoppage, 'restart', `t=${t}`);
+    assert.equal(at(t).playing, true, `t=${t}: a walk-back is not half time`);
+    assert.equal(at(t).tag, 'First Half');
+  }
+  // the explosion is inside the stoppage and is not subtracted twice
+  assert.equal(at(158).celebrating, true);
+  assert.equal(at(160).celebrating, false);
+  assert.equal(at(176.9).stoppage, null);
+  near(at(176.9).remain, 300 - 157.1);
+  near(at(186.9).remain, 300 - 167.1);
+  // the half still ends on playing time: the buzzer is shifted by the stoppage
+  near(at(319.7).remain, 0.1);
+  assert.equal(at(319.8).tag, 'Half Time');
+});
+
+test('several walk-backs in both halves, and the board reading with them', () => {
+  // 20 + 18.5 s of walk-back in the first half moves its buzzer to 338.5
+  // (restart 355.5); 21 more in the second moves full time to 676.5.
+  const hud = walkback([[100, 120], [250, 268.5], [400, 421]], 38.5, 59.5);
+  near(matchPeriod(hud, 130).remain, 300 - 110);
+  near(matchPeriod(hud, 260).remain, 300 - 230);   // 20 s walked back, 10 s into the second
+  near(matchPeriod(hud, 338.4).remain, 0.1);
+  assert.equal(matchPeriod(hud, 338.5).tag, 'Half Time');
+  near(matchPeriod(hud, 405).remain, 300 - (400 - 355.5));
+  near(matchPeriod(hud, 425).remain, 300 - (425 - 21 - 355.5));
+  near(matchPeriod(hud, 676.4).remain, 0.1);
+  assert.equal(matchPeriod(hud, 676.5).tag, 'Full Time');
+  assert.deepEqual(boardClock(matchPeriod(hud, 110), 110), { label: 'FIRST HALF', clock: mmss(200) });
+  assert.deepEqual(boardClock(matchPeriod(hud, 119.9), 119.9), { label: 'FIRST HALF', clock: mmss(200) });
+});
+
+test('malformed stoppages are ignored, and a bundle without them is unchanged', () => {
+  const bad = [null, {}, { t: 100 }, { t: 100, restart_t: 90 }, { t: NaN, restart_t: 120 },
+    { t: -5, restart_t: 3 }, { t: '100', restart_t: 120 }, { t: 100, restart_t: Infinity }];
+  const hud = { ...HUD, clock: { ...HUD.clock, stoppages: bad } };
+  for (const t of [0, 99, 100, 110, 200, 318, 400]) {
+    const { stoppage, ...rest } = matchPeriod(hud, t);
+    const { stoppage: none, ...plain } = matchPeriod(HUD, t);
+    assert.deepEqual(rest, plain, `t=${t}`);
+    assert.equal(stoppage ?? null, null);
+  }
+  for (const stoppages of [null, 'x', {}, 3]) {
+    assert.deepEqual(matchPeriod({ ...HUD, clock: { ...HUD.clock, stoppages } }, 200), matchPeriod(HUD, 200));
+  }
+});

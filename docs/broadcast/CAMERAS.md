@@ -966,6 +966,9 @@ and take it down with `rehearseLive(null)` — the gate does, at 60 s (pre-roll)
 
 ## Head-cam replays
 
+**Legacy bundles, and from m76 only a goal after the full-time buzzer.** A
+`restart_phase` bundle has no hold at a goal; see the next section.
+
 RFL's programme holds the match clock for `replay_s` seconds at every goal
 (measured on m32: sixteen holds, fifteen goals, each exactly on the goal and
 exactly 5.0 s). Their render showed the goal again in that span; the stadium
@@ -998,6 +1001,79 @@ the scoreboard hold, and hands back to the cut-list when the hold ends.
 
 `rflBroadcast.seekMatch(t)` onto a goal's own time is a replay on demand,
 which is how the gate proves it without waiting for one.
+
+## Goals from m76: the walk-back, the follow, and RFL's replay file
+
+From match 76 RFL's bundles are tagged `scene.json` `meta.restart_phase: 1`
+(their letter of 2026-09-27). A goal no longer re-runs on the pitch. The
+1.6 s explosion is unchanged. The scorer then celebrates live, with a kind
+chosen by their gaffer. Everyone walks back to their kick-off spot, and at
+20 s the referee places any stragglers. The match clock is stopped from the
+goal to the kick-off whistle. `replay_s` is 0 and the programme map has no
+hold. The one exception is a goal after the full-time buzzer, which keeps the
+5 s held replay and so the head cam above.
+
+**On the pitch, for everyone:** the robots walk home.
+`meta.restart_phase` opts the SDK's Poser into the same >2 m/sample
+translation hold as `goal_celebration`. The referee's placement is therefore a
+teleport and is never interpolated as a flight across the pitch. The hold
+applies to the rendered stage and to the director's sampler alike.
+
+**The clock:** `hud.clock.stoppages` lists `[t, restart_t)` spans in which the
+clock stands still, in exactly the sense of a buzzer's `[t, restart_t)`.
+`matchPeriod` subtracts them together with the celebrations, counting any
+overlap once. The period stays the half (`playing` stays true), and
+`state().scorebug.stoppage` reads `"restart"` while one runs. The scorebug and
+the stadium board read the same function, so both hold.
+
+**The director** (`broadcast-programme.js`, shared by `/broadcast` and the
+stadium screen):
+
+| match time | shot | `state().programme.priority` |
+|---|---|---|
+| goal → +`celebration_s` | the gantry at the scoring end (unchanged) | `celebration` |
+| → the `celebration` event's `t_end` | **follow**: the gantry, panned and zoomed onto the scorer | `follow` |
+| the `replay` event's window | the live wide underneath; `/broadcast` plays RFL's file over it | `play` (and `replay` set) |
+| → the whistle | the tracking gantry on the walk-back | `play` |
+
+- **Follow** (`frameScorer` in `broadcast-cameras.js`): the gantry's
+  position never moves. It aims at the scorer's anchor (found by player id)
+  and sizes the lens so 3.2 m of height fill the frame, clamped to 12–38°.
+  The pan starts from the explosion's own framing (aim lag 0.32 s, zoom lag
+  0.6 s). It is integrated at 50 Hz on the sampler from the start of the
+  window, so late joins agree. It outranks the four-second GOAL board. A
+  scorer who can't be found keeps the wide; with no sampler the shot is
+  unsmoothed and `state().programme.follow.mode` says so. The celebration
+  `kind` is reported but does not yet change the shot.
+- **A ball parked below the pitch** (RFL hide it 30 m down through the
+  explosion) is out of play for the gantry's aim and lens, and for the iso's
+  subject. Otherwise a parked ball swings the gantry to its widest angle.
+
+**The replay is a media cut** (`replay-media.mjs` for the timing,
+`replay-player.js` for the player). The director reports the window, and
+`/broadcast` plays the file (resolved against the bundle; it must stay inside
+the bundle's own path) full-frame into the canvas. The stadium is not drawn
+for those frames. The scorebug, clean output and stadium screen copy all carry
+it, and the tag reads **REPLAY**.
+
+- The file is fetched when a window starts within 20 s, i.e. at the goal.
+  Its first frame is decoded 3 s before the window, so the cut lands on it.
+- It plays on its own clock at (match time − window start) and is re-seeked
+  only past 0.25 s of drift. Once on air it holds to the end of the window,
+  so a stall freezes rather than flickers.
+- A window with no `src`, a file that fails, or a browser that can't decode
+  H.264 shows the live stadium throughout. `state().replayMedia` reports the
+  file, `onAir`, `lateMs` to the first frame, errors, and `h264` (`""` means
+  this Chrome can't decode it: Chromium without proprietary codecs).
+- Only the automatic live director plays it. `?camera=`, `?camtrack=` and
+  `?capture=1` never do. Visitors in the city see the walk-back on the big
+  screen, drawn from the director's live camera.
+
+Checks: `scripts/match-clock-check.mjs` and `scripts/broadcast-programme-check.mjs`
+(clock, follow, replay window, parked ball); `scripts/broadcast-sdk-check.mjs`
+(restart_phase teleport hold, event parsing); `scripts/replay-media-check.mjs`
+(a real cross-origin H.264 file into WebGL); `scripts/restart-phase-browser.mjs`
+(the real page, on a reshaped m62 or `--bundle <url>` for RFL's sample).
 
 ## Camera track file
 
