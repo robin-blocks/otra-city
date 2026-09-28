@@ -203,6 +203,7 @@ export const CAMERAS = {
  */
 export function frameIso({ players = [], ball = null } = {}, prevSubject = -1, p = {}) {
   if (!players.length) return null;
+  ball = onPitch(ball);
   const ref = ball || [0, 0, 0];
   const dist2 = (q) => Math.hypot(q[0] - ref[0], q[2] - ref[2]);
   let best = 0;
@@ -227,7 +228,45 @@ export const ISO_FOV_LAG_S = 0.6;
 export const GANTRY_AIM_LAG_S = 0.32;    // football.py: 0.06 per frame at 50 fps
 export const GANTRY_FOV_LAG_S = 0.39;    // football.py: 0.05 per frame at 50 fps
 
+/**
+ * FOLLOWING THE SCORER: the gantry, held on one celebrating robot.
+ *
+ * From m76 a goal's scorer celebrates live for up to 6 s (RFL, 2026-09-27):
+ * a run to the corner flag, to the dugout, an aeroplane, a moonwalk. RFL asked
+ * for the explosion framing for its 1.6 s burst, then the celebrating player
+ * until their celebration ends. The shot stays on the gantry, whose position
+ * never moves: the operator pans onto the scorer and zooms in so `frame_m`
+ * metres of height fill the frame at their distance, which is a robot and a
+ * teammate arriving beside it rather than a face. `pos` is the scorer's
+ * anchor (head height) in venue-local metres.
+ *
+ * Pure, like `framePlay`: the target the operator eases towards. The caller
+ * owns the easing and its history.
+ */
+export function frameScorer(base, pos, p = {}) {
+  if (!Array.isArray(pos) || pos.length < 3 || !pos.every(Number.isFinite)) return null;
+  const from = base?.pos || [0, 8.7, -10.6];
+  const aim = [pos[0], Math.max(p.aim_min_m ?? 0.3, pos[1] - (p.aim_drop_m ?? 0.25)), pos[2]];
+  const d = Math.hypot(aim[0] - from[0], aim[1] - from[1], aim[2] - from[2]) || 1e-9;
+  const fov = Math.min(p.vfov_max_deg ?? 38, Math.max(p.vfov_min_deg ?? 12,
+    (2 * Math.atan((p.frame_m ?? 3.2) / 2 / d) * 180) / Math.PI));
+  return { aim, fov: +fov.toFixed(3) };
+}
+export const FOLLOW_AIM_LAG_S = 0.32;   // the gantry's own pan
+export const FOLLOW_FOV_LAG_S = 0.6;    // a deliberate zoom in, not a pump
+
+/**
+ * A ball the publisher has parked out of sight is not in play. RFL hide it
+ * 30 m below the pitch through a goal's explosion (goal_celebration bundles,
+ * m70 on), and counted twice in the aim and once in the lens it swung the
+ * gantry to its widest. Anything more than 5 m below the pitch is parked.
+ */
+export function onPitch(ball) {
+  return Array.isArray(ball) && ball.length >= 3 && Number.isFinite(ball[1]) && ball[1] > -5 ? ball : null;
+}
+
 export function framePlay(base, { players = [], ball = null } = {}, p = {}) {
+  ball = onPitch(ball);
   const pos = base?.pos || [0, 8.7, -10.6];
   const lo = p.vfov_min_deg ?? 38, hi = p.vfov_max_deg ?? 52;
   const aspect = p.aspect ?? (16 / 9);
