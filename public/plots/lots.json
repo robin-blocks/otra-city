@@ -22,6 +22,7 @@
     "photogenerai": "east-4",
     "promptfrenzy": "boulevard-7",
     "promptops": "east-3",
+    "shellwire": "boulevard-14",
     "signal": "boulevard-3"
   },
   "placed": {
@@ -49,6 +50,11 @@
       "x": -36,
       "z": -11.5,
       "yaw": 0
+    },
+    "boulevard-14": {
+      "x": -36,
+      "z": 11.5,
+      "yaw": 3.141592653589793
     },
     "boulevard-2": {
       "x": 36,
