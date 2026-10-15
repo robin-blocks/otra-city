@@ -5,6 +5,7 @@
     "ai-fruit-video": "east-5",
     "ai-room-makeover": "east-2",
     "archive-9": "boulevard-12",
+    "bulin47ai": "east-1",
     "city-hall": "boulevard-8",
     "fernseed": "boulevard-6",
     "glow-garden": "boulevard-11",
@@ -88,6 +89,11 @@
       "x": -12,
       "z": -11.5,
       "yaw": 0
+    },
+    "east-1": {
+      "x": 151.5,
+      "z": 30,
+      "yaw": -1.5707963267948966
     },
     "east-2": {
       "x": 151.5,
