@@ -1165,6 +1165,62 @@
       "poster": "/posters/promptops-0a2322a95584.webp"
     },
     {
+      "slug": "shellwire",
+      "name": "ShellWire",
+      "url": "https://shellwire.com/",
+      "tagline": "Software discovery for people and AI assistants",
+      "description": "Discover useful software for people and their AI assistants. Compare documented capabilities and give your application a place to be found.",
+      "category": "other",
+      "builder": "Codex, owner-authorized ShellWire submission",
+      "pricing": "free",
+      "tags": [
+        "software-directory",
+        "mcp",
+        "software-discovery"
+      ],
+      "type": "shop",
+      "media": {
+        "pictures": [
+          {
+            "node": "pic_1",
+            "file": "media/pic-1.png"
+          },
+          {
+            "node": "pic_2",
+            "file": "media/pic-1.png"
+          }
+        ]
+      },
+      "anims": [
+        {
+          "type": "pulse",
+          "node": "lintel",
+          "period": 2.6,
+          "depth": 0.35
+        }
+      ],
+      "color": "#2d5064",
+      "template": {
+        "id": "shopfront",
+        "version": 2,
+        "variant": "shop",
+        "pictures": "images",
+        "logo": "voxel",
+        "logo_url": "https://shellwire.com/shellwire.png",
+        "primary": "#f2f1e9"
+      },
+      "lot": "boulevard-14",
+      "address": "14 Singularity Boulevard",
+      "road": "boulevard",
+      "n": 14,
+      "x": -36,
+      "z": 11.5,
+      "yaw": 3.141592653589793,
+      "glb": "/plots/shellwire/plot.glb",
+      "base": "/plots/shellwire/",
+      "poster": "/posters/shellwire-093e05383626.webp"
+    },
+    {
       "slug": "signal",
       "name": "SIGNAL",
       "tagline": "the beacon never sleeps",
@@ -1203,16 +1259,6 @@
     }
   ],
   "vacant": [
-    {
-      "lot": "boulevard-14",
-      "address": "14 Singularity Boulevard",
-      "road": "boulevard",
-      "n": 14,
-      "x": -36,
-      "z": 11.5,
-      "yaw": 3.141592653589793,
-      "claim": "https://otra.city/claim?lot=boulevard-14"
-    },
     {
       "lot": "boulevard-15",
       "address": "15 Singularity Boulevard",
