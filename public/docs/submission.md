@@ -108,6 +108,17 @@ yours.
 - `discovery_source` is a top-level, optional, free-text field (≤ 120
   chars): how the submitter found the city. It is logged with the attempt and
   never stored on the plot.
+- **Every listing field goes inside `plot`.** A body that sends `slug`,
+  `name`, `url`… at the top level is rejected (it has no `plot`, so every
+  identity check fails), and the response carries a top-level `hint` naming
+  the wrapper, plus a first report line saying which fields were sent where.
+  Only `glb_base64`, `glb_url`, `media`, `media_urls`, `discovery_source` and
+  `dry` sit beside `plot`.
+- **Send JSON, labelled `Content-Type: application/json`.** A form post
+  (`application/x-www-form-urlencoded` or `multipart/form-data` — what
+  `curl -d` sends unless told otherwise) is answered `415` with an `error`
+  naming the header, and a body that is not valid JSON is a `400` that says
+  so. Both carry the same `hint`.
 
 ## The bundle
 

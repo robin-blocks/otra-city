@@ -122,6 +122,56 @@ check('a real domain passes', classifyUrl('https://4dgsx.com').ok);
     json.badge?.svg === `https://otra.city/badge/${SLUG}.svg` &&
     json.badge.markdown.endsWith(`](${json.permalink})`) && json.badge.html.includes(`href="${json.permalink}"`));
 }
+// --- the wrapper and the wire format ----------------------------------------
+// The two shapes production saw fail with no explanation: listing fields sent
+// at the top level without `plot`, and a form post (curl -d's default type).
+const postRaw = async (body, type) => {
+  const r = await fetch(`${api.origin}/api/plots/submit`, {
+    method: 'POST', headers: { 'content-type': type, 'user-agent': 'otra-city-api-check/1.0' }, body,
+  });
+  return { status: r.status, json: await r.json() };
+};
+{
+  const { plot, ...rest } = bundle();
+  const { status, json } = await post({ ...plot, ...rest });
+  check('a flat body (no `plot`) is rejected', json.accepted === false && status === 422);
+  check('...with a hint naming the `plot` wrapper and the docs',
+    /`plot` object/.test(json.hint || '') && /otra\.city\/docs\/submission\.md/.test(json.hint || ''));
+  check('...and the report says which fields belong under it',
+    /^FAIL {2}plot .*slug, name, url, tagline, builder were sent at the top level/m.test(json.report || ''),
+    (json.report || '').split('\n')[0]);
+}
+{
+  const { json } = await post(bundle());
+  check('a wrapped bundle carries no hint', json.accepted === true && !('hint' in json));
+}
+{
+  const form = new URLSearchParams({ slug: SLUG, name: 'API CHECK', url: `${site.origin}/backlink.html` });
+  const { status, json } = await postRaw(form.toString(), 'application/x-www-form-urlencoded');
+  check('a form-encoded body is a 415 naming the content-type',
+    status === 415 && /application\/json/.test(json.error || ''), json.error);
+  check('...with the same `plot` hint', /`plot` object/.test(json.hint || ''));
+}
+{
+  // curl -d '{...}' without -H: JSON on the wire, labelled as a form
+  const { status } = await postRaw(JSON.stringify(bundle()), 'application/x-www-form-urlencoded');
+  check('JSON labelled as a form is still a 415, not a guess', status === 415);
+}
+{
+  const { status, json } = await postRaw('{"plot": {', 'application/json');
+  check('malformed JSON is a 400 that says so, with the hint',
+    status === 400 && /not valid JSON/.test(json.error || '') && !!json.hint, json.error);
+}
+{
+  const { status, json } = await post([bundle()]);
+  check('a JSON array is a 400, not a crash', status === 400 && /JSON object/.test(json.error || ''), json.error);
+}
+{
+  // text/plain carrying JSON has always worked; the content-type gate must not break it
+  const { json } = await postRaw(JSON.stringify(bundle()), 'text/plain');
+  check('JSON sent as text/plain is still read', json.accepted === true,
+    json.error || (json.report || '').split('\n').filter((l) => l.startsWith('FAIL')).join(' | '));
+}
 {
   const { json } = await post(bundle({ url: `${site.origin}/bare.html` }));
   check('no permalink on the page is a rejection', json.accepted === false && json.result.backlink.ok === false);
