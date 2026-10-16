@@ -22,6 +22,10 @@ on:
       - 'scripts/setup-log-drain.sh'
       - 'scripts/dev-api.mjs'
       - 'trusted.json'
+      - 'public/js/city-map.mjs'
+      - 'public/city/map.json'
+      - 'lib/city-growth.mjs'
+      - 'scripts/city-growth.mjs'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/api.yml'
@@ -38,9 +42,16 @@ on:
       - 'scripts/setup-log-drain.sh'
       - 'scripts/dev-api.mjs'
       - 'trusted.json'
+      - 'public/js/city-map.mjs'
+      - 'public/city/map.json'
+      - 'lib/city-growth.mjs'
+      - 'scripts/city-growth.mjs'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/api.yml'
+  # the growth workflow opens its proposals with GITHUB_TOKEN, which starts no
+  # pull_request run, so it dispatches this one onto the proposal's branch
+  workflow_dispatch:
 
 jobs:
   api-check:

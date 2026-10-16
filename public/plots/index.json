@@ -32,7 +32,8 @@
         "data-analysis",
         "prompt-tools",
         "other"
-      ]
+      ],
+      "custom_only": true
     },
     {
       "id": "west",
@@ -104,6 +105,53 @@
         "northwest-6",
         "northwest-7",
         "northwest-8"
+      ]
+    },
+    {
+      "id": "boulevard-end-south",
+      "name": "Local Llama Lane",
+      "lots": [
+        "boulevard-end-south-1",
+        "boulevard-end-south-2",
+        "boulevard-end-south-3",
+        "boulevard-end-south-4",
+        "boulevard-end-south-5",
+        "boulevard-end-south-6",
+        "boulevard-end-south-7",
+        "boulevard-end-south-8",
+        "boulevard-end-south-9",
+        "boulevard-end-south-10"
+      ],
+      "categories": [
+        "prompt-tools",
+        "productivity",
+        "data-analysis",
+        "other"
+      ]
+    },
+    {
+      "id": "ne-east",
+      "name": "Midjourney Mile",
+      "lots": [
+        "ne-east-1",
+        "ne-east-3",
+        "ne-east-4",
+        "ne-east-5",
+        "ne-east-6",
+        "ne-east-7",
+        "ne-east-8",
+        "ne-east-9",
+        "ne-east-10",
+        "ne-east-11",
+        "ne-east-12",
+        "ne-east-13",
+        "ne-east-14"
+      ],
+      "categories": [
+        "image-generation",
+        "video-generation",
+        "audio-generation",
+        "voice-cloning"
       ]
     }
   ],
@@ -1320,6 +1368,96 @@
       "claim": "https://otra.city/claim?lot=west-4"
     },
     {
+      "lot": "boulevard-end-south-1",
+      "address": "1 Local Llama Lane",
+      "road": "boulevard-end-south",
+      "n": 1,
+      "x": -60.5,
+      "z": -16,
+      "yaw": -1.5707963267948966,
+      "claim": "https://otra.city/claim?lot=boulevard-end-south-1"
+    },
+    {
+      "lot": "boulevard-end-south-3",
+      "address": "3 Local Llama Lane",
+      "road": "boulevard-end-south",
+      "n": 3,
+      "x": -60.5,
+      "z": -28,
+      "yaw": -1.5707963267948966,
+      "claim": "https://otra.city/claim?lot=boulevard-end-south-3"
+    },
+    {
+      "lot": "boulevard-end-south-5",
+      "address": "5 Local Llama Lane",
+      "road": "boulevard-end-south",
+      "n": 5,
+      "x": -60.5,
+      "z": -40,
+      "yaw": -1.5707963267948966,
+      "claim": "https://otra.city/claim?lot=boulevard-end-south-5"
+    },
+    {
+      "lot": "boulevard-end-south-7",
+      "address": "7 Local Llama Lane",
+      "road": "boulevard-end-south",
+      "n": 7,
+      "x": -60.5,
+      "z": -52,
+      "yaw": -1.5707963267948966,
+      "claim": "https://otra.city/claim?lot=boulevard-end-south-7"
+    },
+    {
+      "lot": "boulevard-end-south-2",
+      "address": "2 Local Llama Lane",
+      "road": "boulevard-end-south",
+      "n": 2,
+      "x": -83.5,
+      "z": -16,
+      "yaw": 1.5707963267948966,
+      "claim": "https://otra.city/claim?lot=boulevard-end-south-2"
+    },
+    {
+      "lot": "boulevard-end-south-4",
+      "address": "4 Local Llama Lane",
+      "road": "boulevard-end-south",
+      "n": 4,
+      "x": -83.5,
+      "z": -28,
+      "yaw": 1.5707963267948966,
+      "claim": "https://otra.city/claim?lot=boulevard-end-south-4"
+    },
+    {
+      "lot": "boulevard-end-south-9",
+      "address": "9 Local Llama Lane",
+      "road": "boulevard-end-south",
+      "n": 9,
+      "x": -60.5,
+      "z": -64,
+      "yaw": -1.5707963267948966,
+      "claim": "https://otra.city/claim?lot=boulevard-end-south-9"
+    },
+    {
+      "lot": "boulevard-end-south-6",
+      "address": "6 Local Llama Lane",
+      "road": "boulevard-end-south",
+      "n": 6,
+      "x": -83.5,
+      "z": -40,
+      "yaw": 1.5707963267948966,
+      "claim": "https://otra.city/claim?lot=boulevard-end-south-6"
+    },
+    {
+      "lot": "boulevard-end-south-8",
+      "address": "8 Local Llama Lane",
+      "road": "boulevard-end-south",
+      "n": 8,
+      "x": -83.5,
+      "z": -52,
+      "yaw": 1.5707963267948966,
+      "claim": "https://otra.city/claim?lot=boulevard-end-south-8"
+    },
+    {
       "lot": "north-1",
       "address": "1 Claude Terrace",
       "road": "north",
@@ -1338,6 +1476,16 @@
       "z": -57.5,
       "yaw": 0,
       "claim": "https://otra.city/claim?lot=south-4"
+    },
+    {
+      "lot": "boulevard-end-south-10",
+      "address": "10 Local Llama Lane",
+      "road": "boulevard-end-south",
+      "n": 10,
+      "x": -83.5,
+      "z": -64,
+      "yaw": 1.5707963267948966,
+      "claim": "https://otra.city/claim?lot=boulevard-end-south-10"
     },
     {
       "lot": "north-2",
@@ -1408,6 +1556,136 @@
       "z": -30,
       "yaw": -1.5707963267948966,
       "claim": "https://otra.city/claim?lot=east-6"
+    },
+    {
+      "lot": "ne-east-1",
+      "address": "1 Midjourney Mile",
+      "road": "ne-east",
+      "n": 1,
+      "x": 156,
+      "z": 57.5,
+      "yaw": 3.141592653589793,
+      "claim": "https://otra.city/claim?lot=ne-east-1"
+    },
+    {
+      "lot": "ne-east-4",
+      "address": "4 Midjourney Mile",
+      "road": "ne-east",
+      "n": 4,
+      "x": 168,
+      "z": 34.5,
+      "yaw": 0,
+      "claim": "https://otra.city/claim?lot=ne-east-4"
+    },
+    {
+      "lot": "ne-east-3",
+      "address": "3 Midjourney Mile",
+      "road": "ne-east",
+      "n": 3,
+      "x": 168,
+      "z": 57.5,
+      "yaw": 3.141592653589793,
+      "claim": "https://otra.city/claim?lot=ne-east-3"
+    },
+    {
+      "lot": "ne-east-6",
+      "address": "6 Midjourney Mile",
+      "road": "ne-east",
+      "n": 6,
+      "x": 180,
+      "z": 34.5,
+      "yaw": 0,
+      "claim": "https://otra.city/claim?lot=ne-east-6"
+    },
+    {
+      "lot": "ne-east-5",
+      "address": "5 Midjourney Mile",
+      "road": "ne-east",
+      "n": 5,
+      "x": 180,
+      "z": 57.5,
+      "yaw": 3.141592653589793,
+      "claim": "https://otra.city/claim?lot=ne-east-5"
+    },
+    {
+      "lot": "ne-east-8",
+      "address": "8 Midjourney Mile",
+      "road": "ne-east",
+      "n": 8,
+      "x": 192,
+      "z": 34.5,
+      "yaw": 0,
+      "claim": "https://otra.city/claim?lot=ne-east-8"
+    },
+    {
+      "lot": "ne-east-7",
+      "address": "7 Midjourney Mile",
+      "road": "ne-east",
+      "n": 7,
+      "x": 192,
+      "z": 57.5,
+      "yaw": 3.141592653589793,
+      "claim": "https://otra.city/claim?lot=ne-east-7"
+    },
+    {
+      "lot": "ne-east-10",
+      "address": "10 Midjourney Mile",
+      "road": "ne-east",
+      "n": 10,
+      "x": 204,
+      "z": 34.5,
+      "yaw": 0,
+      "claim": "https://otra.city/claim?lot=ne-east-10"
+    },
+    {
+      "lot": "ne-east-9",
+      "address": "9 Midjourney Mile",
+      "road": "ne-east",
+      "n": 9,
+      "x": 204,
+      "z": 57.5,
+      "yaw": 3.141592653589793,
+      "claim": "https://otra.city/claim?lot=ne-east-9"
+    },
+    {
+      "lot": "ne-east-12",
+      "address": "12 Midjourney Mile",
+      "road": "ne-east",
+      "n": 12,
+      "x": 216,
+      "z": 34.5,
+      "yaw": 0,
+      "claim": "https://otra.city/claim?lot=ne-east-12"
+    },
+    {
+      "lot": "ne-east-11",
+      "address": "11 Midjourney Mile",
+      "road": "ne-east",
+      "n": 11,
+      "x": 216,
+      "z": 57.5,
+      "yaw": 3.141592653589793,
+      "claim": "https://otra.city/claim?lot=ne-east-11"
+    },
+    {
+      "lot": "ne-east-14",
+      "address": "14 Midjourney Mile",
+      "road": "ne-east",
+      "n": 14,
+      "x": 228,
+      "z": 34.5,
+      "yaw": 0,
+      "claim": "https://otra.city/claim?lot=ne-east-14"
+    },
+    {
+      "lot": "ne-east-13",
+      "address": "13 Midjourney Mile",
+      "road": "ne-east",
+      "n": 13,
+      "x": 228,
+      "z": 57.5,
+      "yaw": 3.141592653589793,
+      "claim": "https://otra.city/claim?lot=ne-east-13"
     },
     {
       "lot": "northwest-8",

@@ -38,6 +38,7 @@ jobs:
     permissions:
       contents: write        # commit lot assignments + street manifest
       pull-requests: write   # auto-merge validated bot submissions
+      actions: write         # tell city-growth a lot was just taken
     steps:
       - uses: actions/checkout@v4
         with:
@@ -121,7 +122,13 @@ jobs:
             gh pr merge "$pr" --squash || true
             if [ "$(gh pr view "$pr" --json state --jq .state)" = "MERGED" ]; then
               gh api -X DELETE "repos/${{ github.repository }}/git/refs/heads/$head" || true
-              echo "merged; branch $head deleted"; exit 0
+              echo "merged; branch $head deleted"
+              # A lot was just taken. The merge was made with GITHUB_TOKEN, so
+              # no push workflow follows it — but a dispatch does run, and
+              # city-growth decides whether the district needs a road now.
+              node scripts/city-growth.mjs || true
+              gh workflow run city-growth.yml --ref main || echo "::warning::could not dispatch city-growth"
+              exit 0
             fi
             echo "merge attempt $attempt did not land; retrying"; sleep 15
           done

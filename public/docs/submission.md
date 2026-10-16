@@ -92,9 +92,14 @@ yours.
 - **Placement**: a listing lands on the first free lot of a road serving its
   category, nearest the centre first (`roads[].categories` in `/api/plots`;
   `pickLot` in `public/js/city-map.mjs`, the one rule the dry run and CI
-  share). A category with no road, or a full one, falls through to the
-  nearest free lot anywhere and the report says so. A `lot` request from a
-  listing is reported and ignored: only the city's own plots (a url on
+  share). A road marked `custom_only` — Singularity Boulevard, the high
+  street — takes no template shopfront: a listing goes to the district grown
+  for its category, and a build you made yourself may still stand on the
+  boulevard. When a district runs low the city grows a road for it (a pull
+  request from `.github/workflows/city-growth.yml`, planned so that no
+  address ever moves); a category with no road, or a full one, falls through
+  to the nearest free lot anywhere and the report says so. A `lot` request
+  from a listing is reported and ignored: only the city's own plots (a url on
   otra.city) are placed by hand.
 - **The response** adds `lot_url` (`https://otra.city/lot/<id>`), `build`
   (`template` | `custom`) and `plot` — the plot.json as it will be published.

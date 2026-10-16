@@ -291,9 +291,15 @@ go-ahead.</pre>
       const served = roads.filter((r) => (r.categories || []).includes(c.id));
       const sw = `<span class="swatch" style="background:${categoryColor(c.id)}"></span>`;
       tr.innerHTML = `<td>${sw}<code>${c.id}</code></td><td></td>`;
-      tr.lastChild.textContent = served.length
-        ? served.map((r) => `${r.name} (${freeOn(r.id)} free)`).join(', ')
-        : 'no road yet — lands on the nearest free lot';
+      // a listing's shopfront goes on the open roads; a custom-only road
+      // (the boulevard) is said separately, because only a build you made
+      // yourself can stand there
+      const open = served.filter((r) => !r.custom_only);
+      const custom = served.filter((r) => r.custom_only);
+      tr.lastChild.textContent = (open.length
+        ? open.map((r) => `${r.name} (${freeOn(r.id)} free)`).join(', ')
+        : 'no road yet — lands on the nearest free lot')
+        + (custom.length ? ` · your own build may also stand on ${custom.map((r) => `${r.name} (${freeOn(r.id)} free)`).join(', ')}` : '');
       return tr;
     }));
     const list = document.getElementById('vacant-list');

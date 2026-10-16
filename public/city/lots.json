@@ -32,6 +32,7 @@
         "boulevard-15",
         "boulevard-16"
       ],
+      "customOnly": true,
       "categories": [
         "productivity",
         "data-analysis",
@@ -111,6 +112,53 @@
         "northwest-8"
       ],
       "byRequest": true
+    },
+    "boulevard-end-south": {
+      "id": "boulevard-end-south",
+      "name": "Local Llama Lane",
+      "lots": [
+        "boulevard-end-south-1",
+        "boulevard-end-south-2",
+        "boulevard-end-south-3",
+        "boulevard-end-south-4",
+        "boulevard-end-south-5",
+        "boulevard-end-south-6",
+        "boulevard-end-south-7",
+        "boulevard-end-south-8",
+        "boulevard-end-south-9",
+        "boulevard-end-south-10"
+      ],
+      "categories": [
+        "prompt-tools",
+        "productivity",
+        "data-analysis",
+        "other"
+      ]
+    },
+    "ne-east": {
+      "id": "ne-east",
+      "name": "Midjourney Mile",
+      "lots": [
+        "ne-east-1",
+        "ne-east-3",
+        "ne-east-4",
+        "ne-east-5",
+        "ne-east-6",
+        "ne-east-7",
+        "ne-east-8",
+        "ne-east-9",
+        "ne-east-10",
+        "ne-east-11",
+        "ne-east-12",
+        "ne-east-13",
+        "ne-east-14"
+      ],
+      "categories": [
+        "image-generation",
+        "video-generation",
+        "audio-generation",
+        "voice-cloning"
+      ]
     }
   },
   "lots": {
@@ -491,6 +539,213 @@
       "x": 0,
       "z": 57.5,
       "yaw": 3.141592653589793
+    },
+    "boulevard-end-south-1": {
+      "id": "boulevard-end-south-1",
+      "road": "boulevard-end-south",
+      "n": 1,
+      "address": "1 Local Llama Lane",
+      "x": -60.5,
+      "z": -16,
+      "yaw": -1.5707963267948966
+    },
+    "boulevard-end-south-2": {
+      "id": "boulevard-end-south-2",
+      "road": "boulevard-end-south",
+      "n": 2,
+      "address": "2 Local Llama Lane",
+      "x": -83.5,
+      "z": -16,
+      "yaw": 1.5707963267948966
+    },
+    "boulevard-end-south-3": {
+      "id": "boulevard-end-south-3",
+      "road": "boulevard-end-south",
+      "n": 3,
+      "address": "3 Local Llama Lane",
+      "x": -60.5,
+      "z": -28,
+      "yaw": -1.5707963267948966
+    },
+    "boulevard-end-south-4": {
+      "id": "boulevard-end-south-4",
+      "road": "boulevard-end-south",
+      "n": 4,
+      "address": "4 Local Llama Lane",
+      "x": -83.5,
+      "z": -28,
+      "yaw": 1.5707963267948966
+    },
+    "boulevard-end-south-5": {
+      "id": "boulevard-end-south-5",
+      "road": "boulevard-end-south",
+      "n": 5,
+      "address": "5 Local Llama Lane",
+      "x": -60.5,
+      "z": -40,
+      "yaw": -1.5707963267948966
+    },
+    "boulevard-end-south-6": {
+      "id": "boulevard-end-south-6",
+      "road": "boulevard-end-south",
+      "n": 6,
+      "address": "6 Local Llama Lane",
+      "x": -83.5,
+      "z": -40,
+      "yaw": 1.5707963267948966
+    },
+    "boulevard-end-south-7": {
+      "id": "boulevard-end-south-7",
+      "road": "boulevard-end-south",
+      "n": 7,
+      "address": "7 Local Llama Lane",
+      "x": -60.5,
+      "z": -52,
+      "yaw": -1.5707963267948966
+    },
+    "boulevard-end-south-8": {
+      "id": "boulevard-end-south-8",
+      "road": "boulevard-end-south",
+      "n": 8,
+      "address": "8 Local Llama Lane",
+      "x": -83.5,
+      "z": -52,
+      "yaw": 1.5707963267948966
+    },
+    "boulevard-end-south-9": {
+      "id": "boulevard-end-south-9",
+      "road": "boulevard-end-south",
+      "n": 9,
+      "address": "9 Local Llama Lane",
+      "x": -60.5,
+      "z": -64,
+      "yaw": -1.5707963267948966
+    },
+    "boulevard-end-south-10": {
+      "id": "boulevard-end-south-10",
+      "road": "boulevard-end-south",
+      "n": 10,
+      "address": "10 Local Llama Lane",
+      "x": -83.5,
+      "z": -64,
+      "yaw": 1.5707963267948966
+    },
+    "ne-east-1": {
+      "id": "ne-east-1",
+      "road": "ne-east",
+      "n": 1,
+      "address": "1 Midjourney Mile",
+      "x": 156,
+      "z": 57.5,
+      "yaw": 3.141592653589793
+    },
+    "ne-east-3": {
+      "id": "ne-east-3",
+      "road": "ne-east",
+      "n": 3,
+      "address": "3 Midjourney Mile",
+      "x": 168,
+      "z": 57.5,
+      "yaw": 3.141592653589793
+    },
+    "ne-east-4": {
+      "id": "ne-east-4",
+      "road": "ne-east",
+      "n": 4,
+      "address": "4 Midjourney Mile",
+      "x": 168,
+      "z": 34.5,
+      "yaw": 0
+    },
+    "ne-east-5": {
+      "id": "ne-east-5",
+      "road": "ne-east",
+      "n": 5,
+      "address": "5 Midjourney Mile",
+      "x": 180,
+      "z": 57.5,
+      "yaw": 3.141592653589793
+    },
+    "ne-east-6": {
+      "id": "ne-east-6",
+      "road": "ne-east",
+      "n": 6,
+      "address": "6 Midjourney Mile",
+      "x": 180,
+      "z": 34.5,
+      "yaw": 0
+    },
+    "ne-east-7": {
+      "id": "ne-east-7",
+      "road": "ne-east",
+      "n": 7,
+      "address": "7 Midjourney Mile",
+      "x": 192,
+      "z": 57.5,
+      "yaw": 3.141592653589793
+    },
+    "ne-east-8": {
+      "id": "ne-east-8",
+      "road": "ne-east",
+      "n": 8,
+      "address": "8 Midjourney Mile",
+      "x": 192,
+      "z": 34.5,
+      "yaw": 0
+    },
+    "ne-east-9": {
+      "id": "ne-east-9",
+      "road": "ne-east",
+      "n": 9,
+      "address": "9 Midjourney Mile",
+      "x": 204,
+      "z": 57.5,
+      "yaw": 3.141592653589793
+    },
+    "ne-east-10": {
+      "id": "ne-east-10",
+      "road": "ne-east",
+      "n": 10,
+      "address": "10 Midjourney Mile",
+      "x": 204,
+      "z": 34.5,
+      "yaw": 0
+    },
+    "ne-east-11": {
+      "id": "ne-east-11",
+      "road": "ne-east",
+      "n": 11,
+      "address": "11 Midjourney Mile",
+      "x": 216,
+      "z": 57.5,
+      "yaw": 3.141592653589793
+    },
+    "ne-east-12": {
+      "id": "ne-east-12",
+      "road": "ne-east",
+      "n": 12,
+      "address": "12 Midjourney Mile",
+      "x": 216,
+      "z": 34.5,
+      "yaw": 0
+    },
+    "ne-east-13": {
+      "id": "ne-east-13",
+      "road": "ne-east",
+      "n": 13,
+      "address": "13 Midjourney Mile",
+      "x": 228,
+      "z": 57.5,
+      "yaw": 3.141592653589793
+    },
+    "ne-east-14": {
+      "id": "ne-east-14",
+      "road": "ne-east",
+      "n": 14,
+      "address": "14 Midjourney Mile",
+      "x": 228,
+      "z": 34.5,
+      "yaw": 0
     }
   }
 }
