@@ -40,13 +40,13 @@ jobs:
       pull-requests: write   # auto-merge validated bot submissions
       actions: write         # tell city-growth a lot was just taken
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # check out the PR branch itself (not the detached merge ref) so the
           # lot assignment can be committed onto it before merging
           ref: ${{ github.event.pull_request.head.ref || github.ref }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 22 }
       - run: npm ci
 

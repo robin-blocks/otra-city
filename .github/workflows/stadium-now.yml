@@ -42,9 +42,9 @@ jobs:
   put-on:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { ref: main }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 22 }
       # The script resolves a bundle id against RFL's programme feed and
       # refuses any host but theirs, so the worst a mistake can do is show a

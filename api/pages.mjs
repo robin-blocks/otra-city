@@ -41,7 +41,7 @@ const CSS = `
   .chip { display: inline-block; font-size: 12px; padding: 2px 9px; border-radius: 999px; border: 1px solid #31234f;
     color: #e9edf6; margin: 0 6px 6px 0; text-decoration: none; }
   .chip .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: 0; }
-  .cta { display: inline-block; margin: 10px 8px 0 0; background: #ff2d95; color: #fff; text-decoration: none;
+  .cta { display: inline-block; margin: 10px 8px 0 0; background: #d1006e; color: #fff; text-decoration: none;
     font-weight: 700; padding: 11px 20px; border-radius: 999px; }
   .cta.alt { background: transparent; color: #2fe0f8; border: 1px solid #31234f; }
   .poster { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; border: 1px solid #31234f;

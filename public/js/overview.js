@@ -44,14 +44,17 @@ const CSS = `
    out. inline-flex with a SET height and centred content — not an inline
    anchor leaning on min-height, which applies to the content box and grew
    both of these into 62px slabs with a 13px label floating near the top.
-   #mapbtn in index.html carries the same warning; this is the same trap. */
+   #mapbtn in index.html carries the same warning; this is the same trap.
+   The fill is #d1006e, not the city's neon #ff2d95: white 13px text needs
+   4.5:1 (WCAG AA) and the neon gives 3.46; this is 5.34, and the hover
+   brightens only as far as #e0007a (4.72). The glow keeps the neon. */
 #overview .ov-btn { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
   height: 40px; padding: 0 18px; border: 0; border-radius: 999px; white-space: nowrap;
-  background: #ff2d95; color: #fff; text-decoration: none; cursor: pointer;
+  background: #d1006e; color: #fff; text-decoration: none; cursor: pointer;
   font: 700 13px/1 ui-monospace, Menlo, Consolas, monospace;
   box-shadow: 0 4px 14px rgba(255, 45, 149, .3);
   transition: background-color .15s, border-color .15s, color .15s, box-shadow .15s, transform .1s; }
-#overview .ov-btn:hover { background: #ff4da6; box-shadow: 0 6px 18px rgba(255, 45, 149, .4); }
+#overview .ov-btn:hover { background: #e0007a; box-shadow: 0 6px 18px rgba(255, 45, 149, .4); }
 #overview .ov-btn:active { transform: translateY(1px); box-shadow: 0 2px 8px rgba(255, 45, 149, .3); }
 #overview .ov-btn:focus-visible { outline: 2px solid #2fe0f8; outline-offset: 3px; }
 #overview .ov-btn.alt { background: rgba(5, 8, 22, .72); color: #2fe0f8; border: 1px solid #31234f; box-shadow: none; }
