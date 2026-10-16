@@ -73,6 +73,7 @@ const CSS = `
 #overview .ov-card .ov-meta { color: #8a86a0; font-size: 12px; margin: 6px 0 8px; }
 #overview .ov-card .ov-desc { color: #b7bbd0; font-size: 12.5px; margin: 0 0 10px; display: -webkit-box; -webkit-line-clamp: 3;
   -webkit-box-orient: vertical; overflow: hidden; }
+#overview .ov-card .ov-quit { color: #ff6b6b; font-size: 12px; margin: 0 0 8px; }
 #overview .ov-card .ov-row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
 #overview .ov-card a.ov-link { color: #2fe0f8; text-decoration: none; font-size: 12.5px; padding: 6px 0; }
 #overview .ov-card .ov-x { position: absolute; right: 8px; top: 6px; background: rgba(5,8,22,.7); color: #cfd3e8; border: 0; border-radius: 999px;
@@ -387,6 +388,7 @@ export function mountOverview({ world, manifest, focus = null, onEnter, onClose 
       let host = ''; try { host = new URL(p.url).host.replace(/^www\./, ''); } catch {}
       body.innerHTML = `<b>${esc(p.name)}</b><div class="ov-tag">${esc(p.tagline || '')}</div>
         <div class="ov-meta">${cat ? `<span class="ov-chip"><i style="background:${categoryColor(cat.id)}"></i>${esc(cat.label)}</span> · ` : isCity(p) ? `<span class="ov-chip">the city's own</span> · ` : ''}${esc(lot.address)}</div>
+        ${p.notice ? `<div class="ov-quit">NOTICE TO QUIT · site silent since ${esc(String(p.notice.since).slice(0, 10))} · eviction ${esc(p.notice.evict_on)} unless it comes back</div>` : ''}
         ${p.description ? `<div class="ov-desc">${esc(p.description)}</div>` : ''}
         <div class="ov-row"><button class="ov-btn" data-enter="${esc(lot.id)}">${go}</button>
           ${href && !isCity(p) ? `<a class="ov-link" href="${esc(href)}" target="_blank" rel="noopener">${esc(host)} ↗</a>` : ''}

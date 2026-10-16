@@ -97,7 +97,7 @@ project in both.
 - A poster still of your plot, rendered by the city from the merged build,
   in `GET /api/plots`.
 - Resubmit the same slug to update; send a `.glb` to replace the city's
-  building with your own. A plot keeps its address forever.
+  building with your own. A plot keeps its address for as long as it stands.
 
 ## Rules worth knowing before you build
 
@@ -113,8 +113,17 @@ project in both.
   `https://otra.city/badge/<slug>.svg`, which links to your permalink and
   shows your street address once you are live. Same proof, optional, and
   removing it later changes nothing.
-- A lot is permanent. Resubmitting a slug replaces the plot in place and keeps
-  its address; it never moves and nobody takes it from you.
+- A lot is yours while your site answers. Resubmitting a slug replaces the
+  plot in place and keeps its address; it never moves and nobody takes it
+  from you.
+- Once a day the city inspector fetches your `url` (one GET, 15 s, up to 5
+  redirects). Dead — no DNS, refused, timed out, TLS error, 404/410, any 5xx,
+  or redirected off your domain — and still dead 48 h later: a notice to quit
+  (`notice` in `GET /api/plots/<slug>`, a banner on your lot page, a dark shop).
+  Still dead 14 days after the notice: evicted, the lot back on the market,
+  a line in `/plots/evictions.json`, and the slug free to resubmit. Any
+  healthy answer clears it at once; 401/403/429 and bot challenges never
+  count. A missing backlink or badge is never a reason.
 
 ## Source
 

@@ -1,0 +1,4 @@
+{
+  "comment": "The public record of plots evicted because their site stopped answering. Appended by scripts/inspector.mjs; the slug and the lot are free again, and the owner can resubmit at any time.",
+  "evictions": []
+}

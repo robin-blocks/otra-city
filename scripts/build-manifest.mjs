@@ -30,7 +30,9 @@ import { rankFree, pickLot } from '../public/js/city-map.mjs';
 import { apexHost } from '../lib/submitter-host.mjs';
 import { DEFAULT_CATEGORY } from '../public/js/categories.mjs';
 
-const base = join(new URL('..', import.meta.url).pathname, 'public');
+// OTRA_PUBLIC_DIR points the build at another public/ tree — the inspector's
+// check (scripts/inspector-check.mjs) evicts plots from a scratch copy.
+const base = process.env.OTRA_PUBLIC_DIR || join(new URL('..', import.meta.url).pathname, 'public');
 const root = join(base, 'plots');
 const registryPath = join(root, 'lots.json');
 const registry = JSON.parse(readFileSync(registryPath));
@@ -100,6 +102,19 @@ for (const slug of slugs.filter((s) => !assigned[s])) {
 // consumer can tell apart from a manifest that predates posters entirely.
 const posters = existsSync(join(base, POSTER_DIR)) ? readdirSync(join(base, POSTER_DIR)) : [];
 
+// A notice to quit, posted by the inspector (lib/inspector.mjs) on a listing
+// whose site has stayed dead for 48 h. The key is always present, like
+// `poster`: null says "no notice", which a consumer can tell apart from a
+// manifest that predates notices. A plot that is merely `failing` is not
+// published here — one bad day is not news; notices.json has the detail.
+const notices = existsSync(join(root, 'notices.json')) ? JSON.parse(readFileSync(join(root, 'notices.json'))).plots || {} : {};
+const noticeOf = (slug) => {
+  const n = notices[slug];
+  return n && n.state === 'notice'
+    ? { posted: n.noticed, since: n.failing_since, evict_on: n.evict_on, reason: n.reason }
+    : null;
+};
+
 const placed = (id) => {
   const L = plat.lots[id];
   return { lot: L.id, address: L.address, road: L.road, n: L.n, x: L.x, z: L.z, yaw: L.yaw };
@@ -112,6 +127,7 @@ const lots = slugs.map((slug) => {
     glb: `/plots/${slug}/plot.glb`,
     base: `/plots/${slug}/`,
     poster: poster ? posterUrl(poster) : null,
+    notice: noticeOf(slug),
   };
 });
 const vacant = rankFree(plat, holder.keys(), centre)

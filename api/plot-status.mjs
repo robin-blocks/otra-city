@@ -72,6 +72,18 @@ export function freeSlug(slug) {
   };
 }
 
+// A slug that was evicted is free like any other, but its owner coming back
+// to ask deserves to hear why it went. From the public record, never an error.
+async function evictedRecord(base, slug) {
+  try {
+    const r = await fetch(`${base}/plots/evictions.json`);
+    if (!r.ok) return {};
+    const last = ((await r.json()).evictions || []).filter((e) => e.slug === slug).at(-1);
+    return last ? { evicted: { on: last.evicted, lot: last.lot, reason: last.reason,
+      note: 'evicted because its site stopped answering — resubmit any time; the slug is free' } } : {};
+  } catch { return {}; }
+}
+
 export default async function handler(req, res) {
   res.setHeader('content-type', 'application/json');
   res.setHeader('access-control-allow-origin', '*');
@@ -110,7 +122,7 @@ export default async function handler(req, res) {
         return;
       }
       res.statusCode = 404;
-      res.end(JSON.stringify(freeSlug(slug), null, 2));
+      res.end(JSON.stringify({ ...freeSlug(slug), ...(await evictedRecord(base, slug)) }, null, 2));
       return;
     }
     const plot = await plotRes.json();
@@ -134,6 +146,10 @@ export default async function handler(req, res) {
       // absolute here, unlike the root-relative path in the street manifest,
       // because everything else in this response is a link you can follow
       poster: lot?.poster ? `https://otra.city${lot.poster}` : null,
+      // a notice to quit: the site has not answered the inspector's daily
+      // knock for 48 h, and the plot is evicted on evict_on unless it comes
+      // back. null when there is none. See docs/submission.md.
+      notice: lot?.notice ?? null,
       preview: `https://otra.city/preview?glb=/plots/${slug}/plot.glb`,
       plot,
     }, null, 2));

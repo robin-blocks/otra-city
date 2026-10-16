@@ -62,6 +62,8 @@ api/sunset.mjs     410 + pointers for the old 2D-era API paths
 lib/validate-plot.mjs  the ONE validation implementation (API + CI + CLI)
 lib/submitter-host.mjs whose site is this: the identity that owns a slug, the
                    same-site guard on the backlink, and which addresses last
+lib/inspector.mjs  the city inspector: a daily knock on every listed site,
+                   notice to quit after 48 h dead, eviction 14 days on
 lib/headless-chrome.mjs  CDP over the real Chrome (posters, previews, QA)
 lib/static-server.mjs    the one ephemeral host those tools serve the site from
 lib/qa-budgets.mjs       what the city may cost, as a line per lot
@@ -72,7 +74,8 @@ scripts/           build-map (plat the map), map-check (its invariants),
                    api-check (drives the real submission endpoint)
 .github/workflows/ PR validation + auto-merge + manifest rebuild,
                    city walkthrough (the only check that runs on client code),
-                   api (the submission endpoint, on every api/ change)
+                   api (the submission endpoint, on every api/ change),
+                   inspector (daily: dead-site notices and evictions)
 trusted.json       domains that skip the backlink check (directory listees)
 docs/              project docs: plan, PoC notes, funnel, submission design
 poc/, tools/       the Blender/BlenderMCP authoring lane + bridge (see docs)

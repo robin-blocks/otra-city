@@ -6,6 +6,8 @@
 #
 # scripts/api-check.mjs drives the real handler over loopback with no
 # GITHUB_TOKEN, so it validates and reports without opening anything.
+# scripts/inspector-check.mjs rides here too: the inspector decides who is
+# evicted from the city, the other half of who gets in.
 # (The path list is written out twice on purpose: GitHub Actions does not
 # expand YAML anchors, and an alias here silently breaks the trigger.)
 name: api
@@ -29,6 +31,12 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/api.yml'
+      - 'lib/inspector.mjs'
+      - 'lib/poster-paths.mjs'
+      - 'scripts/inspector.mjs'
+      - 'scripts/inspector-check.mjs'
+      - 'scripts/build-manifest.mjs'
+      - '.github/workflows/inspector.yml'
   push:
     branches: [main]
     paths:
@@ -49,6 +57,12 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/api.yml'
+      - 'lib/inspector.mjs'
+      - 'lib/poster-paths.mjs'
+      - 'scripts/inspector.mjs'
+      - 'scripts/inspector-check.mjs'
+      - 'scripts/build-manifest.mjs'
+      - '.github/workflows/inspector.yml'
   # the growth workflow opens its proposals with GITHUB_TOKEN, which starts no
   # pull_request run, so it dispatches this one onto the proposal's branch
   workflow_dispatch:
@@ -64,3 +78,6 @@ jobs:
       # No GITHUB_TOKEN on purpose: the handler must be in dry mode, so a test
       # run can never open a PR or touch the registry.
       - run: npm run api:check
+      # The daily inspector (dead-site notices and evictions): a fixture server
+      # on loopback and a scratch copy of the street, never the real one.
+      - run: npm run inspector:check

@@ -93,8 +93,10 @@ its `lot` id, `address` and world position — or look at
   event. Its lots are listed like any other, and asking for one by id works
   like any other, but they sort to the END of `vacant[]` so they are never
   what you land on by saying nothing. Frontier Mews is set aside today.
-- A plot **keeps its address forever**; an update never moves it, and a `lot`
-  in an update is ignored.
+- A plot **keeps its address for as long as it stands**; an update never
+  moves it, and a `lot` in an update is ignored. It stands for as long as its
+  site answers: a site that stays dead is served a notice to quit and, 14 days
+  on, evicted (submission.md, *When your site stops answering*).
 
 Roads are named, and the street signs say so. Lot numbers are addresses along
 the road (odd one side, even the other on the boulevard), so a gap in the
