@@ -52,8 +52,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with: { node-version: 22 }
       - run: npm ci
 
@@ -67,12 +67,17 @@ jobs:
       - name: check the map
         run: npm run map:check
 
+      # Every indexable page carries a social card, and the card image is
+      # really there at its declared size. Also a second, not a browser.
+      - name: check the social cards
+        run: npm run og:check
+
       - name: walk the city
         run: npm run qa
 
       # Screenshots and the numeric report, kept whether or not the walk passed
       # — a failure is exactly when the pictures are worth having.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: city-walkthrough-${{ github.run_id }}
