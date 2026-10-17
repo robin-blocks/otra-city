@@ -72,10 +72,13 @@ const server = createServer((req, res) => {
   if (path === '/raw-sdk.js' && source) return send('text/javascript', source);
   if (path === '/requests.json') return send('application/json', JSON.stringify(requests));
   if (path === '/api/v1/programme/test') return send('application/json', JSON.stringify({ schema: '4dgsx-programme/1', now: new Date().toISOString(), items: [{ bundleId: 'test', bundleUrl: `${origin}/bundle`, state: 'live', startsAt: new Date(Date.now()-1000).toISOString(), endsAt: new Date(Date.now()+60000).toISOString() }] }));
-  if (path.startsWith('/bundle/') || path.startsWith('/fx/')) {
-    const fx = path.startsWith('/fx/');
-    const file = path.slice(fx ? '/fx/'.length : '/bundle/'.length);
-    if (file === 'scene.json') return send('application/json', JSON.stringify(fx ? {...scene, meta:{...scene.meta, goal_celebration:{version:1}}} : scene));
+  if (path.startsWith('/bundle/') || path.startsWith('/fx/') || path.startsWith('/restart/')) {
+    // /fx/ is a goal_celebration bundle; /restart/ a restart_phase one (m76 on),
+    // whose referee placements are the same >2 m teleports.
+    const prefix = path.slice(0, path.indexOf('/', 1) + 1), fx = prefix !== '/bundle/';
+    const file = path.slice(prefix.length);
+    const meta = prefix === '/fx/' ? { goal_celebration: { version: 1 } } : prefix === '/restart/' ? { restart_phase: 1 } : {};
+    if (file === 'scene.json') return send('application/json', JSON.stringify({ ...scene, meta: { ...scene.meta, ...meta } }));
     if (file === 'ui.json') return send('application/json', JSON.stringify(ui));
     if (file === 'hud.json') return send('application/json', JSON.stringify(hud));
     if (file === 'geometry.bin') return send('application/octet-stream', geo);
@@ -139,16 +142,18 @@ try {
     assert(await countRequests() === beforeSamples, 'sampling no network');
     const detachedSampler = st.host.samplePlay;
     st.dispose(); assert(detachedSampler(0.5) === null, 'disposed sampler cannot retain/use workspace');
-    const fxStage = await sdk.mount({bundleUrl:location.origin+'/fx',autoplay:false});
+    for (const flavour of ['fx', 'restart']) {
+    const fxStage = await sdk.mount({bundleUrl:location.origin+'/'+flavour,autoplay:false});
     const fxRoot = fxStage.group.getObjectByName('4dgsx-match-space'); fxRoot.updateMatrix();
     for (const [t,want] of [[.5,[0,-30,0]],[1,[3,.35,0]],[1.5,[3,.35,0]],[2,[0,-30,0]],[.5,[0,-30,0]]]) {
       const sample = fxStage.host.samplePlay(t).ball;
-      assert(sample.every((v,i)=>Math.abs(v-want[i])<1e-6),'metadata teleport hold '+t);
+      assert(sample.every((v,i)=>Math.abs(v-want[i])<1e-6),flavour+' metadata teleport hold '+t);
       fxStage.seek(t);
       const actual = new (await import('three')).Vector3().setFromMatrixPosition(fxRoot.children[2].matrix).applyMatrix4(fxRoot.matrix);
-      assert(actual.distanceTo(new (await import('three')).Vector3(...sample))<1e-6,'FX native/sampler agree '+t);
+      assert(actual.distanceTo(new (await import('three')).Vector3(...sample))<1e-6,flavour+' native/sampler agree '+t);
     }
     fxStage.dispose();
+    }
     // Default and legacy upstream config load the local pin, not remote code.
     const local = await createBroadcastSdk({ origin: location.origin, reservedDock: 'main' });
     const localStage = await local.mount({ bundleUrl: location.origin + '/bundle' });
@@ -173,7 +178,23 @@ try {
     }
 
     const THREE = await import('three');
-    const { create } = await import('/js/venue-modules/match-4dgsx.js');
+    const { create, celebrationsOf } = await import('/js/venue-modules/match-4dgsx.js');
+    // restart_phase events (m76 on): parsed, validated and resolved inside the bundle.
+    const post = celebrationsOf({ hud: { events: [
+      { t: 157.1, type: 'goal', player: 'r2' },
+      { t: 157.1, type: 'celebration', player: 'r2', kind: 'corner_flag', t_end: 162.1, shout: 'SIUUU' },
+      { t: 162.4, type: 'replay', goal_t: 157.1, player: 'r2', dur_s: 9.6, src: 'media/replays/goal_03.mp4', source: [152.1, 157.3] },
+      { t: 200, type: 'replay', dur_s: 5 },
+      { t: 300, type: 'replay', dur_s: 5, src: '../other/steal.mp4' },
+      { t: 310, type: 'replay', dur_s: 5, src: 'https://evil.example/x.mp4' },
+      { t: 320, type: 'replay', dur_s: -1, src: 'x.mp4' }, { t: 330, type: 'celebration', player: 'r1', t_end: 329 }, null,
+    ] } }, 'https://cdn.4dgsx.com/channels/rfl/bundles/s4-m76');
+    assert(JSON.stringify(post.celebrations) === JSON.stringify([{ t: 157.1, t_end: 162.1, player: 'r2', kind: 'corner_flag' }]), 'celebrations ' + JSON.stringify(post.celebrations));
+    assert(post.replays.length === 4, 'replays kept with or without a file');
+    assert(post.replays[0].src === 'https://cdn.4dgsx.com/channels/rfl/bundles/s4-m76/media/replays/goal_03.mp4', 'src resolved in the bundle');
+    assert(post.replays[0].source.join() === '152.1,157.3' && post.replays[0].goal_t === 157.1, 'span and goal');
+    assert(post.replays.slice(1).every((r) => r.src === null), 'no file, a path out of the bundle or another host: no src');
+    assert(celebrationsOf({ hud: {} }, null).replays.length === 0, 'legacy bundle');
     const root = new THREE.Group(), pitch = new THREE.Group(); root.add(pitch);
     root.position.set(10,3,-2); root.rotation.y = 0.3; pitch.position.set(3,1,-2); pitch.rotation.y = 0.7; pitch.scale.setScalar(1.5);
     const mesh = () => new THREE.Mesh(new THREE.PlaneGeometry(), new THREE.MeshBasicMaterial());

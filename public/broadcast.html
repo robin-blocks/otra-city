@@ -81,6 +81,7 @@ import { createCrowd } from '/js/crowd.js';
 import { CAMERAS, createTrack, framePlay, GANTRY_AIM_LAG_S, GANTRY_FOV_LAG_S,
   frameIso, ISO_IDLE, ISO_LENS, ISO_AIM_LAG_S, ISO_RAIL_LAG_S, ISO_FOV_LAG_S } from '/js/broadcast-cameras.js';
 import { createScorebug } from '/js/scorebug.js';
+import { createReplayPlayer } from '/js/replay-player.js';
 import { createLeagueOverlay } from '/js/league-overlay.js';
 import { createPostMatchTable } from '/js/post-match-table.mjs';
 import { createCleanOutput } from '/js/broadcast-output.mjs';
@@ -93,7 +94,7 @@ const W = 1280, H = 720;        // the brief's frame, fixed regardless of window
 // page's behaviour changes. It is reported in `state().build` and on the note
 // line, so "the deployed page still says X" is settled by reading the page,
 // not by comparing memories of deploys.
-const BUILD = '2026-09-25b';
+const BUILD = '2026-09-28a';
 
 // Errors are evidence: a silent failure films a black hour, so every one is
 // kept for `state()`, echoed to the console the harness reads, and shown.
@@ -352,6 +353,10 @@ const postMatchTable = autoDirect ? {
   update: () => programmeFrame?.tableCue ?? null,
   state: () => sharedProgramme?.state()?.table ?? { visible: false, status: 'loading' },
 } : null;
+// RFL's replay of each goal, a video in the bundle (m76 on), cut to over the
+// walk-back. Only where the director is automatic: an explicit camera or
+// track is the harness's picture, and capture never plays media.
+const replayPlayer = autoDirect ? createReplayPlayer({ width: W, height: H }) : null;
 const leagueOverlay = autoDirect ? createLeagueOverlay({ width: W, height: H, crestFor: (team) => scorebug.crestFor(team) }) : null;
 const feedStat = { wanted: false, mesh: null, slot: null, attached: false, yielded: false, copies: 0, error: null };
 
@@ -1102,10 +1107,20 @@ function draw() {
   if (c) aim(c);
   if (crowd) crowd.update(frame / FPS);
   renderer.info.reset();
+  // A GOAL'S REPLAY IS A MEDIA CUT (restart_phase bundles, m76 on): while the
+  // director's replay window is open and RFL's file has a frame, the picture
+  // is the file and the stadium is not drawn. The graphics below go on top.
+  // One read of the match for the whole frame, replay and scorebug alike.
+  const m = scorebug || replayPlayer ? matchState() : null;
+  const replayOn = !!replayPlayer?.update({ replays: m?.replays, t: m?.bug?.t ?? null,
+    window: sharedProgramme?.state()?.replay ?? null });
+  if (replayOn) replayPlayer.render(renderer);
   // The city through the composer, then the match on top of it, with the
   // scene's depth — a player behind the near stand stays behind it.
-  const roots = [...(venues?.afterToneMap() ?? []), ...(typeof feedSurface !== 'undefined' && feedSurface ? [feedSurface.mesh] : [])];
-  if (look) {
+  const roots = replayOn ? [] : [...(venues?.afterToneMap() ?? []), ...(typeof feedSurface !== 'undefined' && feedSurface ? [feedSurface.mesh] : [])];
+  if (replayOn) {
+    // nothing: the replay is the frame
+  } else if (look) {
     if (frame - floodlightsAt >= 50 || floodlightsAt < 0 || frame < floodlightsAt) {
       floodlights = []; scene.traverse((o) => { if (o.isSpotLight) floodlights.push(o); });
       floodlightsAt = frame;
@@ -1132,12 +1147,12 @@ function draw() {
   // ground's screen actually shows. It nests, because the feed camera can see
   // the screen; it converges within a nesting or two and reads as a screen in
   // shot.
-  const m = scorebug ? matchState() : null;
   const tableCue = postMatchTable?.update({ match: m, camera: c?.camera, settling: settleUntil > 0, time: simT });
   leagueAerial = tableCue && c?.camera === 'heli' ? { ...c, frame } : null;
   const separateLive = cleanOutput.enabled;
   if (scorebug) {
-    scorebug.draw(m?.bug ?? null, { compactOnly: !!tableCue, separateLive });
+    // REPLAY, not LIVE, while the file is the picture.
+    scorebug.draw(m?.bug ? (replayOn ? { ...m.bug, replay: true } : m.bug) : null, { compactOnly: !!tableCue, separateLive });
     scorebug.render(renderer);
   }
   if (leagueOverlay) {
@@ -1341,6 +1356,10 @@ window.rflBroadcast = {
           // every robot and the ball, which is what the gantry frames
           play: m.play ?? null,
           goals: m.goals ?? [],
+          // restart_phase bundles (m76 on): each scorer's live celebration,
+          // and the replays RFL ship as video, with their resolved files
+          celebrations: m.celebrations ?? [],
+          replays: m.replays ?? [],
           // halves and buzzers, `play_end_t` included — the publisher's own
           // "ball at rest" after each whistle
           clockPlan: m.clockPlan ?? null,
@@ -1385,8 +1404,14 @@ window.rflBroadcast = {
         : null,
       // the broadcast graphics: what they are showing, or null when there is
       // nothing to show
-      scorebug: live ? (matchState()?.bug ?? null) : null,
+      // (as drawn: REPLAY while RFL's replay file is the picture)
+      scorebug: live ? ((b) => b && replayPlayer?.onAir ? { ...b, replay: true } : b)(matchState()?.bug ?? null) : null,
       leagueTable: postMatchTable?.state() ?? null,
+      // RFL's replay file: which one is loaded, whether it is the picture
+      // now, how late the first frame came, and whether this browser can
+      // decode H.264 at all (h264 "" means it cannot: Chromium without the
+      // proprietary codecs shows the live stadium through every replay)
+      replayMedia: replayPlayer?.state() ?? null,
       programme: sharedProgramme?.state() ?? null,
       // the crests behind the scorebug: the manifest, and how many images landed
       crests: live && scorebug?.crests ? scorebug.crests : null,

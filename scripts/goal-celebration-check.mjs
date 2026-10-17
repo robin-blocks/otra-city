@@ -53,13 +53,13 @@ test('invalid optional fields are ignored, never coerced into NaN or a replay of
     assert.equal(goalReplayAt([{ ...first, replay_t: value }], map, 288), null);
     assert.equal(goalReplayAt([{ ...first, replay_s: value }], map, 288), null);
     assert.equal(goalReplayAt([{ ...first, source_t: value }], map, 288), null);
-    assert.deepEqual(celebrationPause([{ ...first, celebration_s: value }], 0, 103), { elapsed: 0, celebrating: false });
+    assert.deepEqual(celebrationPause([{ ...first, celebration_s: value }], 0, 103), { elapsed: 0, celebrating: false, stoppage: null });
   }
   assert.equal(goalReplayAt([{ ...first, replay_s: 0 }], map, 288), null);
   assert.equal(goalReplayAt(null, map, 288), null);
   assert.equal(goalHoldAt([null, {}, [NaN, 1], [0, Infinity]], 1), null);
   assert.equal(goalHoldAt(map, NaN), null);
-  assert.deepEqual(celebrationPause([{ ...first, t: NaN }, { ...first, t: 1e308, celebration_s: 1e308 }], 0, 103), { elapsed: 0, celebrating: false });
+  assert.deepEqual(celebrationPause([{ ...first, t: NaN }, { ...first, t: 1e308, celebration_s: 1e308 }], 0, 103), { elapsed: 0, celebrating: false, stoppage: null });
   // Invalid unrelated events do not affect a valid second replay.
   near(goalReplayAt([null, { ...first, type: 'shot' }, { ...first, source_t: '100' }, second], map, 303).t, 100.5);
 });
