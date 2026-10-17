@@ -168,16 +168,41 @@ async function checkFeed(feed, media) {
 // submitter how close they came to the body limit above — the difference
 // between "you have room for a longer video" and a mystery 413 next time.
 async function readBody(req) {
-  if (req.body) {
-    const raw = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-    return { body: typeof req.body === 'string' ? JSON.parse(req.body) : req.body,
-      bytes: Buffer.byteLength(raw) };
+  // A form post is never a bundle: the platform turns it into key=value pairs
+  // and every field arrives as something it was not. `curl -d` sends this type
+  // by default, so name the header rather than report a pile of identity fails.
+  const type = String(req.headers?.['content-type'] || '').toLowerCase();
+  if (/^(application\/x-www-form-urlencoded|multipart\/form-data)/.test(type)) {
+    throw Object.assign(new Error(`the body was sent as ${type.split(';')[0]}; send the bundle as JSON with ` +
+      '`Content-Type: application/json` (curl: -H "content-type: application/json" --data @bundle.json)'),
+    { status: 415, hint: PLOT_HINT });
   }
-  const chunks = [];
-  for await (const c of req) chunks.push(c);
-  const buf = Buffer.concat(chunks);
-  return { body: JSON.parse(buf.toString('utf8')), bytes: buf.length };
+  // On Vercel `req.body` is a getter that parses on read, and throws there on
+  // malformed JSON — so the read is inside the try too.
+  try {
+    const parsed = req.body;
+    if (parsed) {
+      const raw = typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
+      return { body: typeof parsed === 'string' ? JSON.parse(parsed) : parsed, bytes: Buffer.byteLength(raw) };
+    }
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    const buf = Buffer.concat(chunks);
+    return { body: JSON.parse(buf.toString('utf8')), bytes: buf.length };
+  } catch (e) {
+    throw Object.assign(new Error(`the body is not valid JSON (${e.message})`), { hint: PLOT_HINT });
+  }
 }
+
+// What a rejection says when the bundle has no `plot` object. Every listing
+// field lives under `plot`; a flat body fails every identity check at once and,
+// without this, nothing in the report says why — fourteen of those between
+// 12 Sep and 10 Oct, and not one of the submitters came back.
+const PLOT_HINT = 'The listing fields (slug, name, url, description, category, builder, …) go inside a `plot` object: ' +
+  '{"plot": {"slug": "…", "name": "…", "url": "https://…", "builder": "…"}, "dry": true}. ' +
+  'Only glb_base64, glb_url, media, media_urls, discovery_source and dry sit at the top level. ' +
+  'See https://otra.city/docs/submission.md';
+const isObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 
 // Proof that the submitter controls the domain they are claiming: plain HTTP,
 // no JavaScript executed, scanning the page they declared for their own
@@ -700,7 +725,11 @@ export default async function handler(req, res) {
   const started = Date.now();
   try {
     const { body, bytes: requestBytes } = await readBody(req);
-    const plot = body.plot || {};
+    if (!isObject(body)) throw Object.assign(new Error('the body must be a JSON object'), { hint: PLOT_HINT });
+    // No wrapper: still validated (as an empty plot), so the report is the
+    // usual table — but the response leads with what is actually wrong.
+    const wrapperMissing = !isObject(body.plot);
+    const plot = wrapperMissing ? {} : body.plot;
     // telemetry-only fields never travel into the plot that gets published
     delete plot.discovery_source;
     const listing = !body.glb_base64 && !body.glb_url;
@@ -811,6 +840,12 @@ export default async function handler(req, res) {
       mediaOk && uvCheck.ok && (result.feed ? result.feed.ok : true) && !!result.backlink?.ok &&
       !!result.ownership?.ok && !!result.github?.ok && !!result.lot?.ok && !!result.url?.ok;
     const lines = [];
+    if (wrapperMissing) {
+      const stray = ['slug', 'name', 'url', 'tagline', 'description', 'builder'].filter((k) => k in body);
+      lines.push(`FAIL  plot           no \`plot\` object in the body` +
+        (stray.length ? ` — ${stray.join(', ')} ${stray.length > 1 ? 'were' : 'was'} sent at the top level and belong${stray.length > 1 ? '' : 's'} under \`plot\`` : '') +
+        ' (the identity failures below follow from this)');
+    }
     for (const section of ['identity', 'budgets', 'walkability', 'media']) {
       for (const c of result[section].checks) lines.push(`${c.ok ? 'PASS' : 'FAIL'}  ${c.name.padEnd(14)} ${c.detail}`);
     }
@@ -892,6 +927,7 @@ export default async function handler(req, res) {
     res.statusCode = accepted ? 200 : 422;
     res.end(JSON.stringify({
       accepted,
+      ...(wrapperMissing ? { hint: PLOT_HINT } : {}),
       dry,
       pr_url,
       permalink: `https://otra.city/s/${plot.slug}`,
@@ -917,7 +953,7 @@ export default async function handler(req, res) {
     // counts unless it is logged here.
     logAttempt(req, { outcome: 'error', error: String(e.message || e).slice(0, 300), ms: Date.now() - started });
     console.error('submit failed:', e.message || e);
-    res.statusCode = 400;
-    res.end(JSON.stringify({ error: String(e.message || e) }));
+    res.statusCode = e.status || 400;
+    res.end(JSON.stringify({ error: String(e.message || e), ...(e.hint ? { hint: e.hint } : {}) }));
   }
 }

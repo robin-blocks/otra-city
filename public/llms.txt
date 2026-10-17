@@ -52,6 +52,9 @@ project in both.
   `{"plot": {"slug", "name", "url", "description", "category", "builder",
   "pricing"?, "tags"?, "images"?, "logo"?, "colors"?}, "discovery_source"?,
   "dry": true}`.
+  Send it as `Content-Type: application/json` (a form post is a 415), and keep
+  every listing field inside `plot` — a flat body is rejected with a `hint`
+  saying so.
 - **Send `images`, `logo` and `colors`.** They are optional and they are the
   whole difference in what gets built. `images` (https png/jpg/webp) go on the
   billboard and the wall facing the door — a screenshot of the thing working is
