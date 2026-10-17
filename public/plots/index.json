@@ -267,7 +267,8 @@
       "yaw": 3.141592653589793,
       "glb": "/plots/4dgsx/plot.glb",
       "base": "/plots/4dgsx/",
-      "poster": "/posters/4dgsx-4ec16606c8ab.webp"
+      "poster": "/posters/4dgsx-4ec16606c8ab.webp",
+      "notice": null
     },
     {
       "slug": "ai-fruit-video",
@@ -323,7 +324,8 @@
       "yaw": -1.5707963267948966,
       "glb": "/plots/ai-fruit-video/plot.glb",
       "base": "/plots/ai-fruit-video/",
-      "poster": "/posters/ai-fruit-video-146512eeb703.webp"
+      "poster": "/posters/ai-fruit-video-146512eeb703.webp",
+      "notice": null
     },
     {
       "slug": "ai-room-makeover",
@@ -380,7 +382,8 @@
       "yaw": -1.5707963267948966,
       "glb": "/plots/ai-room-makeover/plot.glb",
       "base": "/plots/ai-room-makeover/",
-      "poster": "/posters/ai-room-makeover-846d2f1e1dc3.webp"
+      "poster": "/posters/ai-room-makeover-846d2f1e1dc3.webp",
+      "notice": null
     },
     {
       "slug": "archive-9",
@@ -399,7 +402,8 @@
       "yaw": 3.141592653589793,
       "glb": "/plots/archive-9/plot.glb",
       "base": "/plots/archive-9/",
-      "poster": "/posters/archive-9-3e092f1996b1.webp"
+      "poster": "/posters/archive-9-3e092f1996b1.webp",
+      "notice": null
     },
     {
       "slug": "bulin47ai",
@@ -453,7 +457,8 @@
       "yaw": -1.5707963267948966,
       "glb": "/plots/bulin47ai/plot.glb",
       "base": "/plots/bulin47ai/",
-      "poster": "/posters/bulin47ai-e38886698e2b.webp"
+      "poster": "/posters/bulin47ai-e38886698e2b.webp",
+      "notice": null
     },
     {
       "slug": "city-hall",
@@ -570,7 +575,8 @@
       "yaw": 3.141592653589793,
       "glb": "/plots/city-hall/plot.glb",
       "base": "/plots/city-hall/",
-      "poster": "/posters/city-hall-0413c9afd8b2.webp"
+      "poster": "/posters/city-hall-0413c9afd8b2.webp",
+      "notice": null
     },
     {
       "slug": "fernseed",
@@ -590,7 +596,8 @@
       "yaw": 3.141592653589793,
       "glb": "/plots/fernseed/plot.glb",
       "base": "/plots/fernseed/",
-      "poster": "/posters/fernseed-2ea4ae8f88fd.webp"
+      "poster": "/posters/fernseed-2ea4ae8f88fd.webp",
+      "notice": null
     },
     {
       "slug": "glow-garden",
@@ -609,7 +616,8 @@
       "yaw": 0,
       "glb": "/plots/glow-garden/plot.glb",
       "base": "/plots/glow-garden/",
-      "poster": "/posters/glow-garden-9c8231ec1219.webp"
+      "poster": "/posters/glow-garden-9c8231ec1219.webp",
+      "notice": null
     },
     {
       "slug": "halberd",
@@ -629,7 +637,8 @@
       "yaw": 0,
       "glb": "/plots/halberd/plot.glb",
       "base": "/plots/halberd/",
-      "poster": "/posters/halberd-17833bf77c62.webp"
+      "poster": "/posters/halberd-17833bf77c62.webp",
+      "notice": null
     },
     {
       "slug": "lattice",
@@ -649,7 +658,8 @@
       "yaw": 3.141592653589793,
       "glb": "/plots/lattice/plot.glb",
       "base": "/plots/lattice/",
-      "poster": "/posters/lattice-f6d356048e9f.webp"
+      "poster": "/posters/lattice-f6d356048e9f.webp",
+      "notice": null
     },
     {
       "slug": "listing-demo",
@@ -697,7 +707,8 @@
       "yaw": 0,
       "glb": "/plots/listing-demo/plot.glb",
       "base": "/plots/listing-demo/",
-      "poster": "/posters/listing-demo-1d6505d4d1ae.webp"
+      "poster": "/posters/listing-demo-1d6505d4d1ae.webp",
+      "notice": null
     },
     {
       "slug": "mews-1",
@@ -758,7 +769,8 @@
       "yaw": 0,
       "glb": "/plots/mews-1/plot.glb",
       "base": "/plots/mews-1/",
-      "poster": "/posters/mews-1-1c50c5ba6610.webp"
+      "poster": "/posters/mews-1-1c50c5ba6610.webp",
+      "notice": null
     },
     {
       "slug": "mews-3",
@@ -814,7 +826,8 @@
       "yaw": 0,
       "glb": "/plots/mews-3/plot.glb",
       "base": "/plots/mews-3/",
-      "poster": "/posters/mews-3-8aec4514923c.webp"
+      "poster": "/posters/mews-3-8aec4514923c.webp",
+      "notice": null
     },
     {
       "slug": "mews-5",
@@ -859,7 +872,8 @@
       "yaw": 0,
       "glb": "/plots/mews-5/plot.glb",
       "base": "/plots/mews-5/",
-      "poster": "/posters/mews-5-7f9deffaa27f.webp"
+      "poster": "/posters/mews-5-7f9deffaa27f.webp",
+      "notice": null
     },
     {
       "slug": "mews-7",
@@ -880,7 +894,8 @@
       "yaw": 0,
       "glb": "/plots/mews-7/plot.glb",
       "base": "/plots/mews-7/",
-      "poster": "/posters/mews-7-ade42d357e0c.webp"
+      "poster": "/posters/mews-7-ade42d357e0c.webp",
+      "notice": null
     },
     {
       "slug": "museverse",
@@ -900,7 +915,8 @@
       "yaw": 0,
       "glb": "/plots/museverse/plot.glb",
       "base": "/plots/museverse/",
-      "poster": "/posters/museverse-2c55bda1a475.webp"
+      "poster": "/posters/museverse-2c55bda1a475.webp",
+      "notice": null
     },
     {
       "slug": "myseasonhue",
@@ -956,7 +972,8 @@
       "yaw": 0,
       "glb": "/plots/myseasonhue/plot.glb",
       "base": "/plots/myseasonhue/",
-      "poster": "/posters/myseasonhue-cb863944534e.webp"
+      "poster": "/posters/myseasonhue-cb863944534e.webp",
+      "notice": null
     },
     {
       "slug": "pasteguard",
@@ -1012,7 +1029,8 @@
       "yaw": 3.141592653589793,
       "glb": "/plots/pasteguard/plot.glb",
       "base": "/plots/pasteguard/",
-      "poster": "/posters/pasteguard-15eb880d3079.webp"
+      "poster": "/posters/pasteguard-15eb880d3079.webp",
+      "notice": null
     },
     {
       "slug": "photogenerai",
@@ -1068,7 +1086,8 @@
       "yaw": -1.5707963267948966,
       "glb": "/plots/photogenerai/plot.glb",
       "base": "/plots/photogenerai/",
-      "poster": "/posters/photogenerai-ead6a270d000.webp"
+      "poster": "/posters/photogenerai-ead6a270d000.webp",
+      "notice": null
     },
     {
       "slug": "promptfrenzy",
@@ -1154,7 +1173,8 @@
       "yaw": 0,
       "glb": "/plots/promptfrenzy/plot.glb",
       "base": "/plots/promptfrenzy/",
-      "poster": "/posters/promptfrenzy-5d8a47a79f5d.webp"
+      "poster": "/posters/promptfrenzy-5d8a47a79f5d.webp",
+      "notice": null
     },
     {
       "slug": "promptops",
@@ -1210,7 +1230,8 @@
       "yaw": -1.5707963267948966,
       "glb": "/plots/promptops/plot.glb",
       "base": "/plots/promptops/",
-      "poster": "/posters/promptops-0a2322a95584.webp"
+      "poster": "/posters/promptops-0a2322a95584.webp",
+      "notice": null
     },
     {
       "slug": "shellwire",
@@ -1266,7 +1287,8 @@
       "yaw": 3.141592653589793,
       "glb": "/plots/shellwire/plot.glb",
       "base": "/plots/shellwire/",
-      "poster": "/posters/shellwire-093e05383626.webp"
+      "poster": "/posters/shellwire-093e05383626.webp",
+      "notice": null
     },
     {
       "slug": "signal",
@@ -1303,7 +1325,8 @@
       "yaw": 0,
       "glb": "/plots/signal/plot.glb",
       "base": "/plots/signal/",
-      "poster": "/posters/signal-d4d7e07d440e.webp"
+      "poster": "/posters/signal-d4d7e07d440e.webp",
+      "notice": null
     }
   ],
   "vacant": [

@@ -225,6 +225,31 @@
       things in return: that you had the right to send it, and that it is not
       someone else's project passed off as yours.
       <a href="/docs/submission.md">The terms in full</a>.</li>
+    <li><b>And one knock a day, for as long as you stand</b>: the city
+      inspector fetches your url once a day — one <code>GET</code>, user agent
+      <code>otra-city-bot/1.0</code>, up to 5 redirects, 15 s, the first 64 KiB
+      read and nothing run. If your site is <b>dead</b> (no DNS, refused, timed
+      out, a TLS error, <code>404</code>/<code>410</code>, any <code>5xx</code>,
+      or redirected off your domain) and still dead 48 hours later, your shop
+      gets a <b>notice to quit</b>: it goes dark, and your lot page and
+      <code>/api/plots/&lt;slug&gt;</code> say so, with an eviction date 14 days
+      on. Still dead on that date, the plot is <b>evicted</b> — files removed,
+      lot back on the market, a line in the public record — and the slug is
+      free for you to resubmit any time. One healthy answer at any point takes
+      the notice down. <code>401</code>, <code>403</code>, <code>429</code> and
+      bot-challenge pages never count either way. It is never about the
+      backlink: that is read once, and taking it down changes nothing.
+      Two public files hold this, and nothing else is kept:
+      <a href="/plots/notices.json"><code>/plots/notices.json</code></a> — per
+      failing plot its <code>state</code>, <code>name</code>, <code>url</code>,
+      <code>lot</code>, <code>failing_since</code>, <code>reason</code>,
+      <code>noticed</code> and <code>evict_on</code>, committed only when a plot
+      changes state — and
+      <a href="/plots/evictions.json"><code>/plots/evictions.json</code></a> —
+      per eviction the <code>slug</code>, <code>name</code>, <code>url</code>,
+      <code>lot</code>, <code>failing_since</code>, <code>noticed</code>,
+      <code>evicted</code> and last <code>reason</code>.
+      <a href="/docs/submission.md">The full policy</a>.</li>
     <li><b>How to take it down</b>: open an issue from the identity that owns
       the slug — the url's host, the same one that can update it — and the plot
       is dropped from the manifest (gone from the street at once, no deploy)
@@ -255,7 +280,8 @@ go-ahead.</pre>
     <code>GET /api/plots</code>, whose <code>roads[]</code> says which road
     takes which category and whose <code>vacant[]</code> lists every free lot.
     The dry run's <code>lot</code> line names the one you would get. A plot
-    keeps its address forever; updates never move it. The city's own plots —
+    keeps its address for as long as it stands — as long as its site answers;
+    updates never move it. The city's own plots —
     exhibitions, venues, demonstrations — are placed by hand; a listing is
     placed by its category.</p>
   <p id="vacant">Free right now: <span id="vacant-list">…</span></p>

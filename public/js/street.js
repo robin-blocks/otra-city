@@ -158,6 +158,56 @@ const claimedFields = (plot, color) => ({
   foot2: `otra.city/s/${plot.slug}`,
   color,
 });
+// and what it says once the inspector has served a notice to quit: the site
+// has stayed dead for two days, and the board says so in the city's words
+const shortDate = (iso) => {
+  const d = new Date(String(iso).length === 10 ? `${iso}T00:00:00Z` : iso);
+  return Number.isNaN(d.getTime()) ? String(iso || '') : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+};
+const noticeFields = (plot) => ({
+  address: `NOTICE TO QUIT · ${(plot.address || '').toUpperCase()}`,
+  title: plot.name,
+  subtitle: `this site has not answered since ${shortDate(plot.notice.since)}. Eviction on ${shortDate(plot.notice.evict_on)} unless it comes back`,
+  foot1: 'by order of the city inspector',
+  foot2: `otra.city/lot/${plot.lot}`,
+  color: NOTICE_RED,
+});
+const NOTICE_RED = '#ff4d4d';
+
+// The NOTICE TO QUIT pasted on a shop's door. Its words are the same on every
+// door, so every placard in the city shares ONE material and ONE small
+// texture, made on first use: a street with notices costs one material more
+// than a street without, however many are posted. The dates are on the board.
+let placardMat = null;
+export function noticePlacard() {
+  if (!placardMat) {
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = 160;
+    const x = c.getContext('2d');
+    x.fillStyle = '#f4efe2';
+    x.fillRect(0, 0, 256, 160);
+    x.strokeStyle = '#c4161c';
+    x.lineWidth = 8;
+    x.strokeRect(6, 6, 244, 148);
+    x.fillStyle = '#c4161c';
+    x.textAlign = 'center';
+    x.font = '700 34px Menlo, monospace';
+    x.fillText('NOTICE', 128, 54);
+    x.fillText('TO QUIT', 128, 92);
+    x.fillStyle = '#2a2633';
+    x.font = '15px Menlo, monospace';
+    x.fillText('this site has stopped', 128, 120);
+    x.fillText('answering — see the board', 128, 140);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    placardMat = new THREE.MeshBasicMaterial({ map: t });
+  }
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), placardMat);
+  m.name = 'notice_to_quit';
+  return m;
+}
+
 // and what a free one says: the id an agent types, and where to type it
 const vacantFields = (v) => ({
   address: (v.address || '').toUpperCase(),
@@ -192,7 +242,7 @@ function boardFrame(lot) {
 }
 
 function claimedBoard(parent, colliders, interactables, plot) {
-  const accent = new THREE.Color(plot.color || '#47f2ff');
+  const accent = new THREE.Color(plot.notice ? NOTICE_RED : plot.color || '#47f2ff');
   const f = boardFrame(plot);
   const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.95, 0.16), new THREE.MeshStandardMaterial({ color: 0x241f38 }));
   post.position.set(f.x, 0.48, f.z);
@@ -208,7 +258,7 @@ function claimedBoard(parent, colliders, interactables, plot) {
     new THREE.MeshStandardMaterial({ color: 0x241f38, roughness: 0.8 }));
   grp.add(backing);
   const face = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.06),
-    new THREE.MeshBasicMaterial({ map: boardTexture(claimedFields(plot, '#' + accent.getHexString())) }));
+    new THREE.MeshBasicMaterial({ map: boardTexture(plot.notice ? noticeFields(plot) : claimedFields(plot, '#' + accent.getHexString())) }));
   face.position.z = 0.036;
   grp.add(face);
   parent.add(grp);

@@ -186,7 +186,10 @@ the permalink, the media system, and the animation system.
     document promised a daily re-check, a three-strike counter and a public
     `removed/` list. None of that exists. It is written here as what happens,
     not as what we would like to happen: if your link comes down afterwards,
-    nothing notices today.
+    nothing notices, and nothing ever will. The city inspector's daily knock
+    (see [When your site stops answering](#when-your-site-stops-answering))
+    is a different question — does the site answer at all — and never reads
+    the page for the permalink or the badge.
 - **the url has to be an address that lasts**: bare IPs, developer tunnels
   (`*.ngrok-free.app`, `*.trycloudflare.com`, `*.loca.lt` …) and link
   shorteners are refused. A plot's url is on its information board for as long
@@ -227,8 +230,9 @@ non-exclusive, and no wider than the job:
   wants to put your shopfront on their page, so the licence has to reach them
   too.
 
-That licence lasts as long as the plot stands. Take the plot down and it ends,
-with the one exception in *Taking it down* below.
+That licence lasts as long as the plot stands. Take the plot down — or let
+your site die until the plot is evicted, below — and it ends, with the one
+exception in *Taking it down* below.
 
 **And you tell the city two things by submitting**: that you have the right to
 send what you sent, and that you are not passing off someone else's project as
@@ -268,6 +272,78 @@ like to happen:
 - **The only published route is a GitHub issue**, which is public and needs an
   account. If that is the wrong shape for your request, it is a gap, not a
   policy.
+
+## When your site stops answering
+
+A plot stands for as long as your site answers. A listing whose site has died
+is still a shopfront on the street, and a visitor who walks in and follows the
+link lands on an error — so once a day the **city inspector** knocks on every
+listed shop's door. This section is what it does, not what it might.
+
+**Who is knocked on**: every third-party plot. The city's own (any `url` on
+otra.city: exhibitions, demos, utilities) never is.
+
+**The knock** is one `GET` of your plot's `url`, as user agent
+`otra-city-bot/1.0`, following up to 5 redirects, 15 seconds in all, from a
+GitHub Actions runner. It reads at most the first 64 KiB of the answer and
+runs nothing. Its answer is one of three:
+
+- **dead** — the name does not resolve, the connection is refused or times
+  out, TLS fails, the page is `404` or `410`, the server answers any `5xx`,
+  or the redirects end on a different registrable domain from the one you
+  listed (the same rule as the backlink: `www.` and subdomains are fine,
+  leaving the domain is not).
+- **inconclusive** — `401`, `403`, `429` or a bot-challenge page (Cloudflare's
+  "Just a moment…", Vercel's checkpoint and the like). The runner is a
+  datacenter address and those are routinely challenged, so an inconclusive
+  knock **never counts either way**: it neither moves a plot towards eviction
+  nor clears it.
+- **healthy** — anything else.
+
+**What happens, in the city's words:**
+
+1. **Failing.** The first dead knock records the time (`failing_since`).
+   Nothing is shown anywhere; one bad day is not news.
+2. **Notice to quit.** A dead knock at least 48 hours after `failing_since`
+   posts a notice — usually on the third daily knock. The notice is
+   public: your lot page says *this site has not answered since <date>;
+   eviction on <date> unless it comes back*, `GET /api/plots/<slug>` and every
+   lot in `GET /api/plots` carry `notice: {posted, since, evict_on, reason}`
+   (`null` when there is none), the map card says so, and in the city the
+   shop goes dark — lights out, screens off — with a NOTICE TO QUIT pasted on
+   its door and on its information board. `evict_on` is the notice date plus
+   **14 days**.
+3. **Eviction.** If the knock on or after `evict_on` is still dead, the plot
+   is evicted: its directory and poster are removed, its lot is released in
+   the land registry and goes back on the market (`vacant[]`), the manifest
+   and sitemap are rebuilt, and a line is added to the public record,
+   [`/plots/evictions.json`](https://otra.city/plots/evictions.json): slug,
+   name, url, lot, `failing_since`, `noticed`, `evicted` and the last reason.
+
+**Any healthy knock, at any stage, clears it at once** and the notice comes
+down. Getting your site back up is the whole of the appeal; there is nothing
+to file. Resubmitting under a different `url` also starts the clock over.
+
+**After an eviction the slug is free** and so is the lot. Resubmit any time,
+the ordinary way; you land wherever your category places you then, which may
+not be your old address. `GET /api/plots/<slug>` answers `404` like any free
+slug, with an `evicted` field saying when and why.
+
+**What the inspector does not do:**
+
+- It **never evicts for a missing backlink or badge**. The permalink is read
+  once, at submission, as proof — taking it down later has no consequence,
+  and that stays true.
+- It never knocks harder: no retries inside a run, no JavaScript, no second
+  page.
+- **Two circuit breakers.** If more than 30% of the street comes back dead in
+  one run, that is the runner's network rather than the street: the run
+  records nothing and fails, and a person looks. And a single run never
+  evicts more than 3 plots; the rest wait for the next day.
+
+The state lives in [`/plots/notices.json`](https://otra.city/plots/notices.json),
+which is public and is committed only when a plot changes state. The code is
+`lib/inspector.mjs`; the daily run is `.github/workflows/inspector.yml`.
 
 ## What a submission is recorded as
 
@@ -469,6 +545,20 @@ re-validates and auto-merges; the street manifest rebuilds on merge. Send
 serve a page containing `otra.city/s/<slug>` unless your domain is in
 `trusted.json` (domains manually approved by the maintainers).
 
+
+### Added 2026-10-16 — the city inspector
+
+- A daily knock on every third-party plot's `url`. A site that stays dead for
+  48 hours gets a **notice to quit**; one still dead 14 days after the notice
+  is **evicted** and its lot goes back on the market. Any healthy answer
+  clears it at once. `401`/`403`/`429` and bot challenges never count. See
+  [When your site stops answering](#when-your-site-stops-answering).
+- Every lot in `GET /api/plots`, and `GET /api/plots/<slug>`, now carries
+  `notice` (`null` when there is none). An evicted slug's `404` carries
+  `evicted`.
+- Public records: `/plots/notices.json` and `/plots/evictions.json`.
+- The backlink is still read once and never again; a missing badge is never a
+  reason for anything.
 
 ### Added 2026-09-24 — the badge
 

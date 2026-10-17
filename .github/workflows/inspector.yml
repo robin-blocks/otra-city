@@ -1,0 +1,92 @@
+# The city inspector: once a day, knock on every listed shop's door.
+#
+# A listing whose site has died is still a shopfront on the street, and a
+# visitor who walks in and clicks through lands on a 404. So every day this
+# fetches each third-party plot's url (lib/inspector.mjs has the policy):
+#
+#   first dead answer        -> failing        (recorded, nothing shown)
+#   still dead 48 h later    -> NOTICE TO QUIT (on the lot page, the API, the
+#                                               map card, and a dark shop with a
+#                                               notice on its door)
+#   still dead on evict_on   -> EVICTED        (14 days after the notice: files
+#                                               removed, lot back on the market,
+#                                               a line in plots/evictions.json)
+#   any healthy answer       -> cleared, notice down, at once
+#
+# It commits straight to main as otra-city-bot — like stadium-now.yml — and
+# ONLY when a plot changes state, so a quiet day neither commits nor
+# redeploys. A GITHUB_TOKEN push still deploys on Vercel; it does not trigger
+# other workflows, which is why the manifest is rebuilt inside this run.
+#
+#   gh workflow run inspector.yml -f dry_run=true    # knock, report, write nothing
+#
+# Red means look: either more than 30% of the street came back dead at once
+# (the breaker: that is the runner's network, and nothing was recorded) or the
+# push lost a race three times.
+name: inspector — knock on every door
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'knock and report, write nothing'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: inspector
+  cancel-in-progress: false
+
+jobs:
+  knock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      # stdlib only: the knock, the state machine and build-manifest.mjs
+      # import nothing from node_modules, so there is no npm ci to wait on
+
+      - name: knock
+        run: |
+          node scripts/inspector.mjs ${{ inputs.dry_run && '--dry' || '' }} \
+            --save-checks "$RUNNER_TEMP/knocks.json" | tee "$RUNNER_TEMP/report.txt"
+          exit "${PIPESTATUS[0]}"
+
+      - name: map still consistent
+        if: ${{ !inputs.dry_run }}
+        run: node scripts/map-check.mjs
+
+      # Commit only if a plot changed state. A plot merging at the same moment
+      # can win the race to main; then the round is REPLAYED from today's
+      # knocks on top of the new main (no second knock — the answer is the
+      # same and the sites have been asked once today already).
+      - name: commit
+        if: ${{ !inputs.dry_run }}
+        run: |
+          paths="public/plots public/posters public/sitemap.xml"
+          git config user.name  "otra-city-bot"
+          git config user.email "noreply@otra.city"
+          for attempt in 1 2 3; do
+            git add -A $paths
+            if git diff --cached --quiet; then echo "no transitions — nothing to commit"; exit 0; fi
+            changes=$(grep -E '^(change|evict|held over):' "$RUNNER_TEMP/report.txt" || true)
+            git commit -q -m "chore(inspector): notices and evictions
+
+          $changes
+
+          Daily knock on every listed shop's door — .github/workflows/inspector.yml"
+            if git push; then exit 0; fi
+            echo "push lost a race (attempt $attempt); replaying today's knocks on the new main"
+            git fetch -q origin main
+            git reset -q --hard origin/main
+            node scripts/inspector.mjs --checks "$RUNNER_TEMP/knocks.json" | tee "$RUNNER_TEMP/report.txt"
+            node scripts/map-check.mjs
+          done
+          echo "could not push after 3 attempts"; exit 1

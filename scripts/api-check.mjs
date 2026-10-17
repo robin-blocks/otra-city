@@ -357,6 +357,16 @@ const listing = (over = {}) => ({
   check('the directory lists every road with a listing and every category',
     hd.includes(`/road/${demo.road}`) && hd.includes('image-generation') === false /* labels, not ids */ && hd.includes('Image generation'));
   check('an unknown lot is nobody\'s page', renderLot('boulevard-999', manifest, plat) === null && renderRoad('nowhere', manifest, plat) === null);
+  // a notice to quit (lib/inspector.mjs): on the lot page and the cards,
+  // escaped like everything else, and absent when there is none
+  check('every lot in the manifest says whether it has a notice', manifest.lots.every((l) => 'notice' in l));
+  check('no notice, no banner', !html.includes('NOTICE TO QUIT'));
+  const served = { ...manifest, lots: manifest.lots.map((l) => (l.slug === 'listing-demo'
+    ? { ...l, notice: { posted: '2026-10-18T06:17:00.000Z', since: '2026-10-16T06:17:00.000Z', evict_on: '2026-11-01', reason: 'HTTP 404 <b>' } } : l)) };
+  const hn = renderLot(demo.lot, served, plat);
+  check('a lot on notice says so, with both dates', hn.includes('NOTICE TO QUIT') && hn.includes('has not answered since 16 Oct 2026') &&
+    hn.includes('eviction on 1 Nov 2026 unless it comes back') && hn.includes('HTTP 404 &lt;b&gt;') && !hn.includes('404 <b>'));
+  check('its card on the road says so too', renderRoad(demo.road, served, plat).includes('notice to quit'));
 }
 check('the tagline is cut at a word', deriveTagline('word '.repeat(30)).length <= 80 && !/\s…$/.test(deriveTagline('word '.repeat(30))));
 check('a short description is the tagline as is', deriveTagline('Short and sweet.') === 'Short and sweet.');

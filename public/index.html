@@ -214,7 +214,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createAvatar } from '/js/avatar.js';
 import { PlayerController, CAM } from '/js/player.js';
 import { createJoystick } from '/js/joystick.js';
-import { loadStreet } from '/js/street.js';
+import { loadStreet, noticePlacard } from '/js/street.js';
 import { standingPoint } from '/js/city-map.mjs';
 import { createMediaSystem } from '/js/media.js';
 import { createAnimSystem } from '/js/anims.js';
@@ -590,6 +590,7 @@ Promise.all(street.manifest.lots.map((p) => new Promise((resolve) => {
     // street grows. Spot and directional lights (rare) stay where authored.
     for (const l of plotLights) {
       if (!l.isPointLight) continue;
+      if (p.notice) { l.removeFromParent(); continue; }   // served a notice to quit: the power is off
       lights.add({ position: l.getWorldPosition(new THREE.Vector3()), color: l.color, intensity: l.intensity, distance: l.distance, decay: l.decay, lot: { x: container.position.x, z: container.position.z } });
       l.removeFromParent();
     }
@@ -602,7 +603,31 @@ Promise.all(street.manifest.lots.map((p) => new Promise((resolve) => {
         at: new THREE.Vector3(0, 0, 4.62).applyMatrix4(container.matrixWorld),
       });
     }
-    media.attach(container, gltf.scene, p.media, p.base);
+    if (p.notice) {
+      // A shop on notice (its site has stopped answering — lib/inspector.mjs)
+      // stands dark: no pooled lights (above), its glow turned almost all the
+      // way down, screens and sound off — the pictures stay on the wall — and
+      // a NOTICE TO QUIT pasted on the left door panel, so it slides with the
+      // door. A plot with no door wears it on its frontage instead.
+      gltf.scene.traverse((o) => {
+        for (const m of [].concat(o.material || [])) if (m.emissive) m.emissiveIntensity *= 0.1;
+      });
+      const sign = noticePlacard();
+      const host = panels[0] && panels[1] ? panels[0] : null;
+      if (host) {
+        // the panel's geometry is authored in plot space with an identity
+        // node, so its box in container space says where its face is
+        const box = new THREE.Box3().setFromObject(host).applyMatrix4(container.matrixWorld.clone().invert());
+        const c = box.getCenter(new THREE.Vector3());
+        sign.position.set(c.x, Math.min(1.75, box.max.y - 0.35), box.max.z + 0.015);
+        host.add(sign);
+      } else {
+        sign.position.set(0, 1.75, 5.02);
+        container.add(sign);
+      }
+      sign.updateMatrixWorld(true);
+    }
+    media.attach(container, gltf.scene, p.notice ? (p.media?.pictures ? { pictures: p.media.pictures } : null) : p.media, p.base);
     anims.attach(container, gltf.scene, p.anims);
     gltf.scene.traverse((o) => {
       // canonical names are link_1/link_2, but any link_* prefix counts —

@@ -66,6 +66,9 @@ const CSS = `
   .roads .n { color: #8a86a0; font-size: 13px; }
   #q { width: 100%; box-sizing: border-box; font: inherit; color: #e9edf6; background: #150f26;
     border: 1px solid #31234f; border-radius: 9px; padding: 10px 13px; margin: 6px 0 4px; }
+  .notice { border: 2px solid #ff4d4d; background: #2a0d14; color: #ffd9d9; border-radius: 10px; padding: 12px 16px; margin: 18px 0; }
+  .notice b { color: #ff6b6b; letter-spacing: 1px; }
+  .card .quit { color: #ff6b6b; }
   footer { margin-top: 52px; color: #6f6b85; font-size: 13px; border-top: 1px solid #241f38; padding-top: 18px; }
   footer a { color: #8a86a0; }
 `;
@@ -124,6 +127,21 @@ function pictureOf(p) {
   return pic ? `${p.base}${pic}` : null;
 }
 
+// "16 Oct 2026" — a notice is read by people, so it says a date, not a timestamp
+export const longDate = (iso) => {
+  const d = new Date(String(iso).length === 10 ? `${iso}T00:00:00Z` : iso);
+  return Number.isNaN(d.getTime()) ? String(iso ?? '') : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+};
+
+// The notice to quit the inspector (lib/inspector.mjs) posts on a listing
+// whose site has stayed dead for two days.
+export function noticeBanner(p) {
+  if (!p.notice) return '';
+  return `<div class="notice" role="alert"><b>NOTICE TO QUIT</b><br>This site has not answered since ${esc(longDate(p.notice.since))}` +
+    ` (${esc(p.notice.reason || 'no answer')}); eviction on ${esc(longDate(p.notice.evict_on))} unless it comes back.` +
+    ` The city knocks once a day — one good answer takes the notice down. <a href="/docs/submission.md#when-your-site-stops-answering">Why</a></div>`;
+}
+
 function card(p) {
   const img = pictureOf(p);
   const cat = p.category || (isCity(p) ? null : DEFAULT_CATEGORY);
@@ -132,7 +150,7 @@ function card(p) {
   <div class="body">
     <b><a href="/lot/${esc(p.lot)}">${esc(p.name)}</a></b>
     <span>${esc(p.tagline || p.description || '')}</span>
-    <div class="addr">${esc(p.address)}${cat ? ` · ${esc((categoryOf(cat) || {}).label || cat)}` : ' · the city\u2019s own'}</div>
+    <div class="addr">${esc(p.address)}${cat ? ` · ${esc((categoryOf(cat) || {}).label || cat)}` : ' · the city\u2019s own'}${p.notice ? ' · <span class="quit">notice to quit</span>' : ''}</div>
   </div>
 </li>`;
 }
@@ -190,6 +208,7 @@ export function renderLot(id, manifest, plat) {
 <h1>${esc(p.name)}</h1>
 <p class="sub">${esc(p.tagline || '')}</p>
 <div>${cat ? chip(cat) : '<span class="chip">the city\u2019s own</span>'}${p.pricing ? `<span class="chip">${esc(p.pricing)}</span>` : ''}${(Array.isArray(p.tags) ? p.tags : []).map((t) => `<span class="chip">#${esc(t)}</span>`).join('')}</div>
+${noticeBanner(p)}
 ${img ? `<img class="poster" src="${esc(img)}" alt="${esc(p.name)} — ${esc(lot.address)}, otra.city">` : ''}
 ${p.description ? `<p>${esc(p.description)}</p>` : ''}
 <p class="meta"><b>Website</b> ${href ? `<a href="${esc(href)}">${esc(host || href)} ↗</a>` : esc(p.url || '')}</p>
