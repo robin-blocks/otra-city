@@ -56,31 +56,57 @@ the agent's report.
 
 Robin asked whether the map should branch from the centre mind-map style,
 related roads off related roads. Yes — as the **growth rule**, not as a
-redraw:
+redraw. And since 2026-10-16 the rule runs itself.
 
 - The city already has the shape: a trunk (Singularity Boulevard) with
-  terraces off the stadium roundabout. Each category is a branch; today the
-  branches are the existing roads, with the categories assigned in
-  `map.json` (`east` takes the four generative-media categories, `south`
-  chatbots and text, `north` agents, `west` code-assist, the boulevard
-  productivity, data-analysis, prompt-tools and other).
-- **When a road fills**, the allocator falls through to the nearest free lot
-  and says `category-full` in the report and the CI log. That is the signal
-  to add a road *for that category*, attached at the far end of the network
-  through a roundabout node that appears in both chains, so no address ever
-  moves (`docs/map/ARCHITECTURE.md` §8 has the constraints: every junction is
-  a roundabout, corridors must not cross existing lots, growth at a chain's
-  far end preserves numbering).
-- **Related roads branch off related roads**: the four generative-media
-  categories share Gemini Gate today; the first one to fill gets its own
-  street off Gemini Gate's far end, and the district is that road plus its
-  branches. Districts are therefore emergent, named when they exist, never
-  pre-drawn empty.
-- The plan view and the front-door map colour roads by category
-  (`public/js/categories.mjs` gives every category a hue), which is the
-  mind-map's "use colour" made literal.
+  terraces off the stadium roundabout. Each category is a branch; the
+  categories are assigned to roads in `map.json` (`east` takes the four
+  generative-media categories, `south` chatbots and text, `north` agents,
+  `west` code-assist).
+- **The boulevard is the high street, for buildings somebody built.** It is
+  `custom_only`: it still lists productivity, data-analysis, prompt-tools and
+  other, but only for a custom build. A listing the city builds a template
+  shopfront for goes to the district grown for its category (first: Local
+  Llama Lane, off a roundabout at the boulevard's west end). The template
+  shops already on the boulevard keep their addresses — an address never
+  moves. Why: a low floor on the one street every visitor walks makes a mall,
+  and the audit on 2026-10-16 found the boulevard 14/16 full, four of them
+  template shops.
+- **A district** is the set of roads a template listing of some category may
+  use. Its **headroom** is their free lots. When headroom is at or under
+  `growth.headroom` (2), `lib/city-growth.mjs` plans one road for it:
+  - *extend* — a serving road continued straight on from its own dead end
+    (preferred: the district stays one street);
+  - *branch* — a new road out of a roundabout on a serving road, on an arm
+    at least 60° from the others;
+  - *junction* — a roundabout at a serving (or related) road's dead end, or a
+    short lot-less stub past it, and a road out of that.
+  Every candidate is re-platted with the city's own `platLots` and kept only
+  if **every lot the map already affords** — held or vacant — comes out at
+  the same place; it keeps 2 m from every lot, venue, bay, plaza, sign,
+  bollard, crossing and road it does not join; and it must give at least
+  `growth.min_lots` (6). Ranked: extend before branch before junction, out of
+  other dead ends' straight-on growth line, nearest the district, enough lots
+  (10) before more, shorter, nearer the centre. Deterministic.
+- **A grown road takes its district's categories**, so "the media district"
+  is Gemini Gate plus Midjourney Mile plus whatever grows out of them.
+  Districts are emergent, never pre-drawn empty. Splitting a category into a
+  street of its own is the later refinement, when one category can fill a
+  street alone.
+- **Names** come from `growth.names` in `map.json` (subreddit names, by the
+  district's most-listed category). They are display only; the road id is
+  positional (`ne-east` leaves roundabout `ne` heading east) and permanent.
+- **Who does it**: `.github/workflows/city-growth.yml`, daily, on demand, and
+  dispatched by `validate-plots` straight after every plot merge. It writes
+  the plan, re-plats, rebuilds the manifest, runs `map:check` and
+  `api:check`, and opens a `city/grow-*` pull request; it dispatches the
+  walkthrough and api checks onto it, since a GITHUB_TOKEN PR gets no CI of
+  its own. **It never merges.** One proposal open at a time. The next step,
+  once a few proposals have landed unchanged, is to let it merge its own
+  proposal when every check is green.
+- `npm run growth` prints every district's headroom and what it would build.
 
-Not done, on purpose: pre-platting twelve category streets for zero
+Still not done, on purpose: pre-platting twelve category streets for zero
 listings. Vacant lots are cheap but not free (walkthrough time, triangle
 budgets), and a category street with nothing on it says less than a road
 that grew because it had to.

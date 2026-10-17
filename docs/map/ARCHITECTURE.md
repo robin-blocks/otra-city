@@ -156,4 +156,7 @@ loadStreet(scene) → { manifest, group, colliders, interactables, sources, upda
 - Lots on both sides of a road need the road to be ≥ 13 m from anything
   else; the plat drops what does not fit rather than squeezing it.
 - A road's chain origin never moves; growth is at the far end or by new roads.
+  `lib/city-growth.mjs` is the only code that edits the map, and it proves
+  each addition by re-platting: every lot the map affords keeps its place
+  (`docs/directory.md`, "how the map grows").
 - The city centre for allocation is `map.centre` (City Hall's x=0).

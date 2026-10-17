@@ -555,7 +555,7 @@ async function checkLot(plot, ownership, host) {
     // case the next one on the same road does, and the status endpoint says).
     const mayRequest = apexHost(plot.url || '') === 'otra.city';
     const category = plot.category || DEFAULT_CATEGORY;
-    const pick = pickLot(PLAT, held.keys(), { category, requested: want, mayRequest, centre: PLAT.centre });
+    const pick = pickLot(PLAT, held.keys(), { category, requested: want, mayRequest, centre: PLAT.centre, template: !!plot.template });
     if (!pick) return { ok: false, mode: 'full', lot: null, detail: 'no free lot left on the map — open an issue' };
     if (want && !mayRequest) {
       // a wrong id is still a wrong id, and worth a rejection so the agent

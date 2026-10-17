@@ -1,0 +1,97 @@
+name: city growth
+# When a district runs short of lots, propose the road that gives it more.
+#
+# lib/city-growth.mjs decides: a district is the roads a TEMPLATE listing of
+# some category may land on, and when those have `growth.headroom` free lots
+# or fewer (public/city/map.json) it plans one road — continued from a serving
+# road's far end, or out of a roundabout on it — re-platted to prove that no
+# lot the map already affords moves. This workflow writes that plan, re-plats,
+# rebuilds the manifest, and opens a pull request. It never merges: a person
+# looks at /map on the preview and presses the button. (Auto-merge is the next
+# step, once a few proposals have landed unchanged.)
+#
+# Runs daily, on demand, and — the one that matters — straight after a plot
+# lands: validate-plots dispatches it, because a merge made with GITHUB_TOKEN
+# triggers no push workflow but a workflow_dispatch from one does run.
+#
+# One proposal at a time: while a city/grow-* PR is open it only reports.
+on:
+  schedule:
+    - cron: '41 5 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'report and plan only — write nothing, open nothing'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write        # push the proposal branch
+  pull-requests: write   # open the proposal
+  actions: write         # dispatch the walkthrough and api checks onto it
+
+concurrency:
+  group: city-growth      # two plot merges a minute apart must not open two proposals
+  cancel-in-progress: false
+
+jobs:
+  grow:
+    runs-on: ubuntu-latest
+    env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+
+      - name: is a proposal already open?
+        id: open
+        run: |
+          n=$(gh pr list --state open --json headRefName --jq '[.[] | select(.headRefName | startswith("city/grow-"))] | length')
+          echo "count=$n" >> "$GITHUB_OUTPUT"
+          [ "$n" = "0" ] || echo "::notice::a growth proposal is already open — reporting only"
+
+      - name: plan
+        id: plan
+        run: |
+          if [ "${{ steps.open.outputs.count }}" = "0" ] && [ "${{ inputs.dry_run }}" != "true" ]; then
+            node scripts/city-growth.mjs --write --max 2 --summary growth.md
+          else
+            node scripts/city-growth.mjs --max 2
+          fi
+
+      - name: re-plat and rebuild the manifest
+        if: steps.plan.outputs.grew == 'true'
+        run: |
+          npm run map            # writes public/city/lots.json; refuses if a held lot would move
+          npm run validate       # rebuilds public/plots/index.json (vacant[]) and the sitemap
+          npm run map:check      # the plat on disk agrees with the map, and every post is placed
+          npm run api:check      # the allocator and the growth rules, against the new map
+
+      - name: open the proposal
+        if: steps.plan.outputs.grew == 'true'
+        run: |
+          branch="city/grow-$(date -u +%Y%m%d-%H%M)"
+          git config user.name otra-city-bot
+          git config user.email bot@otra.city
+          git checkout -b "$branch"
+          git add public/city/map.json public/city/lots.json public/plots/index.json public/sitemap.xml
+          git commit -m "city: grow the map where a district ran short of lots" -m "$(cat growth.md)"
+          git push -u origin "$branch"
+          {
+            cat growth.md
+            echo
+            echo "---"
+            echo "Checks run in this job before it opened: \`npm run map\`, \`validate\`, \`map:check\`, \`api:check\`. A PR opened with GITHUB_TOKEN gets no CI of its own, so this job dispatches **city walkthrough** and **api** onto the branch; their runs show on the head commit."
+          } > body.md
+          # the title names the new roads: map.json now, against main's
+          roads=$(node -e "
+            const now = require('./public/city/map.json');
+            const was = JSON.parse(require('child_process').execSync('git show main:public/city/map.json'));
+            const old = new Set(was.roads.map((r) => r.id));
+            console.log(now.roads.filter((r) => !old.has(r.id)).map((r) => r.name).join(', ') || 'a longer road');")
+          gh pr create --base main --head "$branch" --title "city: grow the map — $roads" --body-file body.md
+          gh workflow run city-walkthrough.yml --ref "$branch"
+          gh workflow run api.yml --ref "$branch"

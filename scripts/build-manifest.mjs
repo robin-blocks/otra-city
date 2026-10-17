@@ -75,7 +75,7 @@ for (const slug of slugs.filter((s) => !assigned[s])) {
   const want = plot.lot;
   const category = plot.category || DEFAULT_CATEGORY;
   const mayRequest = apexHost(plot.url || '') === 'otra.city';
-  const pick = pickLot(plat, holder.keys(), { category, requested: want, mayRequest, centre });
+  const pick = pickLot(plat, holder.keys(), { category, requested: want, mayRequest, centre, template: !!plot.template });
   if (!pick) throw new Error('no free lot left — extend the map (public/city/map.json)');
   const id = pick.id;
   const why = {
@@ -134,7 +134,8 @@ writeFileSync(join(root, 'index.json'), JSON.stringify({
   version: '0.8',
   spawn: plat.spawn,
   roads: Object.values(plat.roads).map((r) => ({ id: r.id, name: r.name, lots: r.lots,
-    ...(r.categories ? { categories: r.categories } : {}) })),
+    ...(r.categories ? { categories: r.categories } : {}),
+    ...(r.customOnly ? { custom_only: true } : {}) })),
   lots,
   vacant,
 }, null, 2) + '\n');

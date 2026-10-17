@@ -22,7 +22,8 @@ import { tmpdir } from 'node:os';
 import handler, { buildListing, deriveTagline } from '../api/submit.mjs';
 import { parseSiteMeta, imageKind } from '../lib/site-meta.mjs';
 import { renderLot, renderRoad, renderDirectory, esc } from '../api/pages.mjs';
-import { pickLot } from '../public/js/city-map.mjs';
+import { pickLot, platLots } from '../public/js/city-map.mjs';
+import { needs, plan, districts } from '../lib/city-growth.mjs';
 import drain, { selectRecords, parseBatch } from '../api/log-drain.mjs';
 import { apexHost, sameSite, ownerKey, classifyUrl } from '../lib/submitter-host.mjs';
 import badgeHandler, { addressFor } from '../api/badge.mjs';
@@ -368,6 +369,39 @@ check('a picture is known by its bytes, not its name', imageKind(PNG) === 'png' 
   check('the city may still ask for a lot', pickLot(plat, [], { category: 'agents', requested: 'boulevard-1', mayRequest: true }).why === 'requested');
   check('a listing\'s request is not honoured', pickLot(plat, [], { category: 'agents', requested: 'boulevard-1' }).why === 'category');
   check('a category with no road falls through, and says so', pickLot(plat, [], { category: 'nope' }).why === 'category-unrouted');
+  // the high street keeps its lots for buildings somebody built
+  const custom = Object.values(plat.roads).filter((r) => r.customOnly).map((r) => r.id);
+  check('the boulevard takes custom builds only', custom.includes('boulevard'));
+  const tpl = pickLot(plat, [], { category: 'other', template: true });
+  check('a template listing never lands on a custom-only road', tpl && !custom.includes(plat.lots[tpl.id].road) && tpl.why === 'category');
+  check('a custom build of the same category still may', plat.lots[pickLot(plat, [], { category: 'productivity' }).id].road === 'boulevard');
+  const allBut = (keep) => Object.keys(plat.lots).filter((id) => !keep(plat.lots[id]));
+  const full = pickLot(plat, allBut((l) => custom.includes(l.road) || l.road === 'west'), { category: 'other', template: true });
+  check('...not even when its own district is full', full && plat.lots[full.id].road === 'west' && full.why === 'category-full');
+}
+{
+  // growth: plan a road for a district that has run out, and prove nothing moved
+  const map = JSON.parse(readFileSync(join(root, 'public/city/map.json')));
+  const venues = JSON.parse(readFileSync(join(root, 'public/venues/index.json'))).venues || [];
+  const base = platLots(map, venues);
+  check('growth: today every district has room', needs(base, [], [], map).length === 0);
+  const media = (l) => (map.roads.find((r) => r.id === l.road)?.categories || []).includes('image-generation');
+  const held = Object.values(base.lots).filter(media).map((l) => l.id);
+  const n = needs(base, held, [{ category: 'image-generation' }], map);
+  check('growth: a district with no free lot needs a road', n.length === 1 && n[0].categories.includes('video-generation') && n[0].free === 0);
+  const p = plan(map, n[0], { venues, plots: [{ category: 'image-generation' }] });
+  check('growth: it finds one', !!p.best && p.best.gained.length >= 6, p.best ? `${p.best.roadId} +${p.best.gained.length}` : `${p.rejected.length} rejected`);
+  const after = platLots(p.best.map, venues);
+  check('growth: every lot the map afforded stands where it stood',
+    Object.values(base.lots).every((l) => after.lots[l.id] && after.lots[l.id].x === l.x && after.lots[l.id].z === l.z && after.lots[l.id].yaw === l.yaw));
+  check('growth: the new road serves the district', (p.best.map.roads.find((r) => r.id === p.best.roadId)?.categories || []).join() === n[0].categories.join()
+    || p.best.kind === 'extend');
+  const again = plan(map, n[0], { venues, plots: [{ category: 'image-generation' }] });
+  check('growth: the same map gets the same answer', again.best.roadId === p.best.roadId && again.best.L === p.best.L && again.best.from_m === p.best.from_m);
+  check('growth: a template listing of the district now lands on it',
+    after.lots[pickLot(after, held, { category: 'image-generation', template: true }).id].road === p.best.roadId);
+  const d = districts(base, [], [], map);
+  check('growth: no district counts a custom-only road as room', d.every((g) => !g.roads.some((r) => base.roads[r].customOnly)));
 }
 {
   const r = await fetch(`${api.origin}/api/plots/submit`);

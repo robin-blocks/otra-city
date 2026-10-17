@@ -1,5 +1,5 @@
 {
-  "comment": "THE MAP. Authored by hand; everything else is derived. Metres, x east, z north on the PLAN (map.html draws z up); the rendered city is that plan's mirror image (three.js's +z points at the viewer), so walking east down the boulevard the +z lots are on your right. A road is a chain of nodes walked first to last; left/right are that walk's sides on the plan; every junction is a roundabout. `lots` on a road says which sides bear 10 x 10 m lots at `lot_pitch`, and `from_m` is the phase of the first slot per segment (one number or one per segment). Lot numbers count slots from the chain's FIRST node — put that end where it will never move and grow a road at its far end, so addresses already handed out never change. Road IDS are permanent and positional (they are inside every lot id); NAMES and `sub` are display only and will be voted on one day, so rename freely. `node scripts/build-map.mjs` plats this into city/lots.json; `npm run manifest` merges that with the registry (plots/lots.json) into plots/index.json. A road's `categories` are the directory categories it takes listings for (public/js/categories.mjs): a listing lands on the first road that serves its category, nearest the centre first, and on the nearest free lot anywhere when none does — grow a category that fills by adding a road for it at the far end of the network, never by moving an address.",
+  "comment": "THE MAP. Authored by hand, and grown by lib/city-growth.mjs (which only ever adds: a road continued from its far end, or a new road out of a roundabout, re-platted to prove no lot moves); everything else is derived. Metres, x east, z north on the PLAN (map.html draws z up); the rendered city is that plan's mirror image (three.js's +z points at the viewer), so walking east down the boulevard the +z lots are on your right. A road is a chain of nodes walked first to last; left/right are that walk's sides on the plan; every junction is a roundabout. `lots` on a road says which sides bear 10 x 10 m lots at `lot_pitch`, and `from_m` is the phase of the first slot per segment (one number or one per segment). Lot numbers count slots from the chain's FIRST node — put that end where it will never move and grow a road at its far end, so addresses already handed out never change. Road IDS are permanent and positional (they are inside every lot id); NAMES and `sub` are display only and will be voted on one day, so rename freely. `node scripts/build-map.mjs` plats this into city/lots.json; `npm run manifest` merges that with the registry (plots/lots.json) into plots/index.json. A road's `categories` are the directory categories it takes listings for (public/js/categories.mjs): a listing lands on the first road that serves its category, nearest the centre first, and on the nearest free lot anywhere when none does — grow a category that fills by adding a road for it at the far end of the network, never by moving an address.",
   "version": "0.1",
   "spawn": {
     "x": -20,
@@ -49,6 +49,18 @@
     "bay_s": [
       60,
       -64
+    ],
+    "boulevard_end": [
+      -72,
+      0
+    ],
+    "boulevard_end_south": [
+      -72,
+      -72
+    ],
+    "ne_east": [
+      236,
+      46
     ]
   },
   "roads": [
@@ -62,10 +74,12 @@
         "prompt-tools",
         "other"
       ],
+      "custom_only": true,
       "kind": "avenue",
       "nodes": [
         "rb",
-        "blvd_w"
+        "blvd_w",
+        "boulevard_end"
       ],
       "width": 8,
       "pavement": 2.5,
@@ -77,9 +91,12 @@
           "left",
           "right"
         ],
-        "from_m": 24
+        "from_m": [
+          24,
+          24
+        ]
       },
-      "comment": "the original street, everyone's road to the ground. Numbered from the stadium roundabout so it can keep growing west: 1/2 at x=36 ... 15/16 at x=-48; plan-left of the westward walk is z<0 (odd), plan-right is z>0 (even)."
+      "comment": "the original street, everyone's road to the ground. Numbered from the stadium roundabout so it can keep growing west: 1/2 at x=36 ... 15/16 at x=-48; plan-left of the westward walk is z<0 (odd), plan-right is z>0 (even). CUSTOM BUILDS ONLY (custom_only): the high street keeps its lots for buildings somebody built; a listing the city builds a template shopfront for goes to the district grown for its category. The template shops already here keep their addresses. Continued 18 m to the roundabout at boulevard_end: grown by lib/city-growth.mjs on 2026-10-16 for prompt-tools, productivity, data-analysis, other (0 free lots left)."
     },
     {
       "id": "west",
@@ -246,6 +263,64 @@
       "lit": false,
       "lots": null,
       "comment": "a dead end with the drop-off bay at its end; no lots yet."
+    },
+    {
+      "id": "boulevard-end-south",
+      "name": "Local Llama Lane",
+      "sub": "r/LocalLLaMA",
+      "categories": [
+        "prompt-tools",
+        "productivity",
+        "data-analysis",
+        "other"
+      ],
+      "kind": "street",
+      "nodes": [
+        "boulevard_end",
+        "boulevard_end_south"
+      ],
+      "width": 8,
+      "pavement": 2.5,
+      "dashes": true,
+      "lamps_every": 12,
+      "lit": true,
+      "lots": {
+        "sides": [
+          "left",
+          "right"
+        ],
+        "from_m": 16
+      },
+      "comment": "grown by lib/city-growth.mjs on 2026-10-16 for prompt-tools, productivity, data-analysis, other (0 free lots left). Its id is positional (it leaves boulevard_end heading south) and permanent; rename it freely."
+    },
+    {
+      "id": "ne-east",
+      "name": "Midjourney Mile",
+      "sub": "r/midjourney",
+      "categories": [
+        "image-generation",
+        "video-generation",
+        "audio-generation",
+        "voice-cloning"
+      ],
+      "kind": "street",
+      "nodes": [
+        "ne",
+        "ne_east"
+      ],
+      "width": 8,
+      "pavement": 2.5,
+      "dashes": true,
+      "lamps_every": 12,
+      "lit": true,
+      "lots": {
+        "sides": [
+          "left",
+          "right"
+        ],
+        "from_m": 16
+      },
+      "comment": "grown by lib/city-growth.mjs on 2026-10-16 for image-generation, video-generation, audio-generation, voice-cloning (1 free lot left). Its id is positional (it leaves ne heading east) and permanent; rename it freely."
     }
   ],
   "roundabouts": [
@@ -295,6 +370,15 @@
     {
       "id": "sw",
       "at": "sw",
+      "island_r": 3,
+      "outer_r": 8,
+      "pavement": 2.5,
+      "lamps": 4,
+      "lit": true
+    },
+    {
+      "id": "boulevard_end",
+      "at": "boulevard_end",
       "island_r": 3,
       "outer_r": 8,
       "pavement": 2.5,
@@ -465,5 +549,96 @@
       15
     ]
   ],
-  "reserved": []
+  "reserved": [],
+  "growth": {
+    "comment": "lib/city-growth.mjs reads this. When the roads a TEMPLATE listing of some category may use have `headroom` free lots or fewer, .github/workflows/city-growth.yml opens a pull request adding a road for that district. `names` are the display names it picks from, by the district's most-listed category first (subreddit names, like the rest of the map); a name is display only — rename freely, the road id is what lasts.",
+    "headroom": 2,
+    "min_lots": 6,
+    "names": {
+      "image-generation": [
+        [
+          "Midjourney Mile",
+          "r/midjourney"
+        ],
+        [
+          "Stable Diffusion Street",
+          "r/StableDiffusion"
+        ]
+      ],
+      "video-generation": [
+        [
+          "AI Video Avenue",
+          "r/aivideo"
+        ],
+        [
+          "Runway Row",
+          "r/runwayml"
+        ]
+      ],
+      "audio-generation": [
+        [
+          "Suno Street",
+          "r/SunoAI"
+        ]
+      ],
+      "voice-cloning": [
+        [
+          "ElevenLabs Lane",
+          "r/ElevenLabs"
+        ]
+      ],
+      "other": [
+        [
+          "Local Llama Lane",
+          "r/LocalLLaMA"
+        ],
+        [
+          "Artificial Intelligence Street",
+          "r/ArtificialInteligence"
+        ]
+      ],
+      "productivity": [
+        [
+          "ChatGPT Pro Parade",
+          "r/ChatGPTPro"
+        ]
+      ],
+      "prompt-tools": [
+        [
+          "Prompt Engineering Place",
+          "r/PromptEngineering"
+        ]
+      ],
+      "data-analysis": [
+        [
+          "Data Science Drive",
+          "r/datascience"
+        ]
+      ],
+      "agents": [
+        [
+          "AI Agents Alley",
+          "r/AI_Agents"
+        ]
+      ],
+      "code-assist": [
+        [
+          "Cursor Close",
+          "r/cursor"
+        ]
+      ],
+      "chatbots": [
+        [
+          "Character Crescent",
+          "r/CharacterAI"
+        ]
+      ],
+      "text-generation": [
+        [
+          "Local Models Mews",
+          "r/LocalLLM"
+        ]
+      ]
+    }
+  }
 }

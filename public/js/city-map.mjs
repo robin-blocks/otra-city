@@ -246,6 +246,7 @@ export function platLots(map, venues = [], trace = null) {
     }
     roads[road.id] = { id: road.id, name: road.name, lots: ids,
       ...(road.lots.by_request ? { byRequest: true } : {}),
+      ...(road.custom_only ? { customOnly: true } : {}),
       // the directory categories this road takes listings for — the one
       // per-road fact the allocator needs, carried into the plat like byRequest
       ...(Array.isArray(road.categories) && road.categories.length ? { categories: road.categories.slice() } : {}) };
@@ -258,30 +259,41 @@ export function platLots(map, venues = [], trace = null) {
 // A road marked `by_request` in the map is still listed and still claimable —
 // by asking for one of its lot ids — but it sorts behind every other street,
 // so a set-aside road is not what an agent lands on by saying nothing.
-export function rankFree(plat, takenIds, centre = [0, 0]) {
+// A road marked `custom_only` takes no TEMPLATE shopfront at all: the
+// boulevard is the city's high street, kept for buildings somebody built, so
+// a listing the city built a shop for is never offered one of its lots.
+export function rankFree(plat, takenIds, centre = [0, 0], { template = false } = {}) {
   const taken = new Set(takenIds);
   const last = (l) => (plat.roads?.[l.road]?.byRequest ? 1 : 0);
   return Object.values(plat.lots)
     .filter((l) => !taken.has(l.id))
+    .filter((l) => !template || !plat.roads?.[l.road]?.customOnly)
     .map((l) => ({ l, d: Math.hypot(l.x - centre[0], l.z - centre[1]) }))
     .sort((a, b) => last(a.l) - last(b.l) || a.d - b.d
       || a.l.road.localeCompare(b.l.road) || a.l.n - b.l.n)
     .map((e) => e.l);
 }
 
+// The roads a new plot of `category` may land on: the roads that list the
+// category, minus the custom-only ones when the city is building the shop.
+export function servingRoads(plat, category, { template = false } = {}) {
+  if (!category) return [];
+  return Object.values(plat.roads || {})
+    .filter((r) => Array.isArray(r.categories) && r.categories.includes(category))
+    .filter((r) => !template || !r.customOnly)
+    .map((r) => r.id);
+}
+
 // The free lots on the roads that serve a category, in the same order
 // rankFree would offer them — so a listing lands beside its kind. Empty when
 // no road serves the category, or when every lot on those roads is held:
-// that is the signal to grow the map (a road for the category, added at the
-// far end of the network), and until then pickLot falls through to the
-// nearest free lot anywhere.
-export function rankForCategory(plat, takenIds, category, centre = [0, 0]) {
-  if (!category) return [];
-  const roads = new Set(Object.values(plat.roads || {})
-    .filter((r) => Array.isArray(r.categories) && r.categories.includes(category))
-    .map((r) => r.id));
+// that is the signal to grow the map (lib/city-growth.mjs plans the road and
+// .github/workflows/city-growth.yml proposes it before this ever runs dry),
+// and until then pickLot falls through to the nearest free lot anywhere.
+export function rankForCategory(plat, takenIds, category, centre = [0, 0], { template = false } = {}) {
+  const roads = new Set(servingRoads(plat, category, { template }));
   if (!roads.size) return [];
-  return rankFree(plat, takenIds, centre).filter((l) => roads.has(l.road));
+  return rankFree(plat, takenIds, centre, { template }).filter((l) => roads.has(l.road));
 }
 
 // Where a new plot stands. ONE rule for the dry run, CI's allocation and the
@@ -289,19 +301,20 @@ export function rankForCategory(plat, takenIds, category, centre = [0, 0]) {
 //   * a `requested` lot is honoured only when the caller may ask for one
 //     (the city's own lots — exhibitions, venues, demos — are placed by hand;
 //     a listing is placed by its category, so the streets stay legible)
-//   * otherwise the first free lot on a road serving `category`
+//   * otherwise the first free lot on a road serving `category` (a template
+//     shopfront skips custom-only roads)
 //   * otherwise the nearest free lot to the centre (with the reason)
 // Returns { id, why } or null when the map is full.
-export function pickLot(plat, takenIds, { category = null, requested = null, mayRequest = false, centre = [0, 0] } = {}) {
+export function pickLot(plat, takenIds, { category = null, requested = null, mayRequest = false, centre = [0, 0], template = false } = {}) {
   const taken = new Set(takenIds);
   if (requested && mayRequest && plat.lots[requested] && !taken.has(requested)) {
     return { id: requested, why: 'requested' };
   }
-  const byCat = rankForCategory(plat, taken, category, centre)[0];
+  const byCat = rankForCategory(plat, taken, category, centre, { template })[0];
   if (byCat) return { id: byCat.id, why: 'category' };
-  const any = rankFree(plat, taken, centre)[0];
+  const any = rankFree(plat, taken, centre, { template })[0];
   if (!any) return null;
-  const served = Object.values(plat.roads || {}).some((r) => r.categories?.includes(category));
+  const served = servingRoads(plat, category, { template }).length > 0;
   return { id: any.id, why: !category ? 'nearest' : served ? 'category-full' : 'category-unrouted' };
 }
 
