@@ -16,6 +16,8 @@
     "map": "node scripts/build-map.mjs",
     "map:check": "node scripts/map-check.mjs",
     "posters": "node scripts/render-posters.mjs",
+    "og": "node scripts/render-og.mjs",
+    "og:check": "node scripts/og-check.mjs",
     "validate": "node scripts/validate-all.mjs",
     "qa": "node scripts/qa-walkthrough.mjs",
     "shot": "node scripts/preview-shot.mjs",
