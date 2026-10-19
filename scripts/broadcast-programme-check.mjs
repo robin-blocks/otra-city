@@ -101,7 +101,11 @@ test('iso only on a dead ball: play_end_t to restart_t minus the lead, wide befo
   const p = await director({ samplePlay: sampler }), q = await director({ samplePlay: sampler });
   // Ball live: never the iso.
   assert.equal(p.evaluate({ match: match(304, 492), nowMs: 1 }).camera.camera, 'gantry');
-  // Dead ball (305 → 317): the iso, labels off, its own lens, a history integration.
+  // The whistle itself is the wide: RFL resets the bodies in its first frames.
+  const e = p.evaluate({ match: match(305.5, 493.5), nowMs: 2 });
+  assert.equal(e.camera.camera, 'gantry'); assert.equal(e.state.iso, 'wide-after-whistle');
+  assert.equal(e.state.priority, 'dead-ball');
+  // Dead ball (305 → 317) after ISO_ENTRY_S: the iso, labels off, its own lens, a history integration.
   const a = p.evaluate({ match: match(306, 494), nowMs: 2 });
   assert.equal(a.camera.camera, 'iso'); assert.equal(a.camera.labels, false);
   assert.equal(a.camera.lens.sensor_mm, 24); assert.equal(a.state.iso, 'bounded-history');
@@ -110,8 +114,9 @@ test('iso only on a dead ball: play_end_t to restart_t minus the lead, wide befo
   p.evaluate({ match: match(311, 499), nowMs: 3 });
   const x = p.evaluate({ match: match(312, 500), nowMs: 4 }), y = q.evaluate({ match: match(312, 500), nowMs: 4 });
   assert.deepEqual(x.camera, y.camera);
-  // The subject follows the ball (player 1 is nearest after 310), eased.
-  assert.ok(x.camera.lookAt[0] > 0, `aim ${x.camera.lookAt}`);
+  // One subject for the whole dead ball: player 0, nearest at the whistle,
+  // even though player 1 is nearer the ball after 310.
+  assert.ok(x.camera.lookAt[0] < 0, `aim ${x.camera.lookAt}`);
   // Back on the wide for the last ISO_WIDE_LEAD_S before restart_t.
   const w = p.evaluate({ match: match(316, 504), nowMs: 5 });
   assert.equal(w.camera.camera, 'gantry'); assert.equal(w.state.iso, 'wide-before-restart');
@@ -119,6 +124,29 @@ test('iso only on a dead ball: play_end_t to restart_t minus the lead, wide befo
   assert.equal(p.evaluate({ match: match(318, 506), nowMs: 6 }).camera.camera, 'gantry');
   // Full time has no restart: the postmatch programme, never the iso.
   assert.notEqual(p.evaluate({ match: match(630, 843), nowMs: 7 }).camera.camera, 'iso');
+});
+
+test('the half-time iso holds one player through the reset and a symmetric line-up', async () => {
+  // s3-m55's half time, measured: the bodies jump to their kick-off spots
+  // 0.06 s after play_end_t, then stand symmetrically about the ball on the
+  // centre spot, two of them tied for nearest. The old sliding history broke
+  // that tie differently frame to frame and the shot snapped between them.
+  const lineUp = [[-2.46, 0.78, -1.2], [-2.46, 0.78, 1.2], [2.46, 0.78, -1.2], [2.46, 0.78, 1.2]];
+  const sampler = (t) => t < 305.06
+    ? { players: [[-4.4, 0.18, -3.87], [-5.61, 0.13, -2.56], [-2.26, 0.18, -1.44], [-3.62, 0.18, -3.89]], ball: [-4.05, 0.35, -4.15] }
+    : { players: lineUp.map(([x, y, z]) => [x * (1 - (t - 305) * 0.006), y, z + 0.001 * Math.sin(t * 40)]), ball: [0, 0.35, 0] };
+  const p = await director({ samplePlay: sampler });
+  const shots = [];
+  for (let t = 306; t < 315; t += 0.02) {
+    const out = p.evaluate({ match: match(t, t + 188), nowMs: 1, dt: 0.02 });
+    assert.equal(out.camera.camera, 'iso', `at ${t}`);
+    shots.push(out.camera.lookAt);
+  }
+  // Player 0 was on the ball at the whistle; the iso is on player 0's spot throughout.
+  for (const aim of shots) near(Math.sign(aim[0]) + Math.sign(aim[2]), -2);
+  // And it never jumps: frame to frame, the aim moves by far less than a centimetre.
+  const step = Math.max(...shots.slice(1).map((a, i) => Math.hypot(...a.map((v, k) => v - shots[i][k]))));
+  assert.ok(step < 0.01, `largest frame-to-frame aim move ${step} m`);
 });
 
 test('a dead ball too short for the iso stays on the authored interval cut', async () => {
