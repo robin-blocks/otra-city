@@ -126,7 +126,9 @@ export function createReplayPlayer({ width, height, doc = globalThis.document } 
       renderer.setRenderTarget(null);
       renderer.render(scene, cam);
     },
-    state: () => ({ ...stat }),
+    // `at` is where the file is right now (null with none loaded): what a
+    // check needs to know whether a late join had drifted far enough to seek
+    state: () => ({ ...stat, at: video ? +video.currentTime.toFixed(3) : null }),
     dispose() { unload(); quad.geometry.dispose(); mat.dispose(); },
   };
 }

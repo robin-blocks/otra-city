@@ -13,6 +13,7 @@ import { createServer } from 'node:http';
 import { resolve, extname } from 'node:path';
 import { launchChrome } from '../lib/headless-chrome.mjs';
 import { MIME } from '../lib/static-server.mjs';
+import { REPLAY_SYNC_TOLERANCE_S } from '../public/js/replay-media.mjs';
 
 const video = readFileSync('scripts/fixtures/replay-rgb.mp4');
 const requests = [];
@@ -90,7 +91,11 @@ try {
     out.onRed = await runTo(162.4, 162.9);
     out.lateMs = player.state().lateMs;
     out.red = colour(pixel());
-    // 3. A late join into the second second: a seek, then green.
+    // 3. A late join into the second second: green, by a seek if the file had
+    // fallen behind. Where it stood decides whether a seek was owed: on a
+    // laptop the clock jump leaves it ~0.7 s behind; a GitHub runner has
+    // been seen to arrive within tolerance (seeks 0, and green all the same).
+    out.atBeforeJoin = player.state().at;
     out.onGreen = await runTo(163.6, 164.1);
     out.green = colour(pixel());
     out.seeks = player.state().seeks;
@@ -122,7 +127,10 @@ try {
   // Primed just before the window, the cut lands on the file's own first frame.
   assert.ok(result.lateMs !== null && result.lateMs < 250, `first frame at the cut (${result.lateMs} ms)`);
   assert.equal(result.onGreen, true); assert.equal(result.green, 'green', 'a late join seeks');
-  assert.ok(result.seeks >= 1);
+  // a seek is owed only if the file stood further than the tolerance from
+  // where the late join lands (1.2 s into the window)
+  const owed = result.atBeforeJoin === null || Math.abs(result.atBeforeJoin - 1.2) > REPLAY_SYNC_TOLERANCE_S;
+  assert.ok(!owed || result.seeks >= 1, `a late join that had drifted ${result.atBeforeJoin === null ? '?' : Math.abs(result.atBeforeJoin - 1.2).toFixed(2)} s seeks (seeks ${result.seeks})`);
   assert.equal(result.onBlue, true); assert.equal(result.blue, 'blue', 'plays on');
   assert.equal(result.offAfter, true, 'off air when the window closes');
   assert.equal(result.state.errors, 0);
