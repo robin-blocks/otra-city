@@ -46,9 +46,9 @@ jobs:
   knock:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { ref: main }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 22 }
       # stdlib only: the knock, the state machine and build-manifest.mjs
       # import nothing from node_modules, so there is no npm ci to wait on
