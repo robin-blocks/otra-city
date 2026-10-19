@@ -1,8 +1,10 @@
 // Shared automatic television direction. No renderer, scene, stage, audio or
 // page-arrival clock lives here. Explicit cameras/capture must bypass this API.
 import { CAMERAS, createTrack, framePlay, GANTRY_AIM_LAG_S, GANTRY_FOV_LAG_S,
-  frameIso, ISO_LENS, ISO_AIM_LAG_S, ISO_RAIL_LAG_S, ISO_FOV_LAG_S } from './broadcast-cameras.js';
+  frameIso, ISO_LENS, ISO_AIM_LAG_S, ISO_RAIL_LAG_S, ISO_FOV_LAG_S,
+  frameScorer, FOLLOW_AIM_LAG_S, FOLLOW_FOV_LAG_S } from './broadcast-cameras.js';
 import { beforeTime } from './goal-celebration.mjs';
+import { replayWindowAt } from './replay-media.mjs';
 import { createPostMatchTable, TABLE_DURATION_S } from './post-match-table.mjs';
 import { PREROLL_TABLE_DURATION_S } from './league-timing.mjs';
 
@@ -122,6 +124,66 @@ function easeIso(prev, want, dt) {
     aim: prev.aim.map((v, i) => v + (want.aim[i] - v) * ka),
     pos: prev.pos.map((v, i) => v + (want.pos[i] - v) * kr),
     fov: prev.fov + (want.fov - prev.fov) * kf };
+}
+/** Which end a goal was scored at: RFL A/0 attacks +x, B/1 attacks -x. */
+function goalEnd(goal) {
+  return goal?.team === 'A' || goal?.team === 0 ? 7 : goal?.team === 'B' || goal?.team === 1 ? -7 : null;
+}
+/**
+ * The scorer's live celebration at match time t, from its explosion's end to
+ * the event's t_end (restart_phase bundles, m76 on), with the goal it belongs
+ * to. RFL: keep the explosion framing for the 1.6 s burst, THEN follow the
+ * celebrating player until the celebration event ends.
+ */
+function followWindow(m, t) {
+  if (t === null || !finite(t)) return null;
+  let best = null;
+  for (const cel of m?.celebrations || []) {
+    if (!finite(cel?.t) || !finite(cel?.t_end) || typeof cel.player !== 'string') continue;
+    const goal = (m?.goals || []).find((g) => finite(g?.t) && Math.abs(g.t - cel.t) < 0.05) ?? null;
+    const from = goal && finite(goal.celebration_s) && goal.celebration_s > 0
+      ? Math.max(cel.t, goal.t + goal.celebration_s) : cel.t;
+    if (beforeTime(t, from) || !beforeTime(t, cel.t_end)) continue;
+    if (!best || cel.t > best.cel.t) best = { cel, goal, from };
+  }
+  return best;
+}
+function easeFollow(prev, want, dt) {
+  const ka = 1 - Math.exp(-Math.max(0, dt) / FOLLOW_AIM_LAG_S);
+  const kf = 1 - Math.exp(-Math.max(0, dt) / FOLLOW_FOV_LAG_S);
+  return { aim: prev.aim.map((v, i) => v + (want.aim[i] - v) * ka), fov: prev.fov + (want.fov - prev.fov) * kf };
+}
+/**
+ * The follow shot's pose at the programme clock: the gantry's pan and zoom
+ * from the explosion framing onto the scorer, integrated at 50 Hz from the
+ * window's start on sampled bodies, so every client and a late join agree.
+ * Without a sampler it is the unsmoothed framing of the scorer now. Null when
+ * the scorer cannot be found: the caller then keeps the ordinary wide.
+ */
+function followAt(m, clock, sampler, win, wide, start) {
+  const scorer = (play) => play?.anchors?.find((a) => a?.id === win.cel.player)?.pos ?? null;
+  if (typeof sampler === 'function') {
+    try {
+      const fromP = mapAt(clock.map, win.from);
+      const first = Math.ceil(fromP * HISTORY_FPS - 1e-7);
+      const end = Math.floor(clock.p * HISTORY_FPS + 1e-7);
+      const begin = Math.max(first, end - ISO_HISTORY_S * HISTORY_FPS);
+      // From the window's first sample the pan starts on the explosion's own
+      // framing; a history that no longer reaches it has long converged.
+      let pose = begin === first && start ? { aim: start.aim.slice(), fov: start.fov } : null;
+      let last = fromP, ok = end >= begin;
+      for (let f = begin; f <= end; f++) {
+        const p = f / HISTORY_FPS;
+        const want = frameScorer(wide, scorer(sampler(unmapAt(clock.map, p), { programmeT: p, match: m })));
+        if (!want) { ok = false; break; }
+        pose = pose ? easeFollow(pose, want, p - last) : want;
+        last = p;
+      }
+      if (ok && pose) return { pose, mode: 'bounded-history' };
+    } catch { /* unverified history: the disclosed fallback below */ }
+  }
+  const want = frameScorer(wide, scorer(m?.play));
+  return want ? { pose: want, mode: 'unsmoothed' } : null;
 }
 /** The dead-ball window around the latest buzzer, or null. Match seconds. */
 function isoWindow(latest) {
@@ -386,6 +448,14 @@ export async function createBroadcastProgramme({ venue, fetcher = globalThis.fet
     if (c?.camera === 'gantry' && tracking.pose) c = { ...c,
       lookAt: tracking.pose.aim.map((v) => +v.toFixed(3)), fov: +tracking.pose.fov.toFixed(3) };
     let priority = inPlay ? 'play' : isoMode ? 'dead-ball' : phase;
+    const wide = named('gantry') || CAMERAS.gantry(0, 0, {});
+    const win = onAir && bug?.celebrating !== true ? followWindow(m, clock.t) : null;
+    const end = goalEnd(win?.goal);
+    const follow = win ? followAt(m, clock, sampler, win, wide,
+      end === null ? null : { aim: [end, 0.45, 0], fov: wide.fov ?? DEFAULT_FOV }) : null;
+    // The replay RFL render, on air over the walk-back. The page plays the
+    // file; this is the shared statement of when, so every client agrees.
+    const replay = onAir && clock.t !== null ? replayWindowAt(m?.replays, clock.t) : null;
     if (onAir && m?.headcam?.pos && m.headcam.lookAt) {
       c = { ...m.headcam, fov: m.headcam.fov || DEFAULT_FOV, segment: -1, camera: 'headcam' }; priority = 'headcam';
     } else if (onAir && bug?.celebrating === true) {
@@ -396,13 +466,16 @@ export async function createBroadcastProgramme({ venue, fetcher = globalThis.fet
       const goal = (m?.goals || []).filter((g) => finite(g?.t) && finite(g?.celebration_s) &&
         g.celebration_s > 0 && clock.t >= g.t && clock.t < g.t + g.celebration_s)
         .sort((a, b) => a.t - b.t).at(-1);
-      const end = goal?.team === 'A' || goal?.team === 0 ? 7
-        : goal?.team === 'B' || goal?.team === 1 ? -7 : null;
-      const wide = named('gantry') || CAMERAS.gantry(0, 0, {});
+      const end = goalEnd(goal);
       // A fixed cut from the existing gantry, no invented camera movement.
       // Missing end metadata retains the authored full-pitch wide.
       c = { ...wide, lookAt: end === null ? wide.lookAt : [end, 0.45, 0],
         segment: -1, camera: 'gantry' }; priority = 'celebration';
+    } else if (follow) {
+      // The same gantry, panned and zoomed onto the scorer. It outranks the
+      // four-second GOAL board: RFL asked for the celebrating player.
+      c = { pos: wide.pos, lookAt: follow.pose.aim.map((v) => +v.toFixed(3)), fov: +follow.pose.fov.toFixed(3),
+        segment: -1, camera: 'follow' }; priority = 'follow';
     } else if (onAir && m?.board === 'GOAL' && named('scoreboard')) {
       c = { ...named('scoreboard'), segment: -1, camera: 'scoreboard' }; priority = 'goal';
     }
@@ -445,6 +518,10 @@ export async function createBroadcastProgramme({ venue, fetcher = globalThis.fet
       cutFrame: frameOf(elapsed, cut?.fps || 50), matchKey: key, settling: !!settling,
       goalCut: priority === 'goal', headcam: priority === 'headcam', camera: c.camera,
       iso: isoMode, gantry: tracking.mode, gantryHistorySeconds: tracking.mode === 'bounded-history' ? HISTORY_S : null,
+      follow: follow ? { player: win.cel.player, kind: win.cel.kind ?? null, mode: follow.mode } : null,
+      // Under it the camera above stays the live one: the stadium's own
+      // screen and any page without the file keep showing the walk-back.
+      replay: replay ? { src: replay.src, t: replay.t, elapsed: replay.elapsed, dur_s: replay.dur_s, player: replay.player } : null,
       table: { ...(table?.state?.() || { status: 'disabled' }), visible: !!tableCue,
         elapsed: tableCue?.elapsed ?? null, slotElapsed: hasSlot ? postElapsed : null,
         duration: preroll ? PREROLL_TABLE_DURATION_S : TABLE_DURATION_S, held, expired: hasSlot && postElapsed >= slotEnd,

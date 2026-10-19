@@ -75,7 +75,7 @@ W.host = Object.freeze({
     if (hostClosed || !Number.isFinite(time) || S < 2 || !(v > 0) || u.byteLength < S * A * 7 * 4) return null;
     time = Math.min(M, Math.max(H, time));
     if (hostCache.has(time)) return hostCopy(hostCache.get(time));
-    hostPoser ||= new me(u, A, S, v, H, !!e.meta?.goal_celebration);
+    hostPoser ||= new me(u, A, S, v, H, !!(e.meta?.goal_celebration || e.meta?.restart_phase));
     hostPoser.pose(time);
     const point = (name, offset) => {
       const i = hostNames.get(name); if (i === undefined) return null;
@@ -108,7 +108,9 @@ W.dispose = function() { hostClosed = true; hostPoser = null; hostCache.clear();
 /** Build-time addition, gated by publisher metadata per mount. The same
  * Poser feeds both the stage and its pure director sampler. Hidden effect
  * bodies live below the floor: those transitions (and kickoff resets) are
- * discontinuities, never flights interpolated through the pitch.
+ * discontinuities, never flights interpolated through the pitch. From m76
+ * `meta.restart_phase` opts in too: the referee's placement of a robot that
+ * has not walked home by 20 s is a teleport, just as a kickoff reset was.
  * Pin the source hash AND exact replacement counts; fail on any drift.
  */
 function celebrationPoser(body) {
@@ -121,7 +123,7 @@ function celebrationPoser(body) {
   change('o-1.001),i=Math.floor(l)', '(this.goalJumps?o-1:o-1.001)),i=Math.floor(l)');
   change('let g=(i*n+p)*7,h=(b*n+p)*7,y=p*3;this.pos[y]',
     'let g=(i*n+p)*7,h=(b*n+p)*7,y=p*3;let u=this.goalJumps&&Math.hypot(e[h]-e[g],e[h+1]-e[g+1],e[h+2]-e[g+2])>2?0:l-i;this.pos[y]');
-  change('let L=new me(u,A,S,v,H),', 'let L=new me(u,A,S,v,H,!!e.meta?.goal_celebration),');
+  change('let L=new me(u,A,S,v,H),', 'let L=new me(u,A,S,v,H,!!(e.meta?.goal_celebration||e.meta?.restart_phase)),');
   return body;
 }
 
@@ -147,7 +149,7 @@ export async function sdkFactorySource(source) {
  * Upstream authored by Robin Spottiswoode / 4DGSX. Original attribution retained below.
  * Copied upstream source, NOT assumed MIT-licensed by this host repository.
  * Provenance + SHA-256: scripts/fixtures/sdk-provenance.json.
- * Host modifications: factory/fetch isolation, read-only loaded-track sampler, metadata-gated teleport holds.
+ * Host modifications: factory/fetch isolation, read-only loaded-track sampler, metadata-gated teleport holds (goal_celebration or restart_phase).
  * Regenerate only with the audited build/test helper sdkFactorySource().
  */
 ${imports.join('\n')}

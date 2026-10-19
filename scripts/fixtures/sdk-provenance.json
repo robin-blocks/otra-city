@@ -16,13 +16,13 @@
   },
   "license": "Copied upstream source; original attribution retained. No MIT license assumption or relicensing by this host repository. No upstream LICENSE file found in repository root/site at review.",
   "factoryPath": "public/vendor/4dgsx/broadcast-factory.js",
-  "factorySha256": "875c375f7f6e391f26f0b2dc62d016e7c6f1666d97d797056e34657f2d11c9c1",
+  "factorySha256": "d3c7f659a754be5fe83a9c8c072ac5176b1b5ee2fae8ae5b102190e0a94c00a4",
   "regenerate": "sdkFactorySource(reviewedSource) from public/js/venue-modules/broadcast-sdk.mjs (build/test only)",
   "modifications": [
     "ESM factory with per-mount lexical fetch and mount router; no upstream fetch sites rewritten",
     "Exact audited mountStage return insertion: read-only metadata and pure stage-local sampler with separate Poser sharing loaded track ArrayBuffer",
     "Sampler lazy O(body-count) workspace and at most 512 small sampled poses, defensive copies, cache/workspace cleared on stage dispose; no track copy. Existing attribution, SDK rendering, clocks, schedule, audio, assets and panels unchanged",
-    "Metadata-gated goal_celebration Poser translation jump >2m holds source sample (hidden effects/kickoff); both rendered stage and independent sampler, legacy unchanged."
+    "Metadata-gated goal_celebration or restart_phase Poser translation jump >2m holds source sample (hidden effects/kickoff/referee placement); both rendered stage and independent sampler, legacy unchanged."
   ],
   "runtime": "Static local ESM; never fetch/hash/transform upstream JavaScript. Test cfg.sdk override must serve prebuilt audited factory ESM."
 }

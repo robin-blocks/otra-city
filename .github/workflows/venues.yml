@@ -30,6 +30,8 @@ on:
       - 'public/vendor/4dgsx/**'
       - 'scripts/match-clock-check.mjs'
       - 'scripts/goal-celebration-check.mjs'
+      - 'scripts/replay-media-check.mjs'
+      - 'scripts/fixtures/replay-rgb.mp4'
       - 'scripts/league-*.mjs'
       - 'scripts/fixtures/league-*.json'
       - 'scripts/build-venues.mjs'
@@ -59,6 +61,8 @@ on:
       - 'public/vendor/4dgsx/**'
       - 'scripts/match-clock-check.mjs'
       - 'scripts/goal-celebration-check.mjs'
+      - 'scripts/replay-media-check.mjs'
+      - 'scripts/fixtures/replay-rgb.mp4'
       - 'scripts/league-*.mjs'
       - 'scripts/fixtures/league-*.json'
       - 'scripts/build-venues.mjs'
@@ -77,6 +81,7 @@ jobs:
       - run: npm run clock:check
       - run: node --test scripts/goal-celebration-check.mjs
       - run: npm run broadcast-output:check
+      - run: npm run replay-media:check
       - run: npm run stadium-screen:check
       - run: npm run league:check
       # No bundle/replay: verify both automatic routes at shared idle slot times.

@@ -177,6 +177,43 @@ function countdown(ms) {
   if (d > 0) return `${d}d ${h}h`;
   return `${h}:${pad2(m)}:${pad2(s % 60)}`;
 }
+/**
+ * The post-goal events of a restart_phase bundle (RFL, 2026-09-27; from m76).
+ *
+ * A goal no longer re-runs on the pitch. The scorer celebrates live
+ * (`celebration`: player, kind, t → t_end), everyone walks back, and the
+ * replay is a BROADCAST picture: a video RFL render and ship in the bundle
+ * (`replay`: a window t → t + dur_s in match seconds, over the live walk-back).
+ * `src` is present only when the file is really in the bundle; a replay
+ * without one shows the live stadium. Resolved against the bundle here, so the
+ * page never builds a URL out of a string it has not checked.
+ */
+export function celebrationsOf(st, bundleUrl) {
+  const events = Array.isArray(st?.hud?.events) ? st.hud.events : [];
+  const t = (v) => Number.isFinite(v) && v >= 0;
+  const celebrations = events.filter((e) => e?.type === 'celebration' && t(e.t) && Number.isFinite(e.t_end) && e.t_end > e.t)
+    .map((e) => ({ t: e.t, t_end: e.t_end, player: typeof e.player === 'string' ? e.player : null,
+      kind: typeof e.kind === 'string' ? e.kind : null }));
+  const replays = events.filter((e) => e?.type === 'replay' && t(e.t) && Number.isFinite(e.dur_s) && e.dur_s > 0)
+    .map((e) => ({ t: e.t, dur_s: e.dur_s, goal_t: Number.isFinite(e.goal_t) ? e.goal_t : null,
+      player: typeof e.player === 'string' ? e.player : null,
+      source: Array.isArray(e.source) && e.source.length === 2 && e.source.every(Number.isFinite) ? e.source.slice() : null,
+      src: bundleMedia(bundleUrl, e.src) }));
+  return { celebrations, replays };
+}
+
+/** A bundle-relative media path as an absolute URL inside that bundle, or null. */
+function bundleMedia(bundleUrl, src) {
+  if (typeof src !== 'string' || !src || !bundleUrl) return null;
+  try {
+    const base = new URL(String(bundleUrl).replace(/\/?$/, '/'));
+    const url = new URL(src, base);
+    if (url.origin !== base.origin || !url.pathname.startsWith(base.pathname)) return null;
+    if (!['https:', 'http:'].includes(url.protocol)) return null;
+    return url.href;
+  } catch { return null; }
+}
+
 /** The last path segment of a bundle URL — what a fixture's board shows in place of a programme title. */
 function bundleName(url) {
   try { return new URL(url).pathname.split('/').filter(Boolean).pop() || String(url); } catch { return String(url || ''); }
@@ -234,6 +271,10 @@ export function create(ctx) {
     // the arena boards we dressed, whether the bundle's bodies are reachable,
     // the goals in this match, and the replay + head cam when one is running
     boards: null, bodies: null, goals: [], goal: null, replay: null, headcam: null, replayCam: false,
+    // restart_phase bundles (m76 on): each scorer's live celebration, and the
+    // broadcast-only replay RFL ship as a video to show over the walk-back.
+    // See celebrationsOf().
+    celebrations: [], replays: [],
     // when the screens say the ball is kicked, and the stream start it came from
     kickOff: null,
     // the publisher's clock plan for the mounted match: halves, and every
@@ -1320,7 +1361,8 @@ export function create(ctx) {
   function trackPlay(dt) {
     const sampled = samplePlay(stage?.time);
     if (sampled) {
-      state.play = { players: sampled.players, ball: sampled.ball };
+      // anchors (head height, by player id) let the director find a scorer
+      state.play = { players: sampled.players, ball: sampled.ball, anchors: sampled.anchors };
       // Fixed 0.2s path-length window: speed, too, must not depend on render
       // fps/arrival or make the director choose a different settling shot.
       let distance = 0, prev = samplePlay(stage.time - 0.2)?.ball;
@@ -1487,6 +1529,7 @@ export function create(ctx) {
     state.goals = goals.map((g) => ({ t: g.t, player: g.player ?? null, team: g.team ?? null,
       replay_s: g.replay_s ?? null, source_t: g.source_t ?? null, replay_t: g.replay_t ?? null,
       celebration_s: g.celebration_s ?? null }));
+    Object.assign(state, celebrationsOf(st, url));
     // The publisher's clock plan, said out loud. `play_end_t` is the one field
     // a director cannot do without and cannot derive — when the ball came to
     // rest after a buzzer — and reporting it is how anything outside this
@@ -1494,7 +1537,8 @@ export function create(ctx) {
     const plan = st.hud?.clock;
     state.clockPlan = plan
       ? { duration_s: plan.duration_s ?? null, halves: plan.halves ?? 1,
-          buzzers: (plan.buzzers || []).map((b) => ({ kind: b.kind ?? null, t: b.t ?? null, play_end_t: b.play_end_t ?? null, restart_t: b.restart_t ?? null })) }
+          buzzers: (plan.buzzers || []).map((b) => ({ kind: b.kind ?? null, t: b.t ?? null, play_end_t: b.play_end_t ?? null, restart_t: b.restart_t ?? null })),
+          stoppages: (Array.isArray(plan.stoppages) ? plan.stoppages : []).map((b) => ({ kind: b?.kind ?? null, goal_t: b?.goal_t ?? null, t: b?.t ?? null, restart_t: b?.restart_t ?? null })) }
       : null;
     state.replay = null;
     state.headcam = null;
@@ -1613,6 +1657,9 @@ export function create(ctx) {
       // Before kick-off the clock counts down to it; the tag says so.
       tag: period.preroll ? 'Kick-off' : period.tag, clock: mmss(period.preroll ? -t : period.remain),
       half: period.half, playing: period.playing, celebrating: period.celebrating === true, over: period.over,
+      // The clock's published stoppage running now, by kind: "restart" is the
+      // walk-back after a goal (m76 on). The clock above is already held.
+      stoppage: period.stoppage ?? null,
       // The clock has stopped but the ball has not: true through the seconds
       // between a buzzer and the publisher's own "ball at rest". See
       // `matchPeriod`, and the director's hold in /broadcast.
@@ -1790,6 +1837,8 @@ export function create(ctx) {
     goals = [];
     state.goals = [];
     state.goal = null;
+    state.celebrations = [];
+    state.replays = [];
     state.clockPlan = null;
     state.replay = null;
     state.headcam = null;
