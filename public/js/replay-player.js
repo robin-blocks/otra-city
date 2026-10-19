@@ -32,7 +32,10 @@ export function createReplayPlayer({ width, height, doc = globalThis.document } 
   const stat = { src: null, loads: 0, cuts: 0, seeks: 0, errors: 0, error: null, onAir: false,
     readyState: 0, lateMs: null, h264: null };
   let video = null, tex = null, onAir = false, windowKey = null, windowSince = 0, primed = false;
-  try { stat.h264 = doc?.createElement('video').canPlayType(H264) || ''; } catch { stat.h264 = null; }
+  // Whether this browser decodes H.264 is asked of the first replay's own
+  // <video>, not of a probe made here: an idle /broadcast creates no media
+  // element at all (scripts/league-idle-browser.mjs holds it to that), and
+  // this player is built on every live page. null until a file is loaded.
 
   function unload() {
     if (!video) return;
@@ -45,6 +48,7 @@ export function createReplayPlayer({ width, height, doc = globalThis.document } 
   function load(src) {
     unload();
     video = doc.createElement('video');
+    if (stat.h264 === null) { try { stat.h264 = video.canPlayType(H264) || ''; } catch { /* stays unknown */ } }
     // RFL's CDN answers with access-control-allow-origin: *, which is what
     // lets a cross-origin frame be drawn into WebGL at all.
     video.crossOrigin = 'anonymous';

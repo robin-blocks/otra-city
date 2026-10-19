@@ -67,7 +67,8 @@ try {
     const src = '${cdnOrigin}/bundle/media/replays/goal_01.mp4';
     const replays = [{ t: 162.4, dur_s: 3, src, player: 'r2' }];
     const player = createReplayPlayer({ width: W, height: H });
-    const out = { h264: player.state().h264 };
+    // h264 is asked of the first file's own <video>, so it is unknown until then
+    const out = { h264Before: player.state().h264 };
     // Drive it like the page: one update per frame on a moving programme clock.
     async function runTo(t0, t1, { window = true, stepMs = 20 } = {}) {
       let on = false;
@@ -84,6 +85,7 @@ try {
     // 1. Fetched ahead: at the goal, fifteen seconds before the window.
     player.update({ replays, t: 147.4, window: null });
     out.preloaded = player.state().src === src;
+    out.h264 = player.state().h264;
     await sleep(400);
     out.offAirBefore = player.update({ replays, t: 147.8, window: null });
     out.offAirPrimed = await runTo(160.4, 162.39);
@@ -119,6 +121,7 @@ try {
     return out;
   })()`);
   console.log(JSON.stringify(result));
+  assert.equal(result.h264Before, null, 'no media element is made to ask about H.264 before a replay is loaded');
   assert.ok(result.h264 === 'probably' || result.h264 === 'maybe', `this Chrome decodes H.264 (${result.h264})`);
   assert.equal(result.preloaded, true, 'fetched ahead of the window');
   assert.equal(result.offAirBefore, false, 'not on air before its window');

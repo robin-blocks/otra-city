@@ -1410,7 +1410,8 @@ window.rflBroadcast = {
       // RFL's replay file: which one is loaded, whether it is the picture
       // now, how late the first frame came, and whether this browser can
       // decode H.264 at all (h264 "" means it cannot: Chromium without the
-      // proprietary codecs shows the live stadium through every replay)
+      // proprietary codecs shows the live stadium through every replay;
+      // null until the first replay file is loaded)
       replayMedia: replayPlayer?.state() ?? null,
       programme: sharedProgramme?.state() ?? null,
       // the crests behind the scorebug: the manifest, and how many images landed
