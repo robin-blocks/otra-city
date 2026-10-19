@@ -66,7 +66,11 @@ page.onConsole((type, text) => {
 });
 
 const evx = (expr, ms = 60000) => page.evaluate(expr, { timeoutMs: ms });
-const call = (fn, a) => evx(`(${String(fn)})(${JSON.stringify(a === undefined ? null : a)})`);
+// The budget `call` gives each evaluate. A check that makes many short calls
+// and grows with the city may raise it for its own duration (see the lot
+// sweep below); it never changes what a check measures.
+let callBudget = 60000;
+const call = (fn, a) => evx(`(${String(fn)})(${JSON.stringify(a === undefined ? null : a)})`, callBudget);
 
 async function shot(label) {
   shots += 1;
@@ -277,18 +281,36 @@ await check('the stick dead zone holds, and full deflection walks', async () => 
 // --- every lot on the plat, claimed or vacant ------------------------------
 // Stand where /lot/<id> puts a visitor and step onto the lot: the standing
 // point is clear, the frontage is walkable, and nothing is clamped away.
+//
+// Its OWN evaluate budget, like the shimmer sweep below. This is ~130 short
+// calls and it grows with the map: at 65 lots it runs about three minutes on
+// a runner, and in October it went red three runs in five with ONE call —
+// a 72-frame walk that normally takes ~1.5 s — not answering in 60 s, while
+// the same tree passed on the next run and on a laptop. That is a renderer
+// stall somewhere in a long sweep, not a lot you cannot walk onto; so each
+// call gets 180 s, and the slowest calls are reported so a stall names where
+// it happened.
 await check(`every lot's standing point is clear and its frontage is walkable (${everyLot.length} lots)`, async () => {
   const bad = [];
-  for (const l of everyLot) {
-    const sp = standingPoint(l);
-    const at = await teleport(sp.x, sp.z, sp.yaw);
-    const r = await walk(1.2);
-    const toward = lotToWorld(l, 0, 3);            // 3 m in front of the centre: the frontage
-    const progressed = Math.hypot(r.to[0] - at.x, r.to[1] - at.z) > 1.0;
-    const closer = Math.hypot(r.to[0] - toward.x, r.to[1] - toward.z) < Math.hypot(at.x - toward.x, at.z - toward.z);
-    if (!(progressed && closer && r.nonFinite === 0 && r.minY > -0.2)) bad.push({ lot: l.id, from: [at.x, at.z], to: r.to, moved: r.moved });
+  const slow = [];
+  callBudget = 180000;
+  try {
+    for (const l of everyLot) {
+      const t0 = Date.now();
+      const sp = standingPoint(l);
+      const at = await teleport(sp.x, sp.z, sp.yaw);
+      const r = await walk(1.2);
+      const ms = Date.now() - t0;
+      if (ms > 10000) slow.push({ lot: l.id, ms });
+      const toward = lotToWorld(l, 0, 3);            // 3 m in front of the centre: the frontage
+      const progressed = Math.hypot(r.to[0] - at.x, r.to[1] - at.z) > 1.0;
+      const closer = Math.hypot(r.to[0] - toward.x, r.to[1] - toward.z) < Math.hypot(at.x - toward.x, at.z - toward.z);
+      if (!(progressed && closer && r.nonFinite === 0 && r.minY > -0.2)) bad.push({ lot: l.id, from: [at.x, at.z], to: r.to, moved: r.moved });
+    }
+  } finally {
+    callBudget = 60000;
   }
-  return { ok: bad.length === 0, blocked: bad.slice(0, 6), blockedCount: bad.length };
+  return { ok: bad.length === 0, blocked: bad.slice(0, 6), blockedCount: bad.length, ...(slow.length ? { slow: slow.sort((a, b) => b.ms - a.ms).slice(0, 4) } : {}) };
 });
 
 // --- nothing shimmers --------------------------------------------------------
