@@ -1231,7 +1231,12 @@
       "glb": "/plots/promptops/plot.glb",
       "base": "/plots/promptops/",
       "poster": "/posters/promptops-0a2322a95584.webp",
-      "notice": null
+      "notice": {
+        "posted": "2026-10-20T11:49:36.165Z",
+        "since": "2026-10-18T11:21:05.025Z",
+        "evict_on": "2026-11-03",
+        "reason": "HTTP 404"
+      }
     },
     {
       "slug": "shellwire",
