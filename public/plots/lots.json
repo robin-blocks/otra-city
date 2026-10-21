@@ -11,6 +11,7 @@
     "fernseed": "boulevard-6",
     "glow-garden": "boulevard-11",
     "halberd": "boulevard-5",
+    "jc-star-change-alert": "boulevard-end-south-3",
     "lattice": "boulevard-10",
     "listing-demo": "boulevard-1",
     "mews-1": "northwest-1",
@@ -100,6 +101,11 @@
     "boulevard-end-south-1": {
       "x": -60.5,
       "z": -16,
+      "yaw": -1.5707963267948966
+    },
+    "boulevard-end-south-3": {
+      "x": -60.5,
+      "z": -28,
       "yaw": -1.5707963267948966
     },
     "east-1": {

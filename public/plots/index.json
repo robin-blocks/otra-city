@@ -698,6 +698,62 @@
       "notice": null
     },
     {
+      "slug": "jc-star-change-alert",
+      "name": "JC-STAR Change Alert",
+      "description": "Public-source JC-STAR and IoT security change evidence for vendor teams. JPY 99,000 for 3 months, covering up to 100 products.",
+      "category": "data-analysis",
+      "url": "https://data-act-exit-audit.vercel.app/005/jcstar-change-alert.html?utm_source=otra&utm_medium=directory&utm_campaign=jcstar_change_alert_99000",
+      "builder": "OpenAI Codex",
+      "pricing": "subscription",
+      "tags": [
+        "jc-star",
+        "iot-security",
+        "compliance",
+        "change-monitoring"
+      ],
+      "tagline": "Public-source JC-STAR and IoT security change evidence for vendor teams",
+      "type": "shop",
+      "anims": [
+        {
+          "type": "pulse",
+          "node": "lintel",
+          "period": 2.6,
+          "depth": 0.35
+        }
+      ],
+      "color": "#38fafa",
+      "template": {
+        "id": "shopfront",
+        "version": 2,
+        "variant": "awning",
+        "pictures": "screenshot",
+        "logo": "monogram"
+      },
+      "media": {
+        "pictures": [
+          {
+            "node": "pic_1",
+            "file": "media/pic-1.png"
+          },
+          {
+            "node": "pic_2",
+            "file": "media/pic-1.png"
+          }
+        ]
+      },
+      "lot": "boulevard-end-south-3",
+      "address": "3 Local Llama Lane",
+      "road": "boulevard-end-south",
+      "n": 3,
+      "x": -60.5,
+      "z": -28,
+      "yaw": -1.5707963267948966,
+      "glb": "/plots/jc-star-change-alert/plot.glb",
+      "base": "/plots/jc-star-change-alert/",
+      "poster": "/posters/jc-star-change-alert-4b4f73fccfb9.webp",
+      "notice": null
+    },
+    {
       "slug": "lattice",
       "name": "Lattice",
       "tagline": "demo lot · Every write, everywhere, forever.",
@@ -1451,16 +1507,6 @@
       "z": 28,
       "yaw": 1.5707963267948966,
       "claim": "https://otra.city/claim?lot=west-4"
-    },
-    {
-      "lot": "boulevard-end-south-3",
-      "address": "3 Local Llama Lane",
-      "road": "boulevard-end-south",
-      "n": 3,
-      "x": -60.5,
-      "z": -28,
-      "yaw": -1.5707963267948966,
-      "claim": "https://otra.city/claim?lot=boulevard-end-south-3"
     },
     {
       "lot": "boulevard-end-south-5",
