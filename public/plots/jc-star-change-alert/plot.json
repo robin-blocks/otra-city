@@ -27,7 +27,19 @@
     "id": "shopfront",
     "version": 2,
     "variant": "awning",
-    "pictures": "none",
+    "pictures": "screenshot",
     "logo": "monogram"
+  },
+  "media": {
+    "pictures": [
+      {
+        "node": "pic_1",
+        "file": "media/pic-1.png"
+      },
+      {
+        "node": "pic_2",
+        "file": "media/pic-1.png"
+      }
+    ]
   }
 }
