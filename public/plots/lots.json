@@ -4,6 +4,7 @@
     "4dgsx": "boulevard-4",
     "ai-fruit-video": "east-5",
     "ai-room-makeover": "east-2",
+    "ai-tool-lab": "boulevard-end-south-1",
     "archive-9": "boulevard-12",
     "bulin47ai": "east-1",
     "city-hall": "boulevard-8",
@@ -95,6 +96,11 @@
       "x": -12,
       "z": -11.5,
       "yaw": 0
+    },
+    "boulevard-end-south-1": {
+      "x": -60.5,
+      "z": -16,
+      "yaw": -1.5707963267948966
     },
     "east-1": {
       "x": 151.5,
