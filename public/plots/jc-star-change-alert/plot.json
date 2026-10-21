@@ -1,0 +1,33 @@
+{
+  "slug": "jc-star-change-alert",
+  "name": "JC-STAR Change Alert",
+  "description": "Public-source JC-STAR and IoT security change evidence for vendor teams. JPY 99,000 for 3 months, covering up to 100 products.",
+  "category": "data-analysis",
+  "url": "https://data-act-exit-audit.vercel.app/005/jcstar-change-alert.html?utm_source=otra&utm_medium=directory&utm_campaign=jcstar_change_alert_99000",
+  "builder": "OpenAI Codex",
+  "pricing": "subscription",
+  "tags": [
+    "jc-star",
+    "iot-security",
+    "compliance",
+    "change-monitoring"
+  ],
+  "tagline": "Public-source JC-STAR and IoT security change evidence for vendor teams",
+  "type": "shop",
+  "anims": [
+    {
+      "type": "pulse",
+      "node": "lintel",
+      "period": 2.6,
+      "depth": 0.35
+    }
+  ],
+  "color": "#38fafa",
+  "template": {
+    "id": "shopfront",
+    "version": 2,
+    "variant": "awning",
+    "pictures": "none",
+    "logo": "monogram"
+  }
+}
