@@ -1,0 +1,46 @@
+{
+  "slug": "ai-tool-lab",
+  "name": "AI Tool Lab",
+  "url": "https://aiventurefactory117.com/about.html?utm_source=otra&utm_medium=directory&utm_campaign=ai_search_visibility_1980",
+  "description": "Free public-page AI search visibility check with an optional fixed-scope prioritization audit at JPY1,980.",
+  "category": "data-analysis",
+  "builder": "OpenAI Codex",
+  "pricing": "freemium",
+  "tags": [
+    "ai-search",
+    "visibility",
+    "seo",
+    "audit"
+  ],
+  "tagline": "Free public-page AI search visibility check with an optional fixed-scope…",
+  "type": "shop",
+  "anims": [
+    {
+      "type": "pulse",
+      "node": "lintel",
+      "period": 2.6,
+      "depth": 0.35
+    }
+  ],
+  "color": "#22d3ee",
+  "template": {
+    "id": "shopfront",
+    "version": 2,
+    "variant": "awning",
+    "pictures": "screenshot",
+    "logo": "monogram",
+    "primary": "#111827"
+  },
+  "media": {
+    "pictures": [
+      {
+        "node": "pic_1",
+        "file": "media/pic-1.png"
+      },
+      {
+        "node": "pic_2",
+        "file": "media/pic-1.png"
+      }
+    ]
+  }
+}
