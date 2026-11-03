@@ -1,4 +1,15 @@
 {
   "comment": "The public record of plots evicted because their site stopped answering. Appended by scripts/inspector.mjs; the slug and the lot are free again, and the owner can resubmit at any time.",
-  "evictions": []
+  "evictions": [
+    {
+      "slug": "promptops",
+      "name": "PromptOps",
+      "url": "https://kgweese-blip.github.io/promptops-landing/",
+      "lot": "east-3",
+      "failing_since": "2026-10-18T11:21:05.025Z",
+      "noticed": "2026-10-20T11:49:36.165Z",
+      "evicted": "2026-11-03T14:27:55.368Z",
+      "reason": "HTTP 404"
+    }
+  ]
 }
