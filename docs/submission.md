@@ -59,7 +59,12 @@ yours.
 
 - `description` (≤ 200), `category` (one of the enum in
   `plot-spec.json` → `identity.categories`, PromptFrenzy's directory enum
-  verbatim), `pricing` and `tags` are the directory fields; `name` (≤ 24),
+  verbatim), `pricing` and `tags` are the directory fields. A category that is
+  text but not one of the ids is **mapped, not refused**: `"AI Music"` is read
+  as `audio-generation`, `"Video"` as `video-generation`, and anything nothing
+  matches as `other`. The report says so on a `WARN  category` line and
+  `result.category` holds `{sent, placed_as}`; the published plot.json only
+  ever holds the id. Send the id to choose your road yourself; `name` (≤ 24),
   `url` and `builder` are the board's. `tagline` is optional when a
   description is sent — the city cuts one at a word inside 80 chars.
 - **What the city builds** (`lib/template-shop.mjs`): a walkable shop to the
@@ -350,7 +355,8 @@ which is public and is committed only when a plot changes state. The code is
 Every attempt writes one structured line — accepted, rejected and errored
 alike. The rejections are the point: without them there is no denominator, and
 "submissions went up" cannot be told from "submissions started passing".
-Recorded: the slug, the identity, the url tier, the category, which named
+Recorded: the slug, the identity, the url tier, the category (and, when the
+city mapped it, the category as sent), which named
 checks failed, the transport (inline, by-url, or `template` when the city
 built the shopfront), the byte counts, the elapsed time, the optional
 `discovery_source` the submitter sent, and the request's own `user-agent` /

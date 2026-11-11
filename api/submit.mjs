@@ -11,7 +11,7 @@
 import { validateIdentity, validateGlb, probeWalkability, validateMediaDecl, probeSurfaces, probeMediaFiles, SPEC } from '../lib/validate-plot.mjs';
 import { fetchAsset } from '../lib/fetch-asset.mjs';
 import { pickLot } from '../public/js/city-map.mjs';
-import { DEFAULT_CATEGORY } from '../public/js/categories.mjs';
+import { DEFAULT_CATEGORY, CATEGORY_IDS, resolveCategory } from '../public/js/categories.mjs';
 import { hostOf, apexHost, sameSite, ownerKey, classifyUrl } from '../lib/submitter-host.mjs';
 import { buildTemplate, TEMPLATE_ID, TEMPLATE_VERSION, PICTURE_NODES } from '../lib/template-shop.mjs';
 import { badgeSnippets, SLUG_RE } from '../lib/badge.mjs';
@@ -293,12 +293,32 @@ export function deriveTagline(description) {
 // The tagline is derived for every submission that sent a description and no
 // tagline — a hand-built bundle with directory fields is welcome too; the
 // shop type and the default category are a listing's alone.
+//
+// A category that is not one of the ids is mapped to the one it most likely
+// meant (public/js/categories.mjs `resolveCategory`) rather than refused, for
+// every submission: what comes back is the category as sent, so the report
+// can say what was done with it. Text only — a number or an object is left
+// for the validator to refuse.
 function prepareListing(plot, listing) {
   if (!plot.tagline && typeof plot.description === 'string') plot.tagline = deriveTagline(plot.description);
-  if (!listing) return;
-  if (!plot.type) plot.type = 'shop';
-  if (!plot.category) plot.category = DEFAULT_CATEGORY;
+  if (plot.category === '' || plot.category === null) delete plot.category;
+  let categorySent = null;
+  const cat = plot.category === undefined ? null : resolveCategory(plot.category);
+  if (cat && !cat.exact) {
+    categorySent = plot.category;
+    plot.category = cat.id;
+  }
+  if (listing) {
+    if (!plot.type) plot.type = 'shop';
+    if (!plot.category) plot.category = DEFAULT_CATEGORY;
+  }
+  return { categorySent };
 }
+
+const categoryWarning = (sent, id) =>
+  `${JSON.stringify(sent).slice(0, 60)} is not a category, so the city read it as "${id}"` +
+  (id === DEFAULT_CATEGORY ? ' (nothing closer matched)' : '') +
+  ` — send one of ${CATEGORY_IDS.join(', ')} to choose your road yourself`;
 
 const HEX = /^#?[0-9a-f]{6}$/i;
 const norm = (c) => (HEX.test(String(c || '')) ? `#${String(c).replace('#', '').toLowerCase()}` : null);
@@ -733,10 +753,11 @@ export default async function handler(req, res) {
     // telemetry-only fields never travel into the plot that gets published
     delete plot.discovery_source;
     const listing = !body.glb_base64 && !body.glb_url;
-    prepareListing(plot, listing);
+    const { categorySent } = prepareListing(plot, listing);
     const result = { spec_version: SPEC.version, identity: null, budgets: null, walkability: null, backlink: null };
 
     result.identity = validateIdentity(plot);
+    if (categorySent !== null) result.category = { sent: categorySent, placed_as: plot.category };
 
     // Two ways to hand over the files. Inline base64 is simplest and is capped
     // by the platform's request-body limit; urls are fetched server-side under
@@ -848,6 +869,9 @@ export default async function handler(req, res) {
     }
     for (const section of ['identity', 'budgets', 'walkability', 'media']) {
       for (const c of result[section].checks) lines.push(`${c.ok ? 'PASS' : 'FAIL'}  ${c.name.padEnd(14)} ${c.detail}`);
+      if (section === 'identity' && result.category) {
+        lines.push(`WARN  category       ${categoryWarning(result.category.sent, result.category.placed_as)}`);
+      }
     }
     for (const c of result.surfaces.checks) {
       const advisory = c.name === 'coplanar faces';
@@ -912,6 +936,9 @@ export default async function handler(req, res) {
       // listing the city built for
       transport: body.glb_url ? 'url' : body.glb_base64 ? 'inline' : 'template',
       category: plot.category ?? null,
+      // what was sent, when it was not an id and the city mapped it — the
+      // only way to tell whether the mapping is choosing well
+      ...(categorySent !== null ? { category_sent: JSON.stringify(categorySent).slice(0, 60) } : {}),
       // one optional free-text field: how the submitter found the city.
       // Unverified, capped, never stored on the plot — it is the only way to
       // tell a repeatable channel from a one-off.

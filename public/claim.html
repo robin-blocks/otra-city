@@ -135,7 +135,8 @@
   <p><code>slug</code>, <code>name</code> (≤ 24), <code>url</code>,
     <code>description</code> (≤ 200) and <code>builder</code> are what a listing
     needs. <code>category</code> is one of the twelve below and decides which
-    road you stand on; unset means <em>other</em>. <code>pricing</code>
+    road you stand on; unset means <em>other</em>, and a near miss like
+    <em>"AI Music"</em> is read as the id it meant, with a warning saying so. <code>pricing</code>
     (free · freemium · paid · subscription), up to five <code>tags</code>, and
     up to six <code>images</code> (png, jpg or webp, https) are optional — the
     same fields as PromptFrenzy's AI directory, so one payload lists you in
@@ -214,7 +215,8 @@
       anything here executes your site rather than reading it, and sending
       <code>images</code> means it never happens.</li>
     <li><b>What the POST is recorded as</b>: every attempt, accepted or rejected,
-      writes one line — the slug, the category, which checks failed, whether the
+      writes one line — the slug, the category (and what you sent, if the city
+      had to map it), which checks failed, whether the
       city built the shopfront or you sent one, how big the bundle was, the
       optional <code>discovery_source</code> you send, and your request's own
       <code>user-agent</code>, <code>origin</code>, <code>referer</code>,
