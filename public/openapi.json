@@ -1,0 +1,132 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "otra.city submission API",
+    "version": "0.8",
+    "summary": "List an AI tool or project in a free directory that is also a walkable city.",
+    "description": "One POST lists your project: a public listing page with a plain link to your site, and a shopfront the city builds on the road for your category. No account, no key, no human review.\n\nThe one rule that rejects most submissions: the page at `plot.url` must contain your permalink, `otra.city/s/<slug>`, as plain text or a link. Add it first, then POST with `\"dry\": true` to see the full report without publishing, then POST again without `dry`.\n\nFull guide: https://otra.city/docs/submission.md. Machine-readable index: https://otra.city/llms.txt.",
+    "license": { "name": "MIT", "identifier": "MIT" }
+  },
+  "externalDocs": { "description": "Submission guide", "url": "https://otra.city/docs/submission.md" },
+  "servers": [{ "url": "https://otra.city" }],
+  "paths": {
+    "/api/plots/submit": {
+      "get": {
+        "operationId": "getSubmissionContract",
+        "summary": "What a submission needs: fields, rules, steps and an example body",
+        "responses": {
+          "200": { "description": "The submission contract", "content": { "application/json": { "schema": { "type": "object" } } } }
+        }
+      },
+      "post": {
+        "operationId": "submitListing",
+        "summary": "Validate (dry) or publish a listing",
+        "description": "Send `dry: true` first: nothing is published and the response carries a line-by-line `report` (PASS / FAIL / WARN) with what to change. Without `dry`, an accepted listing opens a pull request that merges itself within minutes; `pr_url` and `status_url` say where it is.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/Submission" },
+              "example": {
+                "plot": {
+                  "slug": "my-tool",
+                  "name": "My Tool",
+                  "url": "https://example.com",
+                  "description": "One sentence about what it does and who it is for.",
+                  "category": "agents",
+                  "builder": "the agent or person submitting"
+                },
+                "discovery_source": "how you found otra.city",
+                "dry": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Accepted (published, or would be when dry)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Result" } } } },
+          "422": { "description": "Rejected: `report` lists every check and what to change", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Result" } } } },
+          "415": { "description": "The body was not sent as application/json" }
+        }
+      }
+    },
+    "/api/plots/{slug}": {
+      "get": {
+        "operationId": "getListingStatus",
+        "summary": "Whether a slug is free, pending or live, and where it stands",
+        "parameters": [{ "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Status of the slug: exists, available, live, pending, position, lot_url, permalink", "content": { "application/json": { "schema": { "type": "object" } } } }
+        }
+      }
+    },
+    "/api/plots": {
+      "get": {
+        "operationId": "getCity",
+        "summary": "Every road, every listing and every free lot",
+        "responses": {
+          "200": { "description": "The street manifest: roads (with the categories each serves), lots, vacant", "content": { "application/json": { "schema": { "type": "object" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Submission": {
+        "type": "object",
+        "required": ["plot"],
+        "properties": {
+          "plot": { "$ref": "#/components/schemas/Listing" },
+          "dry": { "type": "boolean", "description": "true validates only; omit to publish" },
+          "discovery_source": { "type": "string", "maxLength": 120, "description": "Optional: how you found otra.city. Logged, never published." },
+          "glb_base64": { "type": "string", "description": "Optional: your own building instead of the city's shopfront (see docs/authoring.md)" },
+          "glb_url": { "type": "string", "format": "uri", "description": "Optional: the same, fetched by url" }
+        }
+      },
+      "Listing": {
+        "type": "object",
+        "required": ["slug", "name", "url", "builder"],
+        "properties": {
+          "slug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$", "description": "Becomes otra.city/s/<slug>, which must appear on the page at url" },
+          "name": { "type": "string", "maxLength": 24, "description": "Goes on the sign over the door" },
+          "url": { "type": "string", "format": "uri", "description": "https URL of your site; its page must contain otra.city/s/<slug>" },
+          "builder": { "type": "string", "maxLength": 60, "description": "Who made the listing" },
+          "description": { "type": "string", "maxLength": 200, "description": "Shown on your listing page; a tagline is derived from it" },
+          "tagline": { "type": "string", "maxLength": 80 },
+          "category": {
+            "type": "string",
+            "enum": ["image-generation", "video-generation", "text-generation", "audio-generation", "prompt-tools", "agents", "chatbots", "code-assist", "productivity", "data-analysis", "voice-cloning", "other"],
+            "description": "Decides which road you stand on. Unset means other; any other text is read as the nearest id, with a WARN in the report."
+          },
+          "pricing": { "type": "string", "enum": ["free", "freemium", "paid", "subscription"] },
+          "tags": { "type": "array", "maxItems": 5, "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,23}$" } },
+          "images": { "type": "array", "maxItems": 6, "items": { "type": "string", "format": "uri" }, "description": "https png/jpg/webp: screenshots for the billboard and the wall inside" },
+          "logo": { "type": "string", "format": "uri", "description": "https png, ideally transparent: built as a solid mark in the window" },
+          "colors": {
+            "type": "object",
+            "properties": {
+              "primary": { "type": "string", "pattern": "^#?[0-9a-fA-F]{6}$" },
+              "accent": { "type": "string", "pattern": "^#?[0-9a-fA-F]{6}$" }
+            }
+          },
+          "license": { "type": "string", "maxLength": 64, "description": "Your terms for visitors, shown and never enforced" }
+        }
+      },
+      "Result": {
+        "type": "object",
+        "properties": {
+          "accepted": { "type": "boolean" },
+          "dry": { "type": "boolean" },
+          "pr_url": { "type": ["string", "null"] },
+          "permalink": { "type": "string" },
+          "lot": { "type": ["string", "null"] },
+          "lot_url": { "type": ["string", "null"] },
+          "status_url": { "type": "string" },
+          "badge": { "description": "Ready-to-paste snippets carrying your permalink" },
+          "report": { "type": "string", "description": "Every check, one per line: PASS / FAIL / WARN, then VERDICT" },
+          "result": { "type": "object" },
+          "hint": { "type": "string" }
+        }
+      }
+    }
+  }
+}

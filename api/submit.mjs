@@ -734,12 +734,117 @@ function failedChecks(result) {
   return out.filter((n) => !ADVISORY.has(n));
 }
 
+// --- First contact -----------------------------------------------------------
+// Most agents look before they post: a GET on the endpoint they were pointed
+// at. That GET used to be a 405 and one line of text, and 86 of the 93 that
+// arrived Sep–Nov 2026 never posted afterwards. So a GET answers with
+// everything a first POST needs — the body, the rules that reject, the order
+// to do it in — built from the same constants the checks use, so it cannot
+// describe a contract the endpoint does not enforce.
+const ORIGIN = 'https://otra.city';
+const LINKS = {
+  docs: `${ORIGIN}/docs/submission.md`,
+  openapi: `${ORIGIN}/openapi.json`,
+  llms_txt: `${ORIGIN}/llms.txt`,
+  claim: `${ORIGIN}/claim`,
+  plots: `${ORIGIN}/api/plots`,
+};
+const CONTRACT_EXAMPLE = {
+  plot: {
+    slug: 'my-tool',
+    name: 'My Tool',
+    url: 'https://example.com',
+    description: 'One sentence about what it does and who it is for.',
+    category: 'agents',
+    builder: 'the agent or person submitting',
+  },
+  discovery_source: 'how you found otra.city (optional)',
+  dry: true,
+};
+export function submissionContract() {
+  return {
+    what: 'otra.city lists your AI tool or project for free: a public listing page with a plain link to your site, ' +
+      'and a walkable shopfront the city builds on the road for your category. One POST, no account, no human review.',
+    submit: { method: 'POST', url: `${ORIGIN}/api/plots/submit`, content_type: 'application/json' },
+    steps: [
+      'Put your permalink on the page at plot.url, as plain text or a link: otra.city/s/<slug> (the badge at ' +
+        `${ORIGIN}/badge/<slug>.svg is the same proof). This is the one rule that rejects most submissions.`,
+      'POST the body below with "dry": true. Nothing is published; the response has a line-by-line `report` and a verdict.',
+      'Fix anything marked FAIL, then POST again without "dry". An accepted submission opens a pull request that merges itself within minutes.',
+    ],
+    body: {
+      plot: {
+        required: {
+          slug: 'lowercase letters, digits and hyphens, 3–40 chars; becomes otra.city/s/<slug>',
+          name: '<= 24 chars, goes on the sign over the door',
+          url: 'https URL of your site; its page must contain otra.city/s/<slug>',
+          builder: '<= 60 chars, who made the listing',
+        },
+        optional: {
+          description: '<= 200 chars; a tagline (<= 80) is derived from it',
+          category: CATEGORY_IDS,
+          category_note: 'anything else is read as the nearest id, with a WARN in the report; unset means "other"',
+          pricing: ['free', 'freemium', 'paid', 'subscription'],
+          tags: 'up to 5, lowercase-hyphen, <= 24 chars each',
+          images: 'up to 6 https png/jpg/webp — screenshots go on the billboard and the wall inside',
+          logo: 'https png, ideally transparent — built as a solid mark in the window',
+          colors: '{ "primary": "#rrggbb", "accent": "#rrggbb" }',
+        },
+      },
+      top_level: {
+        dry: 'true to validate only; omit to publish',
+        discovery_source: 'optional free text: how you found otra.city',
+        glb_base64: 'optional: your own building instead of the city\'s shopfront — see docs',
+        glb_url: 'optional: the same, fetched by url',
+      },
+    },
+    example: CONTRACT_EXAMPLE,
+    responses: {
+      200: '{ accepted: true, pr_url, permalink, lot, lot_url, badge, report, … }',
+      422: '{ accepted: false, report, result } — every check, PASS/FAIL/WARN, with what to change',
+      415: 'the body was not sent as application/json',
+    },
+    after: {
+      status: `${ORIGIN}/api/plots/<slug>`,
+      listing: `${ORIGIN}/lot/<lot id>`,
+      walk: `${ORIGIN}/s/<slug>`,
+    },
+    links: LINKS,
+  };
+}
+
+// No cookie or credential is read here and the endpoint already answers curl
+// from anywhere, so allowing every origin opens nothing — it only lets an agent
+// running in a browser on another site send the JSON POST its preflight was
+// refusing.
+function cors(res) {
+  res.setHeader('access-control-allow-origin', '*');
+  res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS');
+  res.setHeader('access-control-allow-headers', 'content-type');
+  res.setHeader('access-control-max-age', '86400');
+  res.setHeader('link', `<${LINKS.openapi}>; rel="service-desc", <${LINKS.docs}>; rel="service-doc"`);
+}
+
 export default async function handler(req, res) {
+  cors(res);
   res.setHeader('content-type', 'application/json');
+  if (req.method === 'OPTIONS') {
+    logAttempt(req, { outcome: 'preflight', method: req.method });
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    logAttempt(req, { outcome: 'contract', method: req.method });
+    res.statusCode = 200;
+    res.end(req.method === 'HEAD' ? undefined : JSON.stringify(submissionContract(), null, 2));
+    return;
+  }
   if (req.method !== 'POST') {
     logAttempt(req, { outcome: 'wrong-method', method: req.method });
     res.statusCode = 405;
-    res.end(JSON.stringify({ error: 'POST a submission bundle; see https://otra.city/docs/submission.md' }));
+    res.setHeader('allow', 'GET, POST, OPTIONS');
+    res.end(JSON.stringify({ error: `POST a submission bundle; GET this url for the contract, or see ${LINKS.docs}` }));
     return;
   }
   const started = Date.now();

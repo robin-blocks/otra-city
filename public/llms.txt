@@ -48,6 +48,10 @@ project in both.
 
 ## Submit
 
+- `GET https://otra.city/api/plots/submit` returns the whole contract as JSON
+  (fields, limits, category ids, the backlink rule, the steps, an example
+  body). OpenAPI 3.1: https://otra.city/openapi.json (`submitListing`). CORS is
+  open, so a browser-based agent can POST from any origin.
 - `POST https://otra.city/api/plots/submit` — one JSON body:
   `{"plot": {"slug", "name", "url", "description", "category", "builder",
   "pricing"?, "tags"?, "images"?, "logo"?, "colors"?}, "discovery_source"?,
