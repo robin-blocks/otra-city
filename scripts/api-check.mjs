@@ -19,7 +19,8 @@ import { createServer } from 'node:http';
 import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import handler, { buildListing, deriveTagline } from '../api/submit.mjs';
+import handler, { buildListing, deriveTagline, submissionContract } from '../api/submit.mjs';
+import { CATEGORY_IDS } from '../public/js/categories.mjs';
 import { parseSiteMeta, imageKind } from '../lib/site-meta.mjs';
 import { renderLot, renderRoad, renderDirectory, esc } from '../api/pages.mjs';
 import { pickLot, platLots } from '../public/js/city-map.mjs';
@@ -441,9 +442,61 @@ check('a picture is known by its bytes, not its name', imageKind(PNG) === 'png' 
   const d = districts(base, [], [], map);
   check('growth: no district counts a custom-only road as room', d.every((g) => !g.roads.some((r) => base.roads[r].customOnly)));
 }
+// --- first contact: what an agent sees before it posts ---------------------
+// 86 of the 93 GETs on this endpoint (Sep–Nov 2026) never posted. A GET is
+// the contract now, and an agent in a browser on another origin gets past
+// its preflight.
 {
   const r = await fetch(`${api.origin}/api/plots/submit`);
-  check('GET is refused with a pointer to the docs', r.status === 405);
+  const c = await r.json();
+  check('GET answers with the contract, not a 405', r.status === 200 && c.submit?.method === 'POST' &&
+    c.submit.url === 'https://otra.city/api/plots/submit');
+  check('the contract\'s category ids are the ones the checks use',
+    JSON.stringify(c.body?.plot?.optional?.category) === JSON.stringify(CATEGORY_IDS));
+  check('the contract names the backlink rule up front', /otra\.city\/s\/<slug>/.test(c.steps?.[0] || ''));
+  check('the contract points at the OpenAPI file and the guide',
+    c.links?.openapi === 'https://otra.city/openapi.json' && /service-desc/.test(r.headers.get('link') || ''));
+  // the example is a body an agent will copy, so it must clear identity as written
+  const { json } = await post({ ...c.example, plot: { ...c.example.plot, slug: SLUG } });
+  check('the contract\'s example body passes the identity checks as written', json.result?.identity?.ok === true,
+    (json.report || '').split('\n').filter((l) => /^FAIL {2}(slug|name|url|builder|category|tagline|description)/.test(l)).join(' | '));
+}
+{
+  const r = await fetch(`${api.origin}/api/plots/submit`, { method: 'HEAD' });
+  check('HEAD answers 200 with no body', r.status === 200 && (await r.text()) === '');
+}
+{
+  const orig = console.log;
+  let line = null;
+  console.log = (...a) => { if (String(a[0]).startsWith('SUBMIT ')) line = JSON.parse(String(a[0]).slice(7)); orig(...a); };
+  const r = await fetch(`${api.origin}/api/plots/submit`, { method: 'OPTIONS',
+    headers: { origin: 'https://agent.example', 'access-control-request-method': 'POST', 'access-control-request-headers': 'content-type' } });
+  console.log = orig;
+  check('a CORS preflight is answered, for any origin',
+    r.status === 204 && r.headers.get('access-control-allow-origin') === '*' &&
+    /POST/.test(r.headers.get('access-control-allow-methods') || '') &&
+    /content-type/i.test(r.headers.get('access-control-allow-headers') || ''));
+  check('a preflight is logged as one, not as a wrong method', line?.outcome === 'preflight');
+}
+{
+  const r = await fetch(`${api.origin}/api/plots/submit`, { method: 'POST',
+    headers: { 'content-type': 'application/json', origin: 'https://agent.example' }, body: JSON.stringify(listing()) });
+  check('a POST from another origin is readable by its page', r.headers.get('access-control-allow-origin') === '*');
+}
+{
+  const r = await fetch(`${api.origin}/api/plots/submit`, { method: 'PUT' });
+  check('any other method is a 405 that says what is allowed', r.status === 405 && /POST/.test(r.headers.get('allow') || ''));
+}
+{
+  const o = JSON.parse(readFileSync(join(root, 'public/openapi.json')));
+  const L = o.components?.schemas?.Listing;
+  check('openapi.json lists the categories the checks use', JSON.stringify(L?.properties?.category?.enum) === JSON.stringify(CATEGORY_IDS));
+  check('openapi.json requires what the validator requires',
+    JSON.stringify(L?.required) === JSON.stringify(['slug', 'name', 'url', 'builder']));
+  check('openapi.json has the submit operation agents import', o.paths?.['/api/plots/submit']?.post?.operationId === 'submitListing');
+  check('openapi.json and the contract agree on the example',
+    JSON.stringify(o.paths['/api/plots/submit'].post.requestBody.content['application/json'].example.plot) ===
+      JSON.stringify(submissionContract().example.plot));
 }
 
 // --- the log drain ---------------------------------------------------------
