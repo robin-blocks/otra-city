@@ -36,6 +36,52 @@ export function categoryOf(id) {
   return CATEGORIES.find((c) => c.id === id) || null;
 }
 
+// What a category that is NOT one of the ids most likely meant. Agents write
+// the category they would write for any directory — "AI Music", "Video",
+// "Image Generation", "tools" — and a rejection for that was the one place an
+// honest submitter with a working backlink gave up and never came back
+// (musci.io sent "AI Music" twice, Oct 2026). So the intake maps a near miss
+// instead of refusing it, and says so in the report; the published plot.json
+// only ever holds a real id, and the validator stays strict about that.
+//
+// The order is the priority: the most specific medium wins, so "text to video"
+// is video and "text to speech" is voice. A word nothing here claims lands on
+// `other` — a vague "tools" or "education" is not a guess worth making for
+// someone, and the report tells them how to choose.
+const CATEGORY_WORDS = [
+  ['voice-cloning', ['voice', 'speech', 'tts', 'dubbing', 'clone', 'cloning']],
+  ['video-generation', ['video', 'animation', 'film', 'movie', 'clip']],
+  ['audio-generation', ['audio', 'music', 'song', 'sound', 'podcast']],
+  ['image-generation', ['image', 'photo', 'picture', 'art', 'illustration', 'avatar', 'graphic']],
+  ['code-assist', ['code', 'coding', 'developer', 'programming', 'devtool', 'dev']],
+  ['prompt-tools', ['prompt']],
+  ['agents', ['agent', 'agentic', 'automation', 'workflow']],
+  ['chatbots', ['chatbot', 'chat', 'assistant', 'companion']],
+  ['data-analysis', ['data', 'analytics', 'analysis', 'spreadsheet', 'dashboard']],
+  ['text-generation', ['text', 'writing', 'writer', 'copywriting', 'content', 'essay']],
+  ['productivity', ['productivity', 'notes', 'calendar', 'email', 'task', 'scheduling', 'meeting']],
+];
+
+const words = (s) => s.toLowerCase().replace(/&/g, ' and ').split(/[^a-z0-9]+/).filter(Boolean)
+  // a plural is the same word: "agents", "videos", "images"
+  .map((w) => (w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w));
+
+/** A submitted category, as a real id. `null` for a value that is not text at
+ *  all (the validator reports that); otherwise `{ id, exact }`, where `exact`
+ *  is false when the city had to map it. An array of strings — some agents
+ *  send their directory's multi-select — is read as one phrase. */
+export function resolveCategory(raw) {
+  const text = Array.isArray(raw) && raw.every((r) => typeof r === 'string') ? raw.join(' ') : raw;
+  if (typeof text !== 'string') return null;
+  if (CATEGORY_IDS.includes(text)) return { id: text, exact: true };
+  const w = words(text);
+  const slug = w.join('-');
+  const byName = CATEGORIES.find((c) => words(c.id).join('-') === slug || words(c.label).join('-') === slug);
+  if (byName) return { id: byName.id, exact: false };
+  for (const [id, keys] of CATEGORY_WORDS) if (w.some((x) => keys.includes(x))) return { id, exact: false };
+  return { id: DEFAULT_CATEGORY, exact: false };
+}
+
 // HSL -> #rrggbb, so the same hue reads the same on a board, a plan and a
 // facade without a colour library on either side.
 export function hsl(h, s, l) {

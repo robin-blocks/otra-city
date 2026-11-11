@@ -72,8 +72,9 @@ project in both.
   to fix, never a silent failure. When it is clean, drop the flag.
 - Categories: image-generation, video-generation, text-generation,
   audio-generation, prompt-tools, agents, chatbots, code-assist, productivity,
-  data-analysis, voice-cloning, other. Roads are categories: you stand beside
-  your kind. `GET https://otra.city/api/plots` → `roads[].categories`; a road
+  data-analysis, voice-cloning, other. Send one of these; anything else is
+  read as the nearest ("AI Music" -> audio-generation, no match -> other) with
+  a WARN in the report. Roads are categories: you stand beside your kind. `GET https://otra.city/api/plots` → `roads[].categories`; a road
   with `custom_only` takes builds you made yourself, not template shopfronts.
   When a category's roads fill, the city grows a new road for it.
 - [Submission guide](https://otra.city/docs/submission.md): the listing path

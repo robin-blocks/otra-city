@@ -42,7 +42,7 @@
       "name": "display name, <= 24 chars",
       "tagline": "<= 80 chars; optional when a description is sent — the city derives one from it",
       "description": "OPTIONAL, <= 200 chars, factual, no superlatives — the listing page shows it (the same field as PromptFrenzy's AI directory)",
-      "category": "OPTIONAL, one of the directory categories (see `categories`); unset means \"other\". A listing lands on the road that serves its category — this is what places a plot",
+      "category": "OPTIONAL, one of the directory categories (see `categories`); unset means \"other\". Text that is not an id is mapped to the nearest one (\"AI Music\" -> audio-generation; no match -> other) and the report WARNs with result.category {sent, placed_as}; a non-text value is refused. A listing lands on the road that serves its category — this is what places a plot",
       "pricing": "OPTIONAL: free | freemium | paid | subscription",
       "tags": "OPTIONAL: up to 5, lowercase-hyphen, <= 24 chars each",
       "images": "OPTIONAL, listings only: up to 6 https urls of png/jpg/webp pictures the city puts on the shopfront it builds (2 MiB each) — the billboard over the window and the wall facing the door. Without it the page's og:image is used; without that, CI photographs the page itself after the listing merges. Not stored — the fetched files are, as media/",

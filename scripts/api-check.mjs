@@ -266,10 +266,38 @@ const listing = (over = {}) => ({
     json.accepted === true && /^north-/.test(json.lot || '') && /ignored/.test(json.result.lot.detail), `${json.lot}`);
 }
 {
+  // A near miss is mapped, never refused: "AI Music" was a real rejection
+  // (musci.io, Oct 2026) from a submitter who then gave up. The published
+  // plot holds the id, the report says what was done, the log keeps both.
+  const orig = console.log;
+  let line = null;
+  console.log = (...a) => { if (String(a[0]).startsWith('SUBMIT ')) line = JSON.parse(String(a[0]).slice(7)); orig(...a); };
+  const { json } = await post(listing({ category: 'AI Music' }));
+  console.log = orig;
+  check('a near-miss category is mapped to the id it meant, not rejected',
+    json.accepted === true && json.plot.category === 'audio-generation' &&
+    json.result.category?.sent === 'AI Music' && json.result.category?.placed_as === 'audio-generation',
+    json.accepted ? json.plot?.category : (json.report || '').split('\n').filter((l) => l.startsWith('FAIL')).join(' | '));
+  check('the mapping is a warning that names the real ids',
+    /WARN {2}category {7}"AI Music" is not a category, so the city read it as "audio-generation"/.test(json.report) &&
+    /image-generation/.test(json.report));
+  check('the log keeps what was sent beside what was placed',
+    line?.category === 'audio-generation' && line?.category_sent === '"AI Music"', JSON.stringify(line?.category_sent));
+}
+{
   const { json } = await post(listing({ category: 'nope' }));
+  check('a category nothing matches is placed as other, with the same warning',
+    json.accepted === true && json.plot.category === 'other' && /WARN {2}category .*nothing closer matched/.test(json.report));
+}
+{
+  const { json } = await post(listing({ category: 42 }));
   const c = json.result.identity.checks.find((x) => x.name === 'category');
-  check('an unknown category is a rejection that lists the real ones',
+  check('a category that is not text is still a rejection that lists the real ones',
     json.accepted === false && c.ok === false && /image-generation/.test(c.detail));
+}
+{
+  const { json } = await post(listing());
+  check('an exact category says nothing extra', !/WARN {2}category/.test(json.report) && json.result.category === undefined);
 }
 {
   // sent inside the plot AND at the top level: only the top-level one is
