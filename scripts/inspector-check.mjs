@@ -21,6 +21,11 @@ import { knock, advance, inspect, CLOCK, NOTICES_COMMENT } from '../lib/inspecto
 import { findPoster } from '../lib/poster-paths.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
+// The street every scenario runs on: frozen, never the live public/ — see
+// scripts/fixtures/inspector-street/README.md for why.
+const fixture = join(root, 'scripts/fixtures/inspector-street');
+const streetPosters = readFileSync(join(fixture, 'posters.txt'), 'utf8').split('\n').filter((f) => f.endsWith('.webp'));
+const streetPlots = readdirSync(join(fixture, 'plots')).filter((s) => existsSync(join(fixture, 'plots', s, 'plot.json')));
 let failed = 0;
 const check = (label, ok, detail = '') => {
   if (!ok) failed += 1;
@@ -119,20 +124,20 @@ const K = { allowLocal: true, timeoutMs: 800 };
 }
 
 // --- a scratch street ---------------------------------------------------------
-// The real registry, plat and plots — plot.json only, an empty plot.glb, empty
-// posters with the real names — with every third-party url pointed at the
-// fixture. build-manifest.mjs runs against it through OTRA_PUBLIC_DIR.
+// The frozen street's registry, plat and plots — plot.json only, an empty
+// plot.glb, empty posters with the real names — with every third-party url
+// pointed at the fixture. build-manifest.mjs runs against it through OTRA_PUBLIC_DIR.
 function scratchStreet(urls) {
   const pub = mkdtempSync(join(tmpdir(), 'otra-inspector-'));
   mkdirSync(join(pub, 'plots'));
   mkdirSync(join(pub, 'city'));
   mkdirSync(join(pub, 'posters'));
-  copyFileSync(join(root, 'public/city/lots.json'), join(pub, 'city/lots.json'));
-  copyFileSync(join(root, 'public/plots/lots.json'), join(pub, 'plots/lots.json'));
-  copyFileSync(join(root, 'public/sitemap.xml'), join(pub, 'sitemap.xml'));
-  for (const f of readdirSync(join(root, 'public/posters'))) if (f.endsWith('.webp')) writeFileSync(join(pub, 'posters', f), '');
-  for (const slug of readdirSync(join(root, 'public/plots'))) {
-    const src = join(root, 'public/plots', slug, 'plot.json');
+  copyFileSync(join(fixture, 'city/lots.json'), join(pub, 'city/lots.json'));
+  copyFileSync(join(fixture, 'plots/lots.json'), join(pub, 'plots/lots.json'));
+  copyFileSync(join(fixture, 'sitemap.xml'), join(pub, 'sitemap.xml'));
+  for (const f of streetPosters) writeFileSync(join(pub, 'posters', f), '');
+  for (const slug of streetPlots) {
+    const src = join(fixture, 'plots', slug, 'plot.json');
     if (!existsSync(src)) continue;
     const plot = JSON.parse(readFileSync(src, 'utf8'));
     mkdirSync(join(pub, 'plots', slug, 'media'), { recursive: true });
@@ -187,7 +192,7 @@ const day = (n) => Date.parse('2026-10-16T06:17:00Z') + n * 86400e3;
   check('day 16: still dead on evict_on -> evicted', r.evicted.length === 1 && r.evicted[0].slug === 'promptops', r.evicted);
   check('eviction removes the plot directory', !existsSync(join(pub, 'plots/promptops')));
   check('eviction removes its poster', poster && !existsSync(join(pub, 'posters', poster)), poster);
-  check('...and no other plot\'s poster', readdirSync(join(pub, 'posters')).length === readdirSync(join(root, 'public/posters')).filter((f) => f.endsWith('.webp')).length - 1);
+  check('...and no other plot\'s poster', readdirSync(join(pub, 'posters')).length === streetPosters.length - 1);
   const reg = J(pub, 'plots/lots.json');
   check('the land registry lets the lot go (lots and placed)', !('promptops' in reg.lots) && !(opsLot in reg.placed) &&
     Object.keys(reg.lots).length === Object.keys(lotsBefore.lots).length - 1, opsLot);
@@ -201,7 +206,7 @@ const day = (n) => Date.parse('2026-10-16T06:17:00Z') + n * 86400e3;
     rec[0].url === at('/gone') && rec[0].lot === opsLot && rec[0].failing_since === '2026-10-16T06:17:00.000Z' &&
     /^2026-10-18/.test(rec[0].noticed) && /^2026-11-01/.test(rec[0].evicted) && /404/.test(rec[0].reason), rec[0]);
   check('every other plot is untouched', readdirSync(join(pub, 'plots')).filter((s) => existsSync(join(pub, 'plots', s, 'plot.json'))).length ===
-    readdirSync(join(root, 'public/plots')).filter((s) => existsSync(join(root, 'public/plots', s, 'plot.json'))).length - 1);
+    streetPlots.length - 1);
   const mc = spawnSync(process.execPath, [join(root, 'scripts/build-manifest.mjs')], { env: { ...process.env, OTRA_PUBLIC_DIR: pub }, encoding: 'utf8' });
   check('the manifest builder accepts the street the eviction left', mc.status === 0, mc.stderr);
   rmSync(pub, { recursive: true, force: true });

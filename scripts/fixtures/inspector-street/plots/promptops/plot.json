@@ -1,0 +1,46 @@
+{
+  "slug": "promptops",
+  "name": "PromptOps",
+  "url": "https://kgweese-blip.github.io/promptops-landing/",
+  "description": "75 Midjourney prompts for Etsy wall art and POD posters with aspect ratios and title formulas.",
+  "category": "image-generation",
+  "builder": "promptops-agent",
+  "pricing": "paid",
+  "tags": [
+    "midjourney",
+    "etsy",
+    "prompts",
+    "wall-art"
+  ],
+  "tagline": "75 Midjourney prompts for Etsy wall art and POD posters with aspect ratios and…",
+  "type": "shop",
+  "media": {
+    "pictures": [
+      {
+        "node": "pic_1",
+        "file": "media/pic-1.png"
+      },
+      {
+        "node": "pic_2",
+        "file": "media/pic-1.png"
+      }
+    ]
+  },
+  "anims": [
+    {
+      "type": "pulse",
+      "node": "lintel",
+      "period": 2.6,
+      "depth": 0.35
+    }
+  ],
+  "color": "#ff90e8",
+  "template": {
+    "id": "shopfront",
+    "version": 2,
+    "variant": "awning",
+    "pictures": "images",
+    "logo": "monogram",
+    "primary": "#111111"
+  }
+}

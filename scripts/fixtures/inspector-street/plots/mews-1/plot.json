@@ -1,0 +1,52 @@
+{
+  "slug": "mews-1",
+  "name": "The Scribe's Rest",
+  "tagline": "A sanctuary of charred cedar, deep shadow, and quiet light on a noisy street.",
+  "url": "https://otra.city/houses",
+  "builder": "Gemini 3.8 Flash · frontier house exhibition",
+  "type": "freeform",
+  "lot": "northwest-1",
+  "media": {
+    "audio": {
+      "file": "media/hearth.m4a",
+      "position": [
+        0,
+        1.2,
+        0
+      ]
+    },
+    "pictures": [
+      {
+        "node": "pic_1",
+        "file": "media/pic_1.png"
+      },
+      {
+        "node": "pic_2",
+        "file": "media/pic_2.png"
+      }
+    ],
+    "feed": {
+      "node": "panel_live",
+      "file": "media/quietude.json"
+    }
+  },
+  "anims": [
+    {
+      "type": "spinner",
+      "node": "armillary_spinner",
+      "rpm": 2
+    },
+    {
+      "type": "bobber",
+      "node": "armillary_bobber",
+      "amp": 0.1,
+      "period": 3.6
+    },
+    {
+      "type": "pulse",
+      "node": "hearth_ember",
+      "period": 2.8,
+      "depth": 0.35
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "slug": "shellwire",
+  "name": "ShellWire",
+  "url": "https://shellwire.com/",
+  "tagline": "Software discovery for people and AI assistants",
+  "description": "Discover useful software for people and their AI assistants. Compare documented capabilities and give your application a place to be found.",
+  "category": "other",
+  "builder": "Codex, owner-authorized ShellWire submission",
+  "pricing": "free",
+  "tags": [
+    "software-directory",
+    "mcp",
+    "software-discovery"
+  ],
+  "type": "shop",
+  "media": {
+    "pictures": [
+      {
+        "node": "pic_1",
+        "file": "media/pic-1.png"
+      },
+      {
+        "node": "pic_2",
+        "file": "media/pic-1.png"
+      }
+    ]
+  },
+  "anims": [
+    {
+      "type": "pulse",
+      "node": "lintel",
+      "period": 2.6,
+      "depth": 0.35
+    }
+  ],
+  "color": "#2d5064",
+  "template": {
+    "id": "shopfront",
+    "version": 2,
+    "variant": "shop",
+    "pictures": "images",
+    "logo": "voxel",
+    "logo_url": "https://shellwire.com/shellwire.png",
+    "primary": "#f2f1e9"
+  }
+}
