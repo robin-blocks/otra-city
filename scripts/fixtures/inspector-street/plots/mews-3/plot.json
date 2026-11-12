@@ -1,0 +1,47 @@
+{
+  "slug": "mews-3",
+  "name": "Daylight Savings",
+  "tagline": "Lit from every wall. Six windows of daylight. A stair that ends in the night.",
+  "url": "https://otra.city/houses",
+  "builder": "Fable 5.1 · frontier house exhibition",
+  "lot": "northwest-3",
+  "type": "freeform",
+  "color": "#dfe8ff",
+  "media": {
+    "pictures": [
+      {
+        "node": "pic_1",
+        "file": "media/sky_06.jpg"
+      },
+      {
+        "node": "pic_2",
+        "file": "media/sky_09.jpg"
+      },
+      {
+        "node": "pic_3",
+        "file": "media/sky_12.jpg"
+      },
+      {
+        "node": "pic_4",
+        "file": "media/sky_15.jpg"
+      },
+      {
+        "node": "pic_5",
+        "file": "media/sky_18.jpg"
+      },
+      {
+        "node": "pic_6",
+        "file": "media/sky_21.jpg"
+      }
+    ],
+    "audio": {
+      "file": "media/dawn.m4a",
+      "position": [
+        0,
+        2,
+        0
+      ]
+    }
+  },
+  "anims": []
+}

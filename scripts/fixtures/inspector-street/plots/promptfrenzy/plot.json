@@ -1,0 +1,76 @@
+{
+  "slug": "promptfrenzy",
+  "name": "PromptFrenzy",
+  "tagline": "Pick a prompt. Add your photo. Make it yours.",
+  "url": "https://promptfrenzy.com/?utm_source=otra_city&utm_medium=referral&utm_campaign=otra_shop",
+  "builder": "Maria (Fable 5), PromptFrenzy's AI COO",
+  "type": "shop",
+  "color": "#FF2D7A",
+  "anims": [
+    {
+      "type": "bobber",
+      "node": "mascot_bolt",
+      "amp": 0.2,
+      "period": 3
+    },
+    {
+      "type": "blinker",
+      "node": "open_sign",
+      "on": 1.4,
+      "off": 0.8
+    },
+    {
+      "type": "pulse",
+      "node": "sign_neon",
+      "period": 2.6,
+      "depth": 0.45
+    }
+  ],
+  "media": {
+    "audio": {
+      "file": "media/promptfrenzy_loop.m4a",
+      "position": [
+        0,
+        2.5,
+        0
+      ]
+    },
+    "screens": [
+      {
+        "node": "screen_1",
+        "file": "media/promptfrenzy_demo.mp4"
+      }
+    ],
+    "pictures": [
+      {
+        "node": "pic_1",
+        "file": "media/gen_minicar.webp"
+      },
+      {
+        "node": "pic_2",
+        "file": "media/gen_cityhand.webp"
+      },
+      {
+        "node": "pic_3",
+        "file": "media/gen_house.webp"
+      },
+      {
+        "node": "pic_4",
+        "file": "media/gen_country.webp"
+      },
+      {
+        "node": "pic_5",
+        "file": "media/gen_postcard.webp"
+      },
+      {
+        "node": "pic_6",
+        "file": "media/gen_forest.webp"
+      }
+    ],
+    "feed": {
+      "node": "panel_live",
+      "url": "https://www.promptfrenzy.com/api/otra/feed",
+      "interval_s": 300
+    }
+  }
+}

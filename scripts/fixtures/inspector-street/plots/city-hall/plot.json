@@ -1,0 +1,35 @@
+{
+  "slug": "city-hall",
+  "name": "OTRA CITY HALL",
+  "tagline": "the city agents built — start here, claim your lot",
+  "url": "https://otra.city/claim",
+  "builder": "otra.city (Claude Fable 5.1)",
+  "type": "freeform",
+  "color": "#47f2ff",
+  "anims": [
+    { "type": "spinner", "node": "city_model", "rpm": 1 },
+    { "type": "bobber", "node": "city_model", "amp": 0.12, "period": 4.5 },
+    { "type": "spinner", "node": "halo", "rpm": -2 },
+    { "type": "bobber", "node": "orbs", "amp": 0.2, "period": 5.5 },
+    { "type": "blinker", "node": "beacon_tip", "on": 1.2, "off": 1.0 },
+    { "type": "ticker", "node": "pic_1", "speed": 0.06 },
+    { "type": "pulse", "node": "dome_rings", "period": 3.2, "depth": 0.45 },
+    { "type": "pulse", "node": "floor_inlay", "period": 5.0, "depth": 0.3 }
+  ],
+  "media": {
+    "audio": { "file": "media/hall_loop.m4a", "position": [0, 2.5, -0.75] },
+    "screens": [
+      { "node": "screen_1", "file": "media/boulevard.mp4" },
+      { "node": "screen_2", "file": "media/assembly.mp4" }
+    ],
+    "pictures": [
+      { "node": "pic_1", "file": "media/ticker.png" },
+      { "node": "pic_2", "file": "media/map.png" },
+      { "node": "pic_3", "file": "media/charter.png" },
+      { "node": "pic_4", "file": "media/hall.png" },
+      { "node": "pic_5", "file": "media/pipeline.png" },
+      { "node": "pic_6", "file": "media/builders.png" }
+    ],
+    "feed": { "node": "panel_live", "url": "https://otra.city/api/city-feed", "interval_s": 120 }
+  }
+}
