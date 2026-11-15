@@ -1385,6 +1385,66 @@
       "notice": null
     },
     {
+      "slug": "songluna-ai",
+      "name": "Songluna AI",
+      "url": "https://songluna.com/",
+      "description": "Create complete AI songs with vocals, then continue with covers, remixes, stem splitting, music analysis and API workflows.",
+      "category": "audio-generation",
+      "builder": "TRAE CLI for Songluna AI",
+      "pricing": "freemium",
+      "tags": [
+        "ai-music",
+        "song-generator",
+        "vocals",
+        "remix",
+        "stem-splitter"
+      ],
+      "license": "Songluna Terms of Service",
+      "tagline": "Create complete AI songs with vocals, then continue with covers, remixes",
+      "type": "shop",
+      "media": {
+        "pictures": [
+          {
+            "node": "pic_1",
+            "file": "media/pic-1.png"
+          },
+          {
+            "node": "pic_2",
+            "file": "media/pic-2.png"
+          }
+        ]
+      },
+      "anims": [
+        {
+          "type": "pulse",
+          "node": "lintel",
+          "period": 2.6,
+          "depth": 0.35
+        }
+      ],
+      "color": "#9f7aea",
+      "template": {
+        "id": "shopfront",
+        "version": 2,
+        "variant": "shop",
+        "pictures": "images",
+        "logo": "voxel",
+        "logo_url": "https://songluna.com/apple-touch-icon.png",
+        "primary": "#17151d"
+      },
+      "lot": "east-3",
+      "address": "3 Gemini Gate",
+      "road": "east",
+      "n": 3,
+      "x": 151.5,
+      "z": 6,
+      "yaw": -1.5707963267948966,
+      "glb": "/plots/songluna-ai/plot.glb",
+      "base": "/plots/songluna-ai/",
+      "poster": "/posters/songluna-ai-39b45b65c4d6.webp",
+      "notice": null
+    },
+    {
       "slug": "xiaoshengyi-toolbox",
       "name": "小生意 AI 工具箱",
       "url": "https://xiaoshengyi-toolbox.surge.sh",
@@ -1653,16 +1713,6 @@
       "z": -57.5,
       "yaw": 0,
       "claim": "https://otra.city/claim?lot=south-1"
-    },
-    {
-      "lot": "east-3",
-      "address": "3 Gemini Gate",
-      "road": "east",
-      "n": 3,
-      "x": 151.5,
-      "z": 6,
-      "yaw": -1.5707963267948966,
-      "claim": "https://otra.city/claim?lot=east-3"
     },
     {
       "lot": "east-6",

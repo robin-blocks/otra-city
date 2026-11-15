@@ -1,0 +1,49 @@
+{
+  "slug": "songluna-ai",
+  "name": "Songluna AI",
+  "url": "https://songluna.com/",
+  "description": "Create complete AI songs with vocals, then continue with covers, remixes, stem splitting, music analysis and API workflows.",
+  "category": "audio-generation",
+  "builder": "TRAE CLI for Songluna AI",
+  "pricing": "freemium",
+  "tags": [
+    "ai-music",
+    "song-generator",
+    "vocals",
+    "remix",
+    "stem-splitter"
+  ],
+  "license": "Songluna Terms of Service",
+  "tagline": "Create complete AI songs with vocals, then continue with covers, remixes",
+  "type": "shop",
+  "media": {
+    "pictures": [
+      {
+        "node": "pic_1",
+        "file": "media/pic-1.png"
+      },
+      {
+        "node": "pic_2",
+        "file": "media/pic-2.png"
+      }
+    ]
+  },
+  "anims": [
+    {
+      "type": "pulse",
+      "node": "lintel",
+      "period": 2.6,
+      "depth": 0.35
+    }
+  ],
+  "color": "#9f7aea",
+  "template": {
+    "id": "shopfront",
+    "version": 2,
+    "variant": "shop",
+    "pictures": "images",
+    "logo": "voxel",
+    "logo_url": "https://songluna.com/apple-touch-icon.png",
+    "primary": "#17151d"
+  }
+}
