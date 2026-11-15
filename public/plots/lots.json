@@ -25,6 +25,7 @@
     "promptfrenzy": "boulevard-7",
     "shellwire": "boulevard-14",
     "signal": "boulevard-3",
+    "songluna-ai": "east-3",
     "xiaoshengyi-toolbox": "south-4"
   },
   "placed": {
@@ -116,6 +117,11 @@
     "east-2": {
       "x": 151.5,
       "z": 18,
+      "yaw": -1.5707963267948966
+    },
+    "east-3": {
+      "x": 151.5,
+      "z": 6,
       "yaw": -1.5707963267948966
     },
     "east-4": {
