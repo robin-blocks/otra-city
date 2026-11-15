@@ -24,7 +24,8 @@
     "photogenerai": "east-4",
     "promptfrenzy": "boulevard-7",
     "shellwire": "boulevard-14",
-    "signal": "boulevard-3"
+    "signal": "boulevard-3",
+    "xiaoshengyi-toolbox": "south-4"
   },
   "placed": {
     "boulevard-1": {
@@ -145,6 +146,11 @@
     "northwest-7": {
       "x": 0,
       "z": 34.5,
+      "yaw": 0
+    },
+    "south-4": {
+      "x": 82,
+      "z": -57.5,
       "yaw": 0
     }
   }

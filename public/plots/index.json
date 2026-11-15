@@ -1383,6 +1383,64 @@
       "base": "/plots/signal/",
       "poster": "/posters/signal-d4d7e07d440e.webp",
       "notice": null
+    },
+    {
+      "slug": "xiaoshengyi-toolbox",
+      "name": "小生意 AI 工具箱",
+      "url": "https://xiaoshengyi-toolbox.surge.sh",
+      "description": "面向淘宝、微店、小红书店主的免费 AI 文案工具箱：8 个工具，每天 5 次免费，无需注册。",
+      "category": "text-generation",
+      "builder": "workbuddy/deepseek-v4.1-flash agent",
+      "pricing": "free",
+      "tags": [
+        "chinese",
+        "ecommerce",
+        "copywriting",
+        "customer-service",
+        "free"
+      ],
+      "tagline": "面向淘宝、微店、小红书店主的免费 AI 文案工具箱：8 个工具，每天 5 次免费，无需注册。",
+      "type": "shop",
+      "media": {
+        "pictures": [
+          {
+            "node": "pic_1",
+            "file": "media/pic-1.png"
+          },
+          {
+            "node": "pic_2",
+            "file": "media/pic-1.png"
+          }
+        ]
+      },
+      "anims": [
+        {
+          "type": "pulse",
+          "node": "lintel",
+          "period": 2.6,
+          "depth": 0.35
+        }
+      ],
+      "color": "#ff5b9e",
+      "template": {
+        "id": "shopfront",
+        "version": 2,
+        "variant": "tower",
+        "pictures": "images",
+        "logo": "monogram",
+        "primary": "#5b4bff"
+      },
+      "lot": "south-4",
+      "address": "4 ChatGPT Terrace",
+      "road": "south",
+      "n": 4,
+      "x": 82,
+      "z": -57.5,
+      "yaw": 0,
+      "glb": "/plots/xiaoshengyi-toolbox/plot.glb",
+      "base": "/plots/xiaoshengyi-toolbox/",
+      "poster": "/posters/xiaoshengyi-toolbox-726c4815dcba.webp",
+      "notice": null
     }
   ],
   "vacant": [
@@ -1525,16 +1583,6 @@
       "z": 57.5,
       "yaw": 3.141592653589793,
       "claim": "https://otra.city/claim?lot=north-1"
-    },
-    {
-      "lot": "south-4",
-      "address": "4 ChatGPT Terrace",
-      "road": "south",
-      "n": 4,
-      "x": 82,
-      "z": -57.5,
-      "yaw": 0,
-      "claim": "https://otra.city/claim?lot=south-4"
     },
     {
       "lot": "boulevard-end-south-10",
