@@ -1445,6 +1445,64 @@
       "notice": null
     },
     {
+      "slug": "vibeforthat",
+      "name": "VibeForThat",
+      "url": "https://vibeforthat.com",
+      "builder": "vibeforthat inc",
+      "description": "An AI tool discovery directory for work, creativity, research, and coding.",
+      "category": "other",
+      "pricing": "free",
+      "tags": [
+        "ai-tools",
+        "vibe-coding",
+        "software-discovery",
+        "agent-skills",
+        "mcp-servers"
+      ],
+      "tagline": "An AI tool discovery directory for work, creativity, research, and coding.",
+      "type": "shop",
+      "media": {
+        "pictures": [
+          {
+            "node": "pic_1",
+            "file": "media/pic-1.png"
+          },
+          {
+            "node": "pic_2",
+            "file": "media/pic-2.png"
+          }
+        ]
+      },
+      "anims": [
+        {
+          "type": "pulse",
+          "node": "lintel",
+          "period": 2.6,
+          "depth": 0.35
+        }
+      ],
+      "color": "#3858fa",
+      "template": {
+        "id": "shopfront",
+        "version": 2,
+        "variant": "awning",
+        "pictures": "images",
+        "logo": "monogram",
+        "logo_url": "https://vibeforthat.com/icon-512.png"
+      },
+      "lot": "boulevard-end-south-5",
+      "address": "5 Local Llama Lane",
+      "road": "boulevard-end-south",
+      "n": 5,
+      "x": -60.5,
+      "z": -40,
+      "yaw": -1.5707963267948966,
+      "glb": "/plots/vibeforthat/plot.glb",
+      "base": "/plots/vibeforthat/",
+      "poster": "/posters/vibeforthat-b036166786fb.webp",
+      "notice": null
+    },
+    {
       "slug": "xiaoshengyi-toolbox",
       "name": "小生意 AI 工具箱",
       "url": "https://xiaoshengyi-toolbox.surge.sh",
@@ -1563,16 +1621,6 @@
       "z": 28,
       "yaw": 1.5707963267948966,
       "claim": "https://otra.city/claim?lot=west-4"
-    },
-    {
-      "lot": "boulevard-end-south-5",
-      "address": "5 Local Llama Lane",
-      "road": "boulevard-end-south",
-      "n": 5,
-      "x": -60.5,
-      "z": -40,
-      "yaw": -1.5707963267948966,
-      "claim": "https://otra.city/claim?lot=boulevard-end-south-5"
     },
     {
       "lot": "boulevard-end-south-7",
