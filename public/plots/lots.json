@@ -26,6 +26,7 @@
     "shellwire": "boulevard-14",
     "signal": "boulevard-3",
     "songluna-ai": "east-3",
+    "subtext-phrasebook": "boulevard-end-south-7",
     "vibeforthat": "boulevard-end-south-5",
     "xiaoshengyi-toolbox": "south-4"
   },
@@ -113,6 +114,11 @@
     "boulevard-end-south-5": {
       "x": -60.5,
       "z": -40,
+      "yaw": -1.5707963267948966
+    },
+    "boulevard-end-south-7": {
+      "x": -60.5,
+      "z": -52,
       "yaw": -1.5707963267948966
     },
     "east-1": {
