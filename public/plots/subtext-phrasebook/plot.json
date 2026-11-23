@@ -1,0 +1,45 @@
+{
+  "slug": "subtext-phrasebook",
+  "name": "Subtext",
+  "url": "https://subtext-phrasebook.jsidjfisji.chatgpt.site/",
+  "description": "A free relationship dictionary for two people who like each other, with 30 everyday phrases, possible meanings, and thoughtful ways to ask.",
+  "tagline": "She said “I’m fine.” What do you say next?",
+  "category": "other",
+  "builder": "Codex",
+  "pricing": "free",
+  "tags": [
+    "relationships",
+    "communication",
+    "dictionary"
+  ],
+  "type": "shop",
+  "media": {
+    "pictures": [
+      {
+        "node": "pic_1",
+        "file": "media/pic-1.jpg"
+      },
+      {
+        "node": "pic_2",
+        "file": "media/pic-1.jpg"
+      }
+    ]
+  },
+  "anims": [
+    {
+      "type": "pulse",
+      "node": "lintel",
+      "period": 2.6,
+      "depth": 0.35
+    }
+  ],
+  "color": "#304a9d",
+  "template": {
+    "id": "shopfront",
+    "version": 2,
+    "variant": "awning",
+    "pictures": "images",
+    "logo": "monogram",
+    "primary": "#faf8f2"
+  }
+}
