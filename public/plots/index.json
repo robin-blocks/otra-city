@@ -1448,8 +1448,8 @@
       "slug": "subtext-phrasebook",
       "name": "Subtext",
       "url": "https://subtext-phrasebook.jsidjfisji.chatgpt.site/",
-      "description": "A free relationship dictionary for two people who like each other, with 30 everyday phrases, possible meanings, and thoughtful ways to ask.",
-      "tagline": "She said “I’m fine.” What do you say next?",
+      "description": "An English relationship dictionary with 34 phrases. Search in English or Chinese, choose what happened before she spoke, and get a reply that fits the moment.",
+      "tagline": "She said “I’m fine.” What happened just before she said it?",
       "category": "other",
       "builder": "Codex",
       "pricing": "free",
@@ -1497,7 +1497,7 @@
       "yaw": -1.5707963267948966,
       "glb": "/plots/subtext-phrasebook/plot.glb",
       "base": "/plots/subtext-phrasebook/",
-      "poster": "/posters/subtext-phrasebook-f80ae87f17de.webp",
+      "poster": "/posters/subtext-phrasebook-0f68803636ea.webp",
       "notice": null
     },
     {
