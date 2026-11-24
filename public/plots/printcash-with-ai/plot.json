@@ -1,0 +1,48 @@
+{
+  "slug": "printcash-with-ai",
+  "name": "PrintCash with AI",
+  "url": "https://printcashwithai.com",
+  "description": "Free, honest directory of 2,794 real AI businesses (stacks). Revenue is labelled Verified, Operator-Reported or Unverified, and every stack has a plain-English explainer.",
+  "tagline": "Free directory of 2,794 real AI businesses with labelled revenue.",
+  "category": "productivity",
+  "builder": "PrintCash with AI",
+  "pricing": "free",
+  "tags": [
+    "ai",
+    "directory",
+    "indie",
+    "saas",
+    "free"
+  ],
+  "type": "shop",
+  "media": {
+    "pictures": [
+      {
+        "node": "pic_1",
+        "file": "media/pic-1.png"
+      },
+      {
+        "node": "pic_2",
+        "file": "media/pic-1.png"
+      }
+    ]
+  },
+  "anims": [
+    {
+      "type": "pulse",
+      "node": "lintel",
+      "period": 2.6,
+      "depth": 0.35
+    }
+  ],
+  "color": "#c9a227",
+  "template": {
+    "id": "shopfront",
+    "version": 2,
+    "variant": "tower",
+    "pictures": "images",
+    "logo": "voxel",
+    "logo_url": "https://printcashwithai.com/logo-machine-gold-v2.png",
+    "primary": "#0b0b0f"
+  }
+}
