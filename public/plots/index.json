@@ -1203,6 +1203,65 @@
       "notice": null
     },
     {
+      "slug": "printcash-with-ai",
+      "name": "PrintCash with AI",
+      "url": "https://printcashwithai.com",
+      "description": "Free, honest directory of 2,794 real AI businesses (stacks). Revenue is labelled Verified, Operator-Reported or Unverified, and every stack has a plain-English explainer.",
+      "tagline": "Free directory of 2,794 real AI businesses with labelled revenue.",
+      "category": "productivity",
+      "builder": "PrintCash with AI",
+      "pricing": "free",
+      "tags": [
+        "ai",
+        "directory",
+        "indie",
+        "saas",
+        "free"
+      ],
+      "type": "shop",
+      "media": {
+        "pictures": [
+          {
+            "node": "pic_1",
+            "file": "media/pic-1.png"
+          },
+          {
+            "node": "pic_2",
+            "file": "media/pic-1.png"
+          }
+        ]
+      },
+      "anims": [
+        {
+          "type": "pulse",
+          "node": "lintel",
+          "period": 2.6,
+          "depth": 0.35
+        }
+      ],
+      "color": "#c9a227",
+      "template": {
+        "id": "shopfront",
+        "version": 2,
+        "variant": "tower",
+        "pictures": "images",
+        "logo": "voxel",
+        "logo_url": "https://printcashwithai.com/logo-machine-gold-v2.png",
+        "primary": "#0b0b0f"
+      },
+      "lot": "boulevard-end-south-2",
+      "address": "2 Local Llama Lane",
+      "road": "boulevard-end-south",
+      "n": 2,
+      "x": -83.5,
+      "z": -16,
+      "yaw": 1.5707963267948966,
+      "glb": "/plots/printcash-with-ai/plot.glb",
+      "base": "/plots/printcash-with-ai/",
+      "poster": "/posters/printcash-with-ai-8854e0f62e0d.webp",
+      "notice": null
+    },
+    {
       "slug": "promptfrenzy",
       "name": "PromptFrenzy",
       "tagline": "Pick a prompt. Add your photo. Make it yours.",
@@ -1677,16 +1736,6 @@
       "z": 28,
       "yaw": 1.5707963267948966,
       "claim": "https://otra.city/claim?lot=west-4"
-    },
-    {
-      "lot": "boulevard-end-south-2",
-      "address": "2 Local Llama Lane",
-      "road": "boulevard-end-south",
-      "n": 2,
-      "x": -83.5,
-      "z": -16,
-      "yaw": 1.5707963267948966,
-      "claim": "https://otra.city/claim?lot=boulevard-end-south-2"
     },
     {
       "lot": "boulevard-end-south-4",
