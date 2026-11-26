@@ -1011,6 +1011,62 @@
       "notice": null
     },
     {
+      "slug": "modumath",
+      "name": "ModuMath",
+      "url": "https://lmo0317-modumath-path-practice.static.hf.space/index.html",
+      "description": "Try two geometry problems with hints. Open the full ModuMath app to work through a difficult step in your own math problem and practice with a related question.",
+      "category": "other",
+      "builder": "OpenAI Codex",
+      "pricing": "freemium",
+      "tags": [
+        "education",
+        "math",
+        "geometry",
+        "practice"
+      ],
+      "tagline": "Try two geometry problems with hints. Open the full ModuMath app to work…",
+      "type": "shop",
+      "media": {
+        "pictures": [
+          {
+            "node": "pic_1",
+            "file": "media/pic-1.png"
+          },
+          {
+            "node": "pic_2",
+            "file": "media/pic-1.png"
+          }
+        ]
+      },
+      "anims": [
+        {
+          "type": "pulse",
+          "node": "lintel",
+          "period": 2.6,
+          "depth": 0.35
+        }
+      ],
+      "color": "#3858fa",
+      "template": {
+        "id": "shopfront",
+        "version": 2,
+        "variant": "tower",
+        "pictures": "og:image",
+        "logo": "monogram"
+      },
+      "lot": "boulevard-end-south-4",
+      "address": "4 Local Llama Lane",
+      "road": "boulevard-end-south",
+      "n": 4,
+      "x": -83.5,
+      "z": -28,
+      "yaw": 1.5707963267948966,
+      "glb": "/plots/modumath/plot.glb",
+      "base": "/plots/modumath/",
+      "poster": "/posters/modumath-cabae8c8f719.webp",
+      "notice": null
+    },
+    {
       "slug": "museverse",
       "name": "Museverse",
       "tagline": "demo lot · Hum it. Ship it.",
@@ -1736,16 +1792,6 @@
       "z": 28,
       "yaw": 1.5707963267948966,
       "claim": "https://otra.city/claim?lot=west-4"
-    },
-    {
-      "lot": "boulevard-end-south-4",
-      "address": "4 Local Llama Lane",
-      "road": "boulevard-end-south",
-      "n": 4,
-      "x": -83.5,
-      "z": -28,
-      "yaw": 1.5707963267948966,
-      "claim": "https://otra.city/claim?lot=boulevard-end-south-4"
     },
     {
       "lot": "boulevard-end-south-9",

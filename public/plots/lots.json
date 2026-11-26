@@ -18,6 +18,7 @@
     "mews-3": "northwest-3",
     "mews-5": "northwest-5",
     "mews-7": "northwest-7",
+    "modumath": "boulevard-end-south-4",
     "museverse": "boulevard-9",
     "myseasonhue": "boulevard-13",
     "pasteguard": "boulevard-2",
@@ -116,6 +117,11 @@
       "x": -60.5,
       "z": -28,
       "yaw": -1.5707963267948966
+    },
+    "boulevard-end-south-4": {
+      "x": -83.5,
+      "z": -28,
+      "yaw": 1.5707963267948966
     },
     "boulevard-end-south-5": {
       "x": -60.5,
