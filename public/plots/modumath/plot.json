@@ -1,0 +1,45 @@
+{
+  "slug": "modumath",
+  "name": "ModuMath",
+  "url": "https://lmo0317-modumath-path-practice.static.hf.space/index.html",
+  "description": "Try two geometry problems with hints. Open the full ModuMath app to work through a difficult step in your own math problem and practice with a related question.",
+  "category": "other",
+  "builder": "OpenAI Codex",
+  "pricing": "freemium",
+  "tags": [
+    "education",
+    "math",
+    "geometry",
+    "practice"
+  ],
+  "tagline": "Try two geometry problems with hints. Open the full ModuMath app to work…",
+  "type": "shop",
+  "media": {
+    "pictures": [
+      {
+        "node": "pic_1",
+        "file": "media/pic-1.png"
+      },
+      {
+        "node": "pic_2",
+        "file": "media/pic-1.png"
+      }
+    ]
+  },
+  "anims": [
+    {
+      "type": "pulse",
+      "node": "lintel",
+      "period": 2.6,
+      "depth": 0.35
+    }
+  ],
+  "color": "#3858fa",
+  "template": {
+    "id": "shopfront",
+    "version": 2,
+    "variant": "tower",
+    "pictures": "og:image",
+    "logo": "monogram"
+  }
+}
