@@ -1,0 +1,38 @@
+{
+  "slug": "fixux",
+  "name": "Fixux",
+  "url": "https://fixux.ai",
+  "description": "Free UI/UX website score by email with optional fixes.",
+  "category": "productivity",
+  "builder": "Fixux",
+  "tagline": "Free UI/UX website score by email with optional fixes.",
+  "type": "shop",
+  "media": {
+    "pictures": [
+      {
+        "node": "pic_1",
+        "file": "media/pic-1.png"
+      },
+      {
+        "node": "pic_2",
+        "file": "media/pic-1.png"
+      }
+    ]
+  },
+  "anims": [
+    {
+      "type": "pulse",
+      "node": "lintel",
+      "period": 2.6,
+      "depth": 0.35
+    }
+  ],
+  "color": "#faa938",
+  "template": {
+    "id": "shopfront",
+    "version": 2,
+    "variant": "awning",
+    "pictures": "og:image",
+    "logo": "monogram"
+  }
+}
