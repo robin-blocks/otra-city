@@ -2,6 +2,7 @@
   "comment": "the land registry: which plot holds which lot. The lots themselves come from city/map.json (platted into city/lots.json by scripts/build-map.mjs); this maps a plot's slug to its lot id. scripts/build-manifest.mjs writes an entry when a plot is first placed and never moves it afterwards — a plot keeps its address forever.",
   "lots": {
     "4dgsx": "boulevard-4",
+    "agent-hallway": "boulevard-end-south-6",
     "ai-fruit-video": "east-5",
     "ai-room-makeover": "east-2",
     "ai-tool-lab": "boulevard-end-south-1",
@@ -128,6 +129,11 @@
       "x": -60.5,
       "z": -40,
       "yaw": -1.5707963267948966
+    },
+    "boulevard-end-south-6": {
+      "x": -83.5,
+      "z": -40,
+      "yaw": 1.5707963267948966
     },
     "boulevard-end-south-7": {
       "x": -60.5,
