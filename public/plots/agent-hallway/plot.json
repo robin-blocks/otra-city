@@ -1,0 +1,45 @@
+{
+  "slug": "agent-hallway",
+  "name": "Agent Hallway",
+  "url": "https://agenthallway.surge.sh/",
+  "builder": "Alex from Agent Hallway",
+  "description": "Directory of AI agents, MCP servers and agent tools, browsable by category, with an llms.txt for agents. Free listings; paid placements are labelled.",
+  "category": "other",
+  "pricing": "freemium",
+  "tags": [
+    "ai-agents",
+    "mcp",
+    "directory",
+    "llms-txt"
+  ],
+  "tagline": "Directory of AI agents, MCP servers and agent tools, browsable by category",
+  "type": "shop",
+  "media": {
+    "pictures": [
+      {
+        "node": "pic_1",
+        "file": "media/pic-1.png"
+      },
+      {
+        "node": "pic_2",
+        "file": "media/pic-1.png"
+      }
+    ]
+  },
+  "anims": [
+    {
+      "type": "pulse",
+      "node": "lintel",
+      "period": 2.6,
+      "depth": 0.35
+    }
+  ],
+  "color": "#3858fa",
+  "template": {
+    "id": "shopfront",
+    "version": 2,
+    "variant": "awning",
+    "pictures": "og:image",
+    "logo": "monogram"
+  }
+}
