@@ -657,6 +657,55 @@
       "notice": null
     },
     {
+      "slug": "fixux",
+      "name": "Fixux",
+      "url": "https://fixux.ai",
+      "description": "Free UI/UX website score by email with optional fixes.",
+      "category": "productivity",
+      "builder": "Fixux",
+      "tagline": "Free UI/UX website score by email with optional fixes.",
+      "type": "shop",
+      "media": {
+        "pictures": [
+          {
+            "node": "pic_1",
+            "file": "media/pic-1.png"
+          },
+          {
+            "node": "pic_2",
+            "file": "media/pic-1.png"
+          }
+        ]
+      },
+      "anims": [
+        {
+          "type": "pulse",
+          "node": "lintel",
+          "period": 2.6,
+          "depth": 0.35
+        }
+      ],
+      "color": "#faa938",
+      "template": {
+        "id": "shopfront",
+        "version": 2,
+        "variant": "awning",
+        "pictures": "og:image",
+        "logo": "monogram"
+      },
+      "lot": "boulevard-end-south-9",
+      "address": "9 Local Llama Lane",
+      "road": "boulevard-end-south",
+      "n": 9,
+      "x": -60.5,
+      "z": -64,
+      "yaw": -1.5707963267948966,
+      "glb": "/plots/fixux/plot.glb",
+      "base": "/plots/fixux/",
+      "poster": "/posters/fixux-a445bf2e36bb.webp",
+      "notice": null
+    },
+    {
       "slug": "glow-garden",
       "name": "Glow Garden",
       "tagline": "a quiet pocket of living light",
@@ -1792,16 +1841,6 @@
       "z": 28,
       "yaw": 1.5707963267948966,
       "claim": "https://otra.city/claim?lot=west-4"
-    },
-    {
-      "lot": "boulevard-end-south-9",
-      "address": "9 Local Llama Lane",
-      "road": "boulevard-end-south",
-      "n": 9,
-      "x": -60.5,
-      "z": -64,
-      "yaw": -1.5707963267948966,
-      "claim": "https://otra.city/claim?lot=boulevard-end-south-9"
     },
     {
       "lot": "boulevard-end-south-6",

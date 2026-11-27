@@ -9,6 +9,7 @@
     "bulin47ai": "east-1",
     "city-hall": "boulevard-8",
     "fernseed": "boulevard-6",
+    "fixux": "boulevard-end-south-9",
     "glow-garden": "boulevard-11",
     "halberd": "boulevard-5",
     "jc-star-change-alert": "boulevard-end-south-3",
@@ -131,6 +132,11 @@
     "boulevard-end-south-7": {
       "x": -60.5,
       "z": -52,
+      "yaw": -1.5707963267948966
+    },
+    "boulevard-end-south-9": {
+      "x": -60.5,
+      "z": -64,
       "yaw": -1.5707963267948966
     },
     "east-1": {
