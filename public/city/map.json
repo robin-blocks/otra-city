@@ -61,6 +61,10 @@
     "ne_east": [
       236,
       46
+    ],
+    "boulevard-end-south_end": [
+      -72,
+      -144
     ]
   },
   "roads": [
@@ -277,7 +281,8 @@
       "kind": "street",
       "nodes": [
         "boulevard_end",
-        "boulevard_end_south"
+        "boulevard_end_south",
+        "boulevard-end-south_end"
       ],
       "width": 8,
       "pavement": 2.5,
@@ -289,9 +294,12 @@
           "left",
           "right"
         ],
-        "from_m": 16
+        "from_m": [
+          16,
+          12
+        ]
       },
-      "comment": "grown by lib/city-growth.mjs on 2026-10-16 for prompt-tools, productivity, data-analysis, other (0 free lots left). Its id is positional (it leaves boulevard_end heading south) and permanent; rename it freely."
+      "comment": "grown by lib/city-growth.mjs on 2026-10-16 for prompt-tools, productivity, data-analysis, other (0 free lots left). Its id is positional (it leaves boulevard_end heading south) and permanent; rename it freely. Continued 72 m from boulevard_end_south: grown by lib/city-growth.mjs on 2026-11-27 for prompt-tools, productivity, data-analysis, other (2 free lots left)."
     },
     {
       "id": "ne-east",
