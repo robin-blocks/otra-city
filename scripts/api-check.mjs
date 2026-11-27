@@ -16,7 +16,7 @@
 // machine but different hosts, which is exactly the shape of a redirect that
 // leaves the domain it claimed.
 import { createServer } from 'node:http';
-import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import handler, { buildListing, deriveTagline, submissionContract } from '../api/submit.mjs';
@@ -28,7 +28,9 @@ import { needs, plan, districts } from '../lib/city-growth.mjs';
 import drain, { selectRecords, parseBatch } from '../api/log-drain.mjs';
 import { apexHost, sameSite, ownerKey, classifyUrl } from '../lib/submitter-host.mjs';
 import badgeHandler, { addressFor } from '../api/badge.mjs';
-import { freeSlug } from '../api/plot-status.mjs';
+import { freeSlug, heldSlug } from '../api/plot-status.mjs';
+import pendingHandler from '../api/pending.mjs';
+import { pendingStore, fileClaim, readClaim, sweep, PENDING_DAYS, PENDING_PER_OWNER } from '../lib/pending.mjs';
 import { badgeSnippets, renderBadge } from '../lib/badge.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
@@ -497,6 +499,132 @@ check('a picture is known by its bytes, not its name', imageKind(PNG) === 'png' 
   check('openapi.json and the contract agree on the example',
     JSON.stringify(o.paths['/api/plots/submit'].post.requestBody.content['application/json'].example.plot) ===
       JSON.stringify(submissionContract().example.plot));
+}
+
+// --- pending listings: held for the backlink ---------------------------------
+// The agent that submits can usually not edit the site it submits. A listing
+// that fails ONLY the backlink is held and published when the permalink
+// appears (lib/pending.mjs). What must stay true: nothing is published until
+// the page proves control, a dry run holds nothing, a custom build is never
+// held, and with no store the answer is the rejection it always was.
+{
+  const PSLUG = 'api-check-pending';
+  const page = join(pages, 'pending.html');
+  writeFileSync(page, '<!doctype html><p>no permalink yet</p>');
+  const held = (over = {}, top = {}) => {
+    const b = listing({ slug: PSLUG, url: `${site.origin}/pending.html`, ...over });
+    delete b.dry;
+    return { ...b, discovery_source: 'api-check', ...top };
+  };
+
+  const none = await post(held());
+  check('with no store, a missing backlink is the rejection it always was',
+    none.status === 422 && none.json.pending === false && /VERDICT: REJECTED/.test(none.json.report));
+
+  const dir = mkdtempSync(join(tmpdir(), 'otra-pending-'));
+  process.env.PENDING_DIR = dir;
+  const files = () => readdirSync(dir);
+  const logged = async (fn) => {
+    const orig = console.log;
+    let line = null;
+    console.log = (...a) => { if (String(a[0]).startsWith('SUBMIT ')) line = JSON.parse(String(a[0]).slice(7)); };
+    try { return { r: await fn(), line }; } finally { console.log = orig; }
+  };
+
+  const dry = await post(held({}, { dry: true }));
+  check('a dry run says it would be held, and holds nothing',
+    dry.status === 202 && dry.json.pending === true && dry.json.pending_listing === null && files().length === 0 &&
+    /VERDICT: PENDING/.test(dry.json.report) && /without "dry"/.test(dry.json.report), `${dry.status} ${files().length} file(s)`);
+
+  const { r: first, line } = await logged(() => post(held()));
+  const pl = first.json.pending_listing;
+  check('a listing that fails only the backlink is held, not rejected',
+    first.status === 202 && first.json.accepted === false && first.json.pending === true && files().length === 1,
+    (first.json.report || first.json.error || '').split('\n').filter((l) => l.startsWith('FAIL')).join(' | '));
+  check('the answer says what it is waiting for, and until when',
+    pl?.waiting_for?.text === `otra.city/s/${PSLUG}` && pl.waiting_for.url === `${site.origin}/pending.html` &&
+    Math.round((Date.parse(pl.expires) - Date.parse(pl.since)) / 864e5) === PENDING_DAYS && /HELD until/.test(first.json.report));
+  check('the note is written for whoever can edit the site', /whoever can edit/.test(pl?.note || '') && !!first.json.badge?.html);
+  check('nothing is published by holding it', first.json.pr_url === null && /FAIL {2}backlink/.test(first.json.report));
+  check('a held attempt is logged as pending, with what failed', line?.outcome === 'pending' && line.failed.join() === 'backlink');
+  const store = pendingStore();
+  const claim = await readClaim(store, PSLUG);
+  check('what is held is the listing as it was sent — nothing the city derived',
+    claim?.body?.plot?.slug === PSLUG && !('template' in claim.body.plot) && !('tagline' in claim.body.plot) &&
+    claim.body.discovery_source === 'api-check' && !('dry' in claim.body));
+
+  const again = await post(held({ name: 'API CHECK 2' }));
+  check('a resubmission replaces what is held and never extends it',
+    again.json.pending_listing?.since === pl.since && again.json.pending_listing.expires === pl.expires &&
+    files().length === 1 && (await readClaim(store, PSLUG)).body.plot.name === 'API CHECK 2');
+
+  const custom = await post({ ...bundle({ slug: PSLUG, url: `${site.origin}/pending.html` }), dry: undefined });
+  check('a custom build is never held: that would mean keeping the bundle',
+    custom.status === 422 && custom.json.pending === false && files().length === 1);
+
+  const other = await fileClaim(store, { slug: PSLUG, owner: 'somebody-else.example', url: 'https://somebody-else.example', body: {} });
+  check('a second site cannot queue behind an unverified claim on the same slug', other.ok === false && other.why === 'other-owner');
+  for (let i = 0; i < PENDING_PER_OWNER; i++) {
+    await fileClaim(store, { slug: `cap-${i}-x`, owner: 'greedy.example', url: 'https://greedy.example', body: {} });
+  }
+  const capped = await fileClaim(store, { slug: 'cap-one-more', owner: 'greedy.example', url: 'https://greedy.example', body: {} });
+  check('one site holds a few claims at most', capped.ok === false && capped.why === 'owner-cap');
+
+  const status = heldSlug(PSLUG, await readClaim(store, PSLUG));
+  check('the status answer for a held slug reads like the in-flight one',
+    status.pending === true && status.stage === 'awaiting-backlink' && status.exists === false &&
+    status.waiting_for.text === `otra.city/s/${PSLUG}` && !('body' in status) && /reserves nothing/.test(status.note));
+
+  // the sweep, through the endpoint: the real backlink check and the real
+  // submit handler, in-process
+  const p = await listen('localhost', (req, res) => pendingHandler(req, res));
+  const poke = async (q = '') => (await fetch(`${p.origin}/api/pending${q}`, { method: 'POST' })).json();
+  const count = await (await fetch(`${p.origin}/api/pending`)).json();
+  check('GET /api/pending counts what is waiting and reads nothing', count.pending === files().length && /held/.test(count.what));
+  const tooSoon = await poke(`?slug=${PSLUG}`);
+  check('a page just read is not read again', tooSoon.pending === 1 && tooSoon.checked === 0 && tooSoon.skipped === 1);
+  const rewind = async (slug, patch = {}) => {
+    const f = join(dir, files().find((n) => n.startsWith(`${slug}~`)));
+    writeFileSync(f, JSON.stringify({ ...JSON.parse(readFileSync(f, 'utf8')), last_checked: new Date(Date.now() - 36e5).toISOString(), ...patch }));
+  };
+  await rewind(PSLUG);
+  const still = await poke(`?slug=${PSLUG}`);
+  check('a page still without the permalink stays waiting', still.checked === 1 && still.waiting === 1 && still.published.length === 0);
+  writeFileSync(page, `<!doctype html><p>listed at otra.city/s/${PSLUG}</p>`);
+  await rewind(PSLUG);
+  const { r: ready, line: pub } = await logged(() => poke(`?slug=${PSLUG}`));
+  // no bot token here, so the handler accepts and has nowhere to publish to —
+  // which is the proof it went through the real handler and passed every check
+  check('once the permalink is on the page the held listing passes the real endpoint',
+    ready.checked === 1 && ready.unpublishable.join() === PSLUG && pub?.outcome === 'accepted-dry' &&
+    pub.caller['user-agent'] === 'otra-city-pending/1.0' && pub.discovery_source === 'api-check',
+    JSON.stringify(ready).slice(0, 160));
+  p.server.close();
+
+  // the three ways out, with the publisher stubbed
+  const yes = { recheck: async () => ({ ok: true, detail: 'found' }), now: Date.now() + 36e5 };
+  const published = await sweep(store, { ...yes, slug: PSLUG, publish: async () => ({ status: 200, json: { accepted: true, pr_url: 'https://github.com/x/y/pull/1' } }) });
+  check('a published claim is gone', published.published.join() === PSLUG && (await readClaim(store, PSLUG)) === null);
+  let tried = 0;
+  const refuse = async () => { tried++; return { status: 422, json: { accepted: false, pending: false, report: 'PASS  slug\nFAIL  ownership      slug belongs to somebody else\nVERDICT: REJECTED' } }; };
+  const stalled = await sweep(store, { ...yes, slug: 'cap-0-x', publish: refuse });
+  const after = await sweep(store, { ...yes, now: yes.now + 36e5, slug: 'cap-0-x', publish: refuse });
+  const st = await readClaim(store, 'cap-0-x');
+  check('a claim that is ready and then fails to publish stalls, says why, and is not retried',
+    stalled.stalled.join() === 'cap-0-x' && /ownership/.test(st.stalled.failed[0]) && tried === 1 && after.checked === 0 &&
+    heldSlug('cap-0-x', st).stage === 'stalled');
+  const late = await sweep(store, { recheck: async () => ({ ok: false }), publish: refuse, now: Date.now() + (PENDING_DAYS + 1) * 864e5 });
+  check('a claim nobody completes is deleted when it expires', late.expired.length === PENDING_PER_OWNER && files().length === 0, `${files().length} left`);
+
+  // the page and the endpoint must describe what the code holds
+  const claimPage = readFileSync(join(root, 'public/claim.html'), 'utf8');
+  check('/claim#safety says what a held listing stores', new RegExp(`${PENDING_DAYS} days`).test(claimPage) && /pending/i.test(claimPage));
+  check('the contract tells an agent that cannot edit the site what to do',
+    submissionContract().steps.some((x) => /Cannot edit that page/.test(x)) && /pending/.test(submissionContract().responses[202]));
+  const o = JSON.parse(readFileSync(join(root, 'public/openapi.json')));
+  check('openapi.json has the 202 a held listing answers with',
+    !!o.paths?.['/api/plots/submit']?.post?.responses?.['202'] && !!o.paths?.['/api/pending']?.post);
+  delete process.env.PENDING_DIR;
 }
 
 // --- the log drain ---------------------------------------------------------

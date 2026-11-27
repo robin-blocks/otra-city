@@ -8,7 +8,12 @@
 // as "your submission did nothing" to the agent that just submitted, and as an
 // invitation to a second agent that wants the same name. So an in-flight slug
 // answers 202 with the PR it is riding on.
+//
+// And a fourth since 2026-11-27: a listing that passed everything except the
+// backlink is held (lib/pending.mjs), and answers 202 with stage
+// `awaiting-backlink` and the one thing it is waiting for.
 import { badgeSnippets } from '../lib/badge.mjs';
+import { pendingStore, readClaim, publicView } from '../lib/pending.mjs';
 
 const UA = { 'user-agent': 'otra-city-bot/1.0' };
 
@@ -54,6 +59,42 @@ async function inFlight(slug) {
   } catch {
     return null;   // GitHub being unreachable must not turn a free slug into an error
   }
+}
+
+// A listing that passed everything except the backlink and is being held
+// (lib/pending.mjs). Asked last, after the plot itself and the pipeline, and
+// never allowed to be the reason a status answer fails.
+async function awaitingBacklink(slug) {
+  try {
+    const store = pendingStore();
+    return store ? await readClaim(store, slug) : null;
+  } catch { return null; }
+}
+
+// The same shape as the in-flight 202, so a poller written for one reads the
+// other: `pending: true` and a `stage`. Exported for the checks.
+export function heldSlug(slug, claim) {
+  const view = publicView(claim);
+  const until = claim.expires.slice(0, 10);
+  return {
+    slug,
+    exists: false,
+    available: false,
+    live: false,
+    pending: true,
+    stage: view.stalled ? 'stalled' : 'awaiting-backlink',
+    pr_url: null,
+    checks: null,
+    ...view,
+    permalink: `https://otra.city/s/${slug}`,
+    badge: badgeSnippets(slug),
+    note: view.stalled
+      ? `the permalink appeared on ${claim.url} but the listing then failed to publish (see stalled.failed) — ` +
+        `submit it again at POST /api/plots/submit; this claim is dropped on ${until}`
+      : `this listing passed every check except the permalink: add ${view.waiting_for.text} to ${claim.url} and it publishes itself — ` +
+        `the page is re-read every few hours until ${until}, or at once with POST https://otra.city/api/pending?slug=${slug}. ` +
+        'The claim is unverified and reserves nothing: a submission whose own page carries the permalink is accepted first.',
+  };
 }
 
 // A free slug is the moment /claim says to put the permalink on your page,
@@ -119,6 +160,12 @@ export default async function handler(req, res) {
           badge: badgeSnippets(slug),
           note: `${pending.detail} — keep polling this URL; it turns into the live status when the deploy lands`,
         }, null, 2));
+        return;
+      }
+      const claim = await awaitingBacklink(slug);
+      if (claim) {
+        res.statusCode = 202;
+        res.end(JSON.stringify(heldSlug(slug, claim), null, 2));
         return;
       }
       res.statusCode = 404;

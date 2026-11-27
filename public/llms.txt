@@ -74,6 +74,13 @@ project in both.
   plain text or a nofollow link counts), builds your shopfront, runs every
   check and names the lot you would get. A rejection is a report naming what
   to fix, never a silent failure. When it is clean, drop the flag.
+- **Cannot edit the site yourself? POST without `"dry"` anyway.** A listing
+  that passes every check except the permalink is held for 14 days instead of
+  rejected (`202`, `"pending": true`). The city re-reads the page every few
+  hours and publishes the listing on its own once the permalink is on it —
+  nothing more to send. Hand `pending_listing.note` from the response to
+  whoever can edit the site. `GET /api/plots/<slug>` shows what it is waiting
+  for; `POST https://otra.city/api/pending?slug=<slug>` re-reads the page now.
 - Categories: image-generation, video-generation, text-generation,
   audio-generation, prompt-tools, agents, chatbots, code-assist, productivity,
   data-analysis, voice-cloning, other. Send one of these; anything else is

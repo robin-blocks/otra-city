@@ -1,0 +1,44 @@
+# Pending listings: every three hours, re-read the pages they are waiting on.
+#
+# A new listing that fails only the backlink is held for 14 days instead of
+# rejected (lib/pending.mjs). This is what notices that the permalink has
+# appeared: one POST to the city's own sweep endpoint, which re-reads each
+# waiting page and sends the ready ones through the real submit handler — so
+# they open a `plot/<slug>-*` pull request and merge like any other listing.
+#
+# Nothing is checked out and no secret is used: the endpoint is public, each
+# page has its own minimum gap between reads, and all a call can do is make
+# the city read a page it was already going to read.
+#
+#   gh workflow run pending.yml                 # sweep now
+#
+# Red means the endpoint did not answer 200 — the sweep itself failed, which
+# is worth a look. A listing that stalls or expires is not red; it is in the
+# summary this prints.
+name: pending — re-read the waiting pages
+on:
+  schedule:
+    - cron: '41 */3 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: pending
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: sweep
+        run: |
+          curl --fail-with-body -sS --max-time 90 -X POST https://otra.city/api/pending \
+            -H 'user-agent: otra-city-pending-workflow/1.0' | tee "$RUNNER_TEMP/sweep.json"
+          {
+            echo '### pending listings'
+            echo '```json'
+            cat "$RUNNER_TEMP/sweep.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

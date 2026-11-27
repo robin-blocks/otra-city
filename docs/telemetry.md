@@ -37,6 +37,19 @@ its own log lines are on `/api/log-drain`, which the filter does not match.
 [`/claim#safety`](https://otra.city/claim#safety); adding a field here means
 adding it there in the same commit, or the published contract becomes a lie.
 
+## The other thing in the same store: pending listings
+
+The Blob store holds one more prefix, `pending/`, and it is not telemetry. A
+new listing that fails only the backlink is held there for up to 14 days —
+the `plot` object as sent and `discovery_source`, one small JSON object per
+slug — so it can publish when the permalink appears (`lib/pending.mjs`,
+`docs/submission.md#pending-listings`). `npm run telemetry` reads
+`submissions/` only and never sees it. The attempts themselves show up in the
+summary as the outcomes `pending` and `pending-dry`, and a held listing that
+later publishes is an ordinary `accepted` whose user-agent is
+`otra-city-pending/1.0`. The sweep prints one `PENDING {…}` line per run to
+the function log; that line is not drained.
+
 ## Setting it up
 
 `scripts/setup-log-drain.sh` walks the whole thing and verifies each step. What
