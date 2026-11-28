@@ -8,6 +8,7 @@
     "ai-tool-lab": "boulevard-end-south-1",
     "archive-9": "boulevard-12",
     "bulin47ai": "east-1",
+    "canonical-x402-routes": "boulevard-end-south-8",
     "city-hall": "boulevard-8",
     "fernseed": "boulevard-6",
     "fixux": "boulevard-end-south-9",
@@ -139,6 +140,11 @@
       "x": -60.5,
       "z": -52,
       "yaw": -1.5707963267948966
+    },
+    "boulevard-end-south-8": {
+      "x": -83.5,
+      "z": -52,
+      "yaw": 1.5707963267948966
     },
     "boulevard-end-south-9": {
       "x": -60.5,
