@@ -30,6 +30,7 @@
     "promptfrenzy": "boulevard-7",
     "shellwire": "boulevard-14",
     "signal": "boulevard-3",
+    "soar-agent": "north-1",
     "songluna-ai": "east-3",
     "subtext-phrasebook": "boulevard-end-south-7",
     "vibeforthat": "boulevard-end-south-5",
@@ -175,6 +176,11 @@
       "x": 151.5,
       "z": -18,
       "yaw": -1.5707963267948966
+    },
+    "north-1": {
+      "x": 82,
+      "z": 57.5,
+      "yaw": 3.141592653589793
     },
     "northwest-1": {
       "x": 36,
