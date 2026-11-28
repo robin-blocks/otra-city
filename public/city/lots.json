@@ -126,7 +126,17 @@
         "boulevard-end-south-7",
         "boulevard-end-south-8",
         "boulevard-end-south-9",
-        "boulevard-end-south-10"
+        "boulevard-end-south-10",
+        "boulevard-end-south-11",
+        "boulevard-end-south-12",
+        "boulevard-end-south-13",
+        "boulevard-end-south-14",
+        "boulevard-end-south-15",
+        "boulevard-end-south-16",
+        "boulevard-end-south-17",
+        "boulevard-end-south-18",
+        "boulevard-end-south-19",
+        "boulevard-end-south-20"
       ],
       "categories": [
         "prompt-tools",
@@ -628,6 +638,96 @@
       "address": "10 Local Llama Lane",
       "x": -83.5,
       "z": -64,
+      "yaw": 1.5707963267948966
+    },
+    "boulevard-end-south-11": {
+      "id": "boulevard-end-south-11",
+      "road": "boulevard-end-south",
+      "n": 11,
+      "address": "11 Local Llama Lane",
+      "x": -60.5,
+      "z": -84,
+      "yaw": -1.5707963267948966
+    },
+    "boulevard-end-south-12": {
+      "id": "boulevard-end-south-12",
+      "road": "boulevard-end-south",
+      "n": 12,
+      "address": "12 Local Llama Lane",
+      "x": -83.5,
+      "z": -84,
+      "yaw": 1.5707963267948966
+    },
+    "boulevard-end-south-13": {
+      "id": "boulevard-end-south-13",
+      "road": "boulevard-end-south",
+      "n": 13,
+      "address": "13 Local Llama Lane",
+      "x": -60.5,
+      "z": -96,
+      "yaw": -1.5707963267948966
+    },
+    "boulevard-end-south-14": {
+      "id": "boulevard-end-south-14",
+      "road": "boulevard-end-south",
+      "n": 14,
+      "address": "14 Local Llama Lane",
+      "x": -83.5,
+      "z": -96,
+      "yaw": 1.5707963267948966
+    },
+    "boulevard-end-south-15": {
+      "id": "boulevard-end-south-15",
+      "road": "boulevard-end-south",
+      "n": 15,
+      "address": "15 Local Llama Lane",
+      "x": -60.5,
+      "z": -108,
+      "yaw": -1.5707963267948966
+    },
+    "boulevard-end-south-16": {
+      "id": "boulevard-end-south-16",
+      "road": "boulevard-end-south",
+      "n": 16,
+      "address": "16 Local Llama Lane",
+      "x": -83.5,
+      "z": -108,
+      "yaw": 1.5707963267948966
+    },
+    "boulevard-end-south-17": {
+      "id": "boulevard-end-south-17",
+      "road": "boulevard-end-south",
+      "n": 17,
+      "address": "17 Local Llama Lane",
+      "x": -60.5,
+      "z": -120,
+      "yaw": -1.5707963267948966
+    },
+    "boulevard-end-south-18": {
+      "id": "boulevard-end-south-18",
+      "road": "boulevard-end-south",
+      "n": 18,
+      "address": "18 Local Llama Lane",
+      "x": -83.5,
+      "z": -120,
+      "yaw": 1.5707963267948966
+    },
+    "boulevard-end-south-19": {
+      "id": "boulevard-end-south-19",
+      "road": "boulevard-end-south",
+      "n": 19,
+      "address": "19 Local Llama Lane",
+      "x": -60.5,
+      "z": -132,
+      "yaw": -1.5707963267948966
+    },
+    "boulevard-end-south-20": {
+      "id": "boulevard-end-south-20",
+      "road": "boulevard-end-south",
+      "n": 20,
+      "address": "20 Local Llama Lane",
+      "x": -83.5,
+      "z": -132,
       "yaw": 1.5707963267948966
     },
     "ne-east-1": {
