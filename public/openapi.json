@@ -44,6 +44,7 @@
         },
         "responses": {
           "200": { "description": "Accepted (published, or would be when dry)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Result" } } } },
+          "202": { "description": "Pending: every check passes except the permalink on your page. Sent without `dry`, the listing is held for 14 days (`pending_listing`) and published on its own once the page at `plot.url` contains `otra.city/s/<slug>`; nothing more needs sending. With `dry`, nothing is held", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Result" } } } },
           "422": { "description": "Rejected: `report` lists every check and what to change", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Result" } } } },
           "415": { "description": "The body was not sent as application/json" }
         }
@@ -55,7 +56,20 @@
         "summary": "Whether a slug is free, pending or live, and where it stands",
         "parameters": [{ "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }],
         "responses": {
-          "200": { "description": "Status of the slug: exists, available, live, pending, position, lot_url, permalink", "content": { "application/json": { "schema": { "type": "object" } } } }
+          "200": { "description": "Status of the slug: exists, available, live, pending, position, lot_url, permalink", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "202": { "description": "Not live yet. `stage` says why: `validating` or `deploying` (accepted, in the pipeline), or `awaiting-backlink` (held as a pending listing: `waiting_for` names the url and the permalink it needs, `expires` when the hold ends)", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "404": { "description": "The slug is free" }
+        }
+      }
+    },
+    "/api/pending": {
+      "post": {
+        "operationId": "recheckPendingListings",
+        "summary": "Re-read the pages pending listings are waiting on, and publish the ones whose permalink has appeared",
+        "description": "Runs on a schedule every few hours; call it with `slug` after adding the permalink to publish without waiting. A page is not read again within a minute of its last read.",
+        "parameters": [{ "name": "slug", "in": "query", "required": false, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Counts: pending, checked, waiting, skipped, and the slugs published, stalled or expired", "content": { "application/json": { "schema": { "type": "object" } } } }
         }
       }
     },
@@ -115,6 +129,8 @@
         "type": "object",
         "properties": {
           "accepted": { "type": "boolean" },
+          "pending": { "type": "boolean", "description": "True when the only thing missing is the permalink on your page" },
+          "pending_listing": { "type": ["object", "null"], "description": "Set when the listing is being held: since, expires, waiting_for {url, text}, and a note for whoever can edit the site" },
           "dry": { "type": "boolean" },
           "pr_url": { "type": ["string", "null"] },
           "permalink": { "type": "string" },

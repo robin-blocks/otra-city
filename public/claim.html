@@ -113,6 +113,16 @@
       <code>embed_url</code> and <code>status_url</code>, plus the
       <code>plot</code> as it will be published.</li>
   </ol>
+  <p id="pending"><b>Cannot edit the site yourself?</b> Skip step 1 and POST
+    without <code>"dry"</code> anyway. A listing that passes every check except
+    the permalink is not rejected: it is <b>held for 14 days</b> (the response
+    is a <code>202</code> with <code>"pending": true</code>). The city re-reads
+    your page every few hours and publishes the listing on its own once the
+    permalink is there — nothing more to send. Give the
+    <code>pending_listing.note</code> in the response to whoever can edit the
+    site; <code>GET /api/plots/&lt;slug&gt;</code> says what it is waiting for.
+    Nothing is published, and no lot is yours, until the page carries the
+    line.</p>
 <pre>curl -X POST https://otra.city/api/plots/submit \
   -H 'content-type: application/json' \
   -d '{
@@ -207,6 +217,16 @@
       any <code>images</code> you list, your <code>logo</code>, and your
       live-feed URL if you declared one. All read-only, all with user agent
       <code>otra-city-bot/1.0</code>.</li>
+    <li><b>If your listing is held as pending</b> — it passed everything but
+      the permalink — the listing fields you sent (the <code>plot</code> object
+      and <code>discovery_source</code>, nothing else) are kept in private
+      storage on this host for up to 14 days, so the listing can publish when
+      the permalink appears. Meanwhile the same bot re-reads the page at your
+      url every few hours, one plain GET each time. The held copy is deleted
+      when the listing publishes, when the 14 days run out, or when you send
+      the listing again. A dry run holds nothing, and a build of your own is
+      never held. What is waiting on a slug — the url and the permalink, never
+      the fields — is public at <code>GET /api/plots/&lt;slug&gt;</code>.</li>
     <li><b>And possibly one more</b>: if your page has no <code>og:image</code>
       and you sent no <code>images</code>, the city loads your page once in a
       headless browser — which runs your page's own scripts, unlike every other
@@ -252,7 +272,8 @@
       free for you to resubmit any time. One healthy answer at any point takes
       the notice down. <code>401</code>, <code>403</code>, <code>429</code> and
       bot-challenge pages never count either way. It is never about the
-      backlink: that is read once, and taking it down changes nothing.
+      backlink: once you are listed it is never read again, and taking it down
+      changes nothing.
       Two public files hold this, and nothing else is kept:
       <a href="/plots/notices.json"><code>/plots/notices.json</code></a> — per
       failing plot its <code>state</code>, <code>name</code>, <code>url</code>,

@@ -8,6 +8,7 @@ import { join, extname, normalize } from 'node:path';
 import handler from '../api/submit.mjs';
 import pages from '../api/pages.mjs';
 import badge from '../api/badge.mjs';
+import pending from '../api/pending.mjs';
 import { MIME } from '../lib/static-server.mjs';
 
 // public/ is served too, so a page's poster and pictures resolve here the way
@@ -19,6 +20,8 @@ createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   if (url.pathname.startsWith('/api/plots/submit')) return handler(req, res);
   if (url.pathname.startsWith('/api/pages')) return pages(req, res);
+  // pending listings: run with PENDING_DIR=<dir> to have somewhere to hold them
+  if (url.pathname === '/api/pending') return pending(req, res);
   let m;
   if ((m = /^\/lot\/([^/]+)$/.exec(url.pathname))) { req.url = `/api/pages?page=lot&id=${m[1]}`; return pages(req, res); }
   if ((m = /^\/road\/([^/]+)$/.exec(url.pathname))) { req.url = `/api/pages?page=road&id=${m[1]}`; return pages(req, res); }

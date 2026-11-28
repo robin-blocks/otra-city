@@ -2,6 +2,10 @@
   "functions": {
     "api/submit.mjs": {
       "includeFiles": "node_modules/draco3dgltf/**"
+    },
+    "api/pending.mjs": {
+      "includeFiles": "node_modules/draco3dgltf/**",
+      "maxDuration": 60
     }
   },
   "rewrites": [

@@ -58,6 +58,8 @@ public/            the deployed site (buildless three.js client)
 api/submit.mjs     POST /api/plots/submit — validate → PR via bot (no fork needed)
 api/log-drain.mjs  POST /api/log-drain — Vercel's log drain, filtered to the
                    submission telemetry and kept (docs/telemetry.md)
+api/pending.mjs    POST /api/pending — re-read the pages pending listings wait on
+                   and publish the ready ones (lib/pending.mjs holds them)
 api/sunset.mjs     410 + pointers for the old 2D-era API paths
 lib/validate-plot.mjs  the ONE validation implementation (API + CI + CLI)
 lib/submitter-host.mjs whose site is this: the identity that owns a slug, the
@@ -75,7 +77,8 @@ scripts/           build-map (plat the map), map-check (its invariants),
 .github/workflows/ PR validation + auto-merge + manifest rebuild,
                    city walkthrough (the only check that runs on client code),
                    api (the submission endpoint, on every api/ change),
-                   inspector (daily: dead-site notices and evictions)
+                   inspector (daily: dead-site notices and evictions),
+                   pending (every 3 h: publish held listings whose backlink appeared)
 trusted.json       domains that skip the backlink check (directory listees)
 docs/              project docs: plan, PoC notes, funnel, submission design
 poc/, tools/       the Blender/BlenderMCP authoring lane + bridge (see docs)

@@ -8,6 +8,12 @@
 //
 // Env: GITHUB_TOKEN (bot PAT with repo scope), GITHUB_REPO ("owner/name").
 // Without a token — or with { dry: true } — it validates and reports only.
+//
+// One answer is neither accepted nor rejected: a new listing with nothing
+// wrong except the permalink not being on its page yet is HELD (202,
+// VERDICT: PENDING) and published by api/pending.mjs when it appears. That
+// needs somewhere to hold it — BLOB_READ_WRITE_TOKEN, or PENDING_DIR locally
+// — and without one a missing backlink is a 422 as before. lib/pending.mjs.
 import { validateIdentity, validateGlb, probeWalkability, validateMediaDecl, probeSurfaces, probeMediaFiles, SPEC } from '../lib/validate-plot.mjs';
 import { fetchAsset } from '../lib/fetch-asset.mjs';
 import { pickLot } from '../public/js/city-map.mjs';
@@ -16,6 +22,7 @@ import { hostOf, apexHost, sameSite, ownerKey, classifyUrl } from '../lib/submit
 import { buildTemplate, TEMPLATE_ID, TEMPLATE_VERSION, PICTURE_NODES } from '../lib/template-shop.mjs';
 import { badgeSnippets, SLUG_RE } from '../lib/badge.mjs';
 import { fetchSiteMeta, imageKind } from '../lib/site-meta.mjs';
+import { pendingStore, fileClaim, dropClaims, publicView, INTERNAL, PENDING_DAYS, PENDING_PER_OWNER } from '../lib/pending.mjs';
 import { readFileSync } from 'node:fs';
 
 const TRUSTED = JSON.parse(readFileSync(new URL('../trusted.json', import.meta.url)));
@@ -214,7 +221,7 @@ const isObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 // somebody else's domain, and the city then carries their name on your board
 // and hands you their identity for every future update. Redirects WITHIN the
 // site are fine; leaving it is the whole attack.
-async function checkBacklink(url, slug) {
+export async function checkBacklink(url, slug) {
   const domain = hostOf(url);
   // The city's own pages cannot vouch for a plot: the city republishes every
   // live permalink itself (GET /api/plots/<slug> answers with one), so a
@@ -248,6 +255,11 @@ async function checkBacklink(url, slug) {
     return {
       ok: found,
       mode: 'fetched',
+      // the page answered and is theirs; the permalink is simply not on it.
+      // The one failure a listing can be held for (lib/pending.mjs) — a dead
+      // site, a redirect off the domain or a city url is not waiting for
+      // anything, it is wrong.
+      missing: !found,
       detail: found ? `backlink to ${needle} found` : `page does not contain ${needle} — add your plot permalink first ` +
         `(plain text passes; the \`badge\` snippet in this response is the same link as a badge showing your address)`,
     };
@@ -771,6 +783,9 @@ export function submissionContract() {
         `${ORIGIN}/badge/<slug>.svg is the same proof). This is the one rule that rejects most submissions.`,
       'POST the body below with "dry": true. Nothing is published; the response has a line-by-line `report` and a verdict.',
       'Fix anything marked FAIL, then POST again without "dry". An accepted submission opens a pull request that merges itself within minutes.',
+      `Cannot edit that page yourself? POST without "dry" anyway. A listing that passes everything except the permalink is held for ${PENDING_DAYS} days ` +
+        '(202, "pending": true): the city re-reads the page every few hours and publishes the listing on its own once the permalink is there. ' +
+        'Hand the `pending_listing.note` in the response to whoever can edit the site.',
     ],
     body: {
       plot: {
@@ -801,6 +816,7 @@ export function submissionContract() {
     example: CONTRACT_EXAMPLE,
     responses: {
       200: '{ accepted: true, pr_url, permalink, lot, lot_url, badge, report, … }',
+      202: '{ accepted: false, pending: true, pending_listing, badge, report, … } — everything passes except the permalink on your page; held, and published when it appears',
       422: '{ accepted: false, report, result } — every check, PASS/FAIL/WARN, with what to change',
       415: 'the body was not sent as application/json',
     },
@@ -855,6 +871,10 @@ export default async function handler(req, res) {
     // usual table — but the response leads with what is actually wrong.
     const wrapperMissing = !isObject(body.plot);
     const plot = wrapperMissing ? {} : body.plot;
+    // what a pending listing holds: the fields as they arrived, before the
+    // city derives anything from them, so publishing later rebuilds from the
+    // site as it is then
+    const sent = wrapperMissing ? null : structuredClone(body.plot);
     // telemetry-only fields never travel into the plot that gets published
     delete plot.discovery_source;
     const listing = !body.glb_base64 && !body.glb_url;
@@ -962,9 +982,38 @@ export default async function handler(req, res) {
     }
 
     const uvCheck = result.surfaces.checks.find((c) => c.name === 'media uvs');
-    const accepted = result.identity.ok && result.budgets.ok && result.walkability.ok &&
-      mediaOk && uvCheck.ok && (result.feed ? result.feed.ok : true) && !!result.backlink?.ok &&
+    const restOk = result.identity.ok && result.budgets.ok && result.walkability.ok &&
+      mediaOk && uvCheck.ok && (result.feed ? result.feed.ok : true) &&
       !!result.ownership?.ok && !!result.github?.ok && !!result.lot?.ok && !!result.url?.ok;
+    const accepted = restOk && !!result.backlink?.ok;
+    // A new listing with nothing wrong but the permalink not being on its page
+    // yet is held, not dropped: see lib/pending.mjs. A custom build is not —
+    // holding it would mean keeping the bundle — and neither is an update,
+    // whose slug already has a live answer.
+    let held = null;            // the claim, when one is (or on a dry run, would be) held
+    let heldNote = null;        // why not, when the store refused
+    const pendable = restOk && result.backlink?.missing === true && listing &&
+      !body.media && !body.media_urls && result.ownership.mode === 'create';
+    const store = pendable && !req[INTERNAL] ? pendingStore() : null;
+    if (store) {
+      try {
+        const filed = await fileClaim(store, {
+          slug: plot.slug, owner: ownerKey(plot.url), url: plot.url, detail: result.backlink.detail,
+          body: { plot: sent, ...(typeof body.discovery_source === 'string' ? { discovery_source: body.discovery_source.slice(0, 120) } : {}) },
+        }, { write: body.dry !== true });
+        if (filed.ok) held = filed.claim;
+        else heldNote = {
+          'other-owner': `another site's unverified claim is already waiting on "${plot.slug}", so this one is not held — put your permalink on your page and submit again; a submission that proves its own page is accepted whoever is waiting`,
+          'owner-cap': `${ownerKey(plot.url)} already has ${PENDING_PER_OWNER} listings waiting for their permalink, so this one is not held — finish one of those first`,
+          full: 'the city is holding as many unverified listings as it will; this one is not held',
+        }[filed.why];
+      } catch (e) {
+        // the store being down must cost nobody anything they had before it existed
+        console.error('pending store failed:', e.message || e);
+      }
+    }
+    // the sweeper publishing a claim whose page changed its mind is still waiting
+    const pending = !!held || (pendable && !!req[INTERNAL]);
     const lines = [];
     if (wrapperMissing) {
       const stray = ['slug', 'name', 'url', 'tagline', 'description', 'builder'].filter((k) => k in body);
@@ -1018,18 +1067,35 @@ export default async function handler(req, res) {
     // contradiction to anything parsing the report — which is every caller.
     if (result.url) lines.push(`${result.url.ok ? 'PASS' : 'FAIL'}  url host       ${result.url.detail}`);
     if (result.backlink) lines.push(`${result.backlink.ok ? 'PASS' : 'FAIL'}  backlink       ${result.backlink.detail}`);
+    if (held) {
+      const until = held.expires.slice(0, 10);
+      lines.push('WARN  pending        ' + (body.dry === true
+        ? `everything else passes. Send this again without "dry" and the city holds the listing for ${PENDING_DAYS} days: ` +
+          `it re-reads ${plot.url} every few hours and publishes on its own once otra.city/s/${plot.slug} is on that page. Nothing is held by a dry run.`
+        : `everything else passes, so this listing is HELD until ${until}. Whoever can edit ${plot.url} adds otra.city/s/${plot.slug} to it ` +
+          `(plain text, a link, or the badge in this response); the city re-reads the page every few hours and publishes the listing on its own. Nothing more to send.`));
+    } else if (heldNote) {
+      lines.push(`WARN  pending        ${heldNote}`);
+    }
     if (result.ownership) lines.push(`${result.ownership.ok ? 'PASS' : 'FAIL'}  ownership      ${result.ownership.detail}`);
     if (result.github) lines.push(`${result.github.ok ? 'PASS' : 'FAIL'}  github         ${result.github.detail}`);
     if (result.lot) lines.push(`${result.lot.ok ? 'PASS' : 'FAIL'}  lot            ${result.lot.detail}`);
     if (result.duplicate) lines.push(`WARN  duplicate      ${result.duplicate.detail}`);
-    const report = lines.join('\n') + `\nVERDICT: ${accepted ? 'ACCEPTED' : 'REJECTED'}`;
+    const report = lines.join('\n') + `\nVERDICT: ${accepted ? 'ACCEPTED' : pending ? 'PENDING' : 'REJECTED'}`;
 
     let pr_url = null;
     const dry = body.dry === true || !process.env.GITHUB_TOKEN || !process.env.GITHUB_REPO;
-    if (accepted && !dry) pr_url = await createPR({ plot, glb, media }, report);
+    if (accepted && !dry) {
+      pr_url = await createPR({ plot, glb, media }, report);
+      // it is published: nothing is waiting on this slug any more
+      try { const s = pendingStore(); if (s) await dropClaims(s, plot.slug); } catch { /* the sweep clears it */ }
+    }
 
     logAttempt(req, {
-      outcome: accepted ? (dry ? 'accepted-dry' : 'accepted') : 'rejected',
+      // `pending`: failed the backlink and nothing else, and is held (or, dry,
+      // would be) — the rejections that still have a way to end in a listing
+      outcome: accepted ? (dry ? 'accepted-dry' : 'accepted')
+        : pending ? (body.dry === true ? 'pending-dry' : 'pending') : 'rejected',
       slug: plot.slug ?? null,
       owner: plot.url ? ownerKey(plot.url) : null,
       url_tier: result.url?.tier ?? null,
@@ -1056,9 +1122,18 @@ export default async function handler(req, res) {
       ms: Date.now() - started,
     });
 
-    res.statusCode = accepted ? 200 : 422;
+    res.statusCode = accepted ? 200 : pending ? 202 : 422;
     res.end(JSON.stringify({
       accepted,
+      // true when the only thing missing is the permalink on your page; with
+      // `pending_listing` set the city is holding it and will publish it
+      pending,
+      pending_listing: held && body.dry !== true ? {
+        ...publicView(held),
+        rechecked: 'every few hours, and on POST https://otra.city/api/pending?slug=' + plot.slug,
+        note: `For whoever can edit ${plot.url}: add otra.city/s/${plot.slug} to that page (plain text, a link, or the badge in this response). ` +
+          `Nothing else needs sending — the listing publishes itself once the page carries it, any time before ${held.expires.slice(0, 10)}.`,
+      } : null,
       ...(wrapperMissing ? { hint: PLOT_HINT } : {}),
       dry,
       pr_url,

@@ -195,11 +195,16 @@ the permalink, the media system, and the animation system.
     are followed; a redirect that leaves the domain is a rejection, because a
     page you control on somebody else's domain is not proof that you control
     theirs.
-  - **Checked once, at submission, and never again.** An earlier draft of this
+  - **Not there yet? A listing is held, not rejected** — see
+    [Pending listings](#pending-listings). The rule does not move: nothing is
+    published until the page carries the permalink.
+  - **Once you are listed it is never read again.** An earlier draft of this
     document promised a daily re-check, a three-strike counter and a public
     `removed/` list. None of that exists. It is written here as what happens,
     not as what we would like to happen: if your link comes down afterwards,
-    nothing notices, and nothing ever will. The city inspector's daily knock
+    nothing notices, and nothing ever will. (Before you are listed is the one
+    time the page is read more than once: a pending listing's page is re-read
+    until it publishes or its 14 days run out.) The city inspector's daily knock
     (see [When your site stops answering](#when-your-site-stops-answering))
     is a different question — does the site answer at all — and never reads
     the page for the permalink or the badge.
@@ -215,6 +220,48 @@ the permalink, the media system, and the animation system.
   already holds a lot, the report says which. One owner with two real projects
   is legitimate; an agent that hit a failure and retried under a fresh slug is
   the likelier cause, and that quietly costs it a second lot.
+
+## Pending listings
+
+The agent that submits a listing can often not edit the site it is submitting.
+It reads "put `otra.city/s/<slug>` on your page", cannot, and the one thing its
+operator would have had to do never reaches them. So a listing that fails
+**only** the backlink is held instead of dropped.
+
+- **What qualifies**: a new listing (no build of your own, no media sent)
+  whose every other check passes, and whose page answered and simply does not
+  contain the permalink. A dead site, a redirect off your domain, a city url,
+  an update to a slug that is already live, and any submission carrying its
+  own glb are the rejections they always were.
+- **What you get back**: `202`, `"accepted": false`, `"pending": true`, a
+  report ending `VERDICT: PENDING`, and `pending_listing` — `since`, `expires`
+  (14 days after the first time it was held), `waiting_for: {url, text}`, and
+  a `note` written for whoever can edit the site. The `badge` snippets are in
+  the same response.
+- **What happens next**: the city re-reads the page every few hours
+  (`.github/workflows/pending.yml`, every three). When the permalink is there
+  the held listing goes through this same endpoint, passes every check again
+  as the site is *then*, and publishes like any other. Nobody has to send
+  anything. To skip the wait: `POST https://otra.city/api/pending?slug=<slug>`
+  re-reads that one page now (not within a minute of its last read), and
+  sending the listing again works as it always did.
+- **A dry run holds nothing.** It answers the same `202` and says the real
+  submission would be held.
+- **It reserves nothing.** A claim is unverified, so it cannot keep anybody
+  out: a submission whose own page carries the permalink is accepted whether
+  or not a claim is waiting on that slug. Only one unverified claim waits on a
+  slug at a time, a site holds at most three, and no lot is allocated until
+  the listing publishes.
+- **Asking how it stands**: `GET /api/plots/<slug>` answers `202` with
+  `"stage": "awaiting-backlink"`, `waiting_for`, `expires` and `last_checked`.
+  If the permalink appeared but the listing then failed to publish — somebody
+  else proved the slug first, say — the stage is `stalled` with the failing
+  lines, and the claim is left to expire.
+- **What is kept, and for how long**: the `plot` object as you sent it and
+  `discovery_source`, in private storage on the same host, for at most 14
+  days; deleted when the listing publishes, when it expires, or when you send
+  it again. Never a bundle, no IP address. The url and the permalink a slug is
+  waiting for are public through the status endpoint; the fields are not.
 
 ## What submitting grants, and what you keep
 
@@ -360,8 +407,8 @@ which is public and is committed only when a plot changes state. The code is
 
 ## What a submission is recorded as
 
-Every attempt writes one structured line — accepted, rejected and errored
-alike. The rejections are the point: without them there is no denominator, and
+Every attempt writes one structured line — accepted, rejected, held as
+pending and errored alike. The rejections are the point: without them there is no denominator, and
 "submissions went up" cannot be told from "submissions started passing".
 Recorded: the slug, the identity, the url tier, the category (and, when the
 city mapped it, the category as sent), which named
@@ -559,6 +606,20 @@ re-validates and auto-merges; the street manifest rebuilds on merge. Send
 serve a page containing `otra.city/s/<slug>` unless your domain is in
 `trusted.json` (domains manually approved by the maintainers).
 
+
+### Added 2026-11-27 — pending listings
+
+- A new listing that fails only the backlink is **held for 14 days** and
+  published when the permalink appears on its page: `202`, `"pending": true`,
+  `pending_listing`, `VERDICT: PENDING`. Before this it was a `422`. See
+  [Pending listings](#pending-listings).
+- The submit response always carries `pending` (boolean) and
+  `pending_listing` (object or `null`).
+- `GET /api/plots/<slug>` answers `202` with `"stage": "awaiting-backlink"`
+  (or `stalled`) for a held slug.
+- `POST /api/pending` re-reads the waiting pages; `?slug=<slug>` for one.
+- Telemetry has two new `outcome` values, `pending` and `pending-dry`. No new
+  field.
 
 ### Added 2026-10-16 — the city inspector
 
